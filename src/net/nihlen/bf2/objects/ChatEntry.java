@@ -1,6 +1,8 @@
 package net.nihlen.bf2.objects;
 
 public class ChatEntry {
+	
+	public enum ChatType { SERVER, PLAYER };
 
 	public final ChatType type;
 	public final String channel;

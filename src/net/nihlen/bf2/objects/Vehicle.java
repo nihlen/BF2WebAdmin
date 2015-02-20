@@ -16,13 +16,13 @@ public class Vehicle {
 		this.players = new HashMap<Integer, Player>();
 	}
 	
-	public void addPlayer(Player player) {
+	public synchronized void addPlayer(Player player) {
 		if (!players.containsKey(player.index)) {
 			players.put(player.index, player);
 		}
 	}
 
-	public void removePlayer(Player player) {
+	public synchronized void removePlayer(Player player) {
 		if (players.containsKey(player.index)) {
 			players.remove(player.index);
 		}

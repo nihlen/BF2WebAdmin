@@ -2,9 +2,10 @@ package net.nihlen.bf2.modules;
 
 import java.util.ArrayList;
 
+import net.nihlen.bf2.BF2Module;
 import net.nihlen.bf2.BF2SocketServer;
 import net.nihlen.bf2.ModManager;
-import net.nihlen.bf2.WebAdminWebSocketServer;
+import net.nihlen.bf2.WebSocketServer;
 import net.nihlen.bf2.listeners.ChatListener;
 import net.nihlen.bf2.listeners.PlayerUpdateListener;
 import net.nihlen.bf2.objects.ChatEntry;
@@ -15,7 +16,7 @@ import net.nihlen.bf2.objects.Vehicle;
 
 import org.java_websocket.WebSocket;
 
-public class WebAdminModule implements ChatListener, PlayerUpdateListener {
+public class WebAdminModule implements BF2Module, ChatListener, PlayerUpdateListener {
 
 	private final GameServer server;
 	
@@ -24,7 +25,7 @@ public class WebAdminModule implements ChatListener, PlayerUpdateListener {
 	}
 	
 	public void sendAll(String msg) {
-		ArrayList<WebSocket> webSockets = WebAdminWebSocketServer.getInstance().getWebSockets(server.getIpAddress());
+		ArrayList<WebSocket> webSockets = WebSocketServer.getInstance().getWebSockets(server.getIpAddress());
 		if (webSockets != null) {
 			for (WebSocket s : webSockets) {
 				s.send(msg);
@@ -42,7 +43,7 @@ public class WebAdminModule implements ChatListener, PlayerUpdateListener {
 	public void onChatMessage(ChatEntry entry) {
 		System.out.println("WebAdmin: " + entry.text);
 		sendAll(entry.text);
-		WebAdminWebSocketServer.getInstance().send(server.getIpAddress(), entry.player + " said: " + entry.text);
+		WebSocketServer.getInstance().send(server.getIpAddress(), entry.player + " said: " + entry.text);
 	}
 
 	/*
@@ -53,7 +54,7 @@ public class WebAdminModule implements ChatListener, PlayerUpdateListener {
 
 	public void onPlayerSpawn(Player player) {
 		BF2SocketServer.getInstance().send(server.getIpAddress(), "Wow good job on spawning!");
-		WebAdminWebSocketServer.getInstance().send(server.getIpAddress(), player + " spawned");
+		WebSocketServer.getInstance().send(server.getIpAddress(), player + " spawned");
 	}
 
 	public void onPlayerScore(Player player) {
@@ -64,7 +65,7 @@ public class WebAdminModule implements ChatListener, PlayerUpdateListener {
 
 	public void onPlayerDeath(Player player) {
 		BF2SocketServer.getInstance().send(server.getIpAddress(), "rekt");
-		WebAdminWebSocketServer.getInstance().send(server.getIpAddress(), "just rekt");
+		WebSocketServer.getInstance().send(server.getIpAddress(), "just rekt");
 	}
 
 	public void onPlayerDisconnect(Player player) {
@@ -72,7 +73,7 @@ public class WebAdminModule implements ChatListener, PlayerUpdateListener {
 
 	public void onPlayerEnterVehicle(Player player, Vehicle vehicle, String subVehicle) {
 		BF2SocketServer.getInstance().send(server.getIpAddress(), "what are you doing in that " + vehicle.templateName);
-		WebAdminWebSocketServer.getInstance().send(server.getIpAddress(), "so " + player + " entered" + vehicle.templateName);
+		WebSocketServer.getInstance().send(server.getIpAddress(), "so " + player + " entered" + vehicle.templateName);
 	}
 
 	public void onPlayerExitVehicle(Player player, Vehicle vehicle) {

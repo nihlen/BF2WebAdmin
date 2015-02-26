@@ -1,8 +1,7 @@
 package net.nihlen.bf2.objects;
 
+import java.util.Collection;
 import java.util.HashMap;
-import java.util.Observable;
-import java.util.Observer;
 
 import net.nihlen.bf2.ModManager;
 
@@ -44,6 +43,22 @@ public class GameServer {
 		return gameState;
 	}
 	
+	public String getMapName() {
+		return mapName;
+	}
+	
+	public void setMapName(String mapName) {
+		this.mapName = mapName;
+	}
+	
+	public Collection<Player> getPlayers() {
+		return players.values();
+	}
+	
+	public Collection<Vehicle> getVehicles() {
+		return vehicles.values();
+	}
+	
 	public synchronized void setGameState(GameState state) {
 		gameState = state;
 		mm.onGameState(state);
@@ -83,7 +98,29 @@ public class GameServer {
 		}
 		return null;
 	}
-	
+
+	public Player findPlayer(String id) {
+		
+		// Check index
+		try {
+			Player p = getPlayer(Integer.parseInt(id));
+			if (p != null) {
+				return p;
+			}
+		} catch (NumberFormatException e) {
+		}
+		
+		// Search by name
+		for (Player p : getPlayers()) {
+			if (p.name.toLowerCase().contains(id.toLowerCase())) {
+				return p;
+			}
+		}
+		
+		return null;
+	}
+
+
 	public synchronized void updatePlayerPosition(int index, Position pos) {
 		Player p = players.get(index);
 		if (p != null) {
@@ -104,20 +141,29 @@ public class GameServer {
 		Player p = players.get(index);
 		if (p != null) {
 			if (vehicleId == -1) {
+				
 				// Exit vehicle
-				mm.onPlayerExitVehicle(p, p.rootVehicle);
+				Vehicle v = vehicles.remove(p.rootVehicle.id);
+				v.removePlayer(p);
 				p.setVehicle(null, vehicleName);
+				mm.onPlayerExitVehicle(p, v);
 				
 			} else {
-				// Enter vehicle
+				
 				Vehicle v = vehicles.get(vehicleId);
 				if (v != null) {
+					
+					// Enter existing vehicle
 					p.setVehicle(v, vehicleName);
+					
 				} else {
-					Vehicle newVehicle = new Vehicle(vehicleId, rootVehicleName);
-					vehicles.put(vehicleId, newVehicle);
+					
+					// Enter new vehicle
+					v = new Vehicle(vehicleId, rootVehicleName);
+					vehicles.put(vehicleId, v);
 					p.setVehicle(v, vehicleName);
 				}
+				v.addPlayer(p);
 				mm.onPlayerEnterVehicle(p, p.rootVehicle, p.subVehicle);
 			}
 		}

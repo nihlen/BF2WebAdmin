@@ -23,96 +23,96 @@ public class GameServerEventHandler /*implements GameStatusEventListener, ChatEv
 		
 		switch (eventType) {
 		
-		// Game status events
-		case "gameStatePreGame":
-			gameStatePreGame();
-			break;
-		case "gameStatePlaying":
-			gameStatePlaying(args[1], args[2], args[3], Integer.parseInt(args[4]));
-			break;
-		case "gameStateEndGame":
-			gameStateEndGame(args[1], Integer.parseInt(args[2]), args[3], Integer.parseInt(args[4]), args[5]);
-			break;
-		case "gameStatePaused":
-			gameStatePaused();
-			break;
-		case "gameStateRestart":
-			gameStateRestart();
-			break;
-		case "gameStateNotConnected":
-			gameStateNotConnected();
-			break;
-			
-		// Game events
-		case "controlPointCapture":
-			controlPointCapture(Integer.parseInt(args[1]), args[2]);
-			break;
-		case "controlPointNeutralised":
-			controlPointNeutralised(args[1]);
-			break;
-			
-		// Timer events
-		case "ticketStatus":
-			ticketStatus(args[1], Integer.parseInt(args[2]), args[3], Integer.parseInt(args[4]), args[5]);
-			break;
-			
-		// Player events
-		case "playerConnect":
-			playerConnect(Integer.parseInt(args[1]), args[2], Integer.parseInt(args[3]), args[4], args[5], Integer.parseInt(args[6]));
-			break;
-		case "playerSpawn":
-			playerSpawn(Integer.parseInt(args[1]), Position.createPosition(args[2]));
-			break;
-		case "playerChangeTeam":
-			playerChangeTeam(Integer.parseInt(args[1]), Integer.parseInt(args[2]));
-			break;
-		case "playerScore":
-			playerScore(Integer.parseInt(args[1]), Integer.parseInt(args[2]));
-			break;
-		case "playerRevived":
-			playerRevived(Integer.parseInt(args[1]), Integer.parseInt(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), 
-					Integer.parseInt(args[5]), Integer.parseInt(args[6]), Integer.parseInt(args[7]), Integer.parseInt(args[8]));
-			break;
-		case "playerKilledSelf":
-			playerKilledSelf(Integer.parseInt(args[1]), Position.createPosition(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]));
-			break;
-		case "playerTeamkilled":
-			playerTeamkilled(Integer.parseInt(args[1]), Position.createPosition(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]), 
-					Integer.parseInt(args[6]), Position.createPosition(args[7]), Integer.parseInt(args[8]), Integer.parseInt(args[9]), Integer.parseInt(args[10]));
-			break;
-		case "playerKilled":
-			playerKilled(Integer.parseInt(args[1]), Position.createPosition(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]), 
-					Integer.parseInt(args[6]), Position.createPosition(args[7]), Integer.parseInt(args[8]), Integer.parseInt(args[9]), Integer.parseInt(args[10]), args[11]);
-			break;
-		case "playerDeath":
-			playerDeath(Integer.parseInt(args[1]), Position.createPosition(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]));
-			break;
-		case "playerDisconnect":
-			playerDisconnect(Integer.parseInt(args[1]));
-			break;
+			// Game status events
+			case "gameStatePreGame":
+				gameStatePreGame();
+				break;
+			case "gameStatePlaying":
+				gameStatePlaying(args[1], args[2], args[3], Integer.parseInt(args[4]));
+				break;
+			case "gameStateEndGame":
+				gameStateEndGame(args[1], Integer.parseInt(args[2]), args[3], Integer.parseInt(args[4]), args[5]);
+				break;
+			case "gameStatePaused":
+				gameStatePaused();
+				break;
+			case "gameStateRestart":
+				gameStateRestart();
+				break;
+			case "gameStateNotConnected":
+				gameStateNotConnected();
+				break;
 				
-		// Vehicle events
-		case "enterVehicle":
-			enterVehicle(Integer.parseInt(args[1]), Integer.parseInt(args[2]), args[3], args[4]);
-			break;
-		case "exitVehicle":
-			exitVehicle(Integer.parseInt(args[1]), Integer.parseInt(args[2]), args[3], args[4]);
-			break;
-		case "vehicleDestroyed":
-			vehicleDestroyed(Integer.parseInt(args[1]), args[2]);
-			break;
-			
-		// Chat events
-		case "chatServer":
-			chatServer(args[1], args[2], args[3]);
-			break;
-		case "chatPlayer":
-			chatPlayer(args[1], args[2], Integer.parseInt(args[3]), args[4]);
-			break;
-			
-		default:
-			System.out.println("Unknown event type: [" + eventType +"] in message: [" + msg + "]");
-			break;
+			// Game events
+			case "controlPointCapture":
+				controlPointCapture(Integer.parseInt(args[1]), args[2]);
+				break;
+			case "controlPointNeutralised":
+				controlPointNeutralised(args[1]);
+				break;
+				
+			// Timer events
+			case "ticketStatus":
+				ticketStatus(args[1], Integer.parseInt(args[2]), args[3], Integer.parseInt(args[4]), args[5]);
+				break;
+				
+			// Player events
+			case "playerConnect":
+				playerConnect(Integer.parseInt(args[1]), args[2], Integer.parseInt(args[3]), args[4], args[5], Integer.parseInt(args[6]));
+				break;
+			case "playerSpawn":
+				playerSpawn(Integer.parseInt(args[1]), Position.createPosition(args[2]));
+				break;
+			case "playerChangeTeam":
+				playerChangeTeam(Integer.parseInt(args[1]), Integer.parseInt(args[2]));
+				break;
+			case "playerScore":
+				playerScore(Integer.parseInt(args[1]), Integer.parseInt(args[2]));
+				break;
+			case "playerRevived":
+				playerRevived(Integer.parseInt(args[1]), Integer.parseInt(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), 
+						Integer.parseInt(args[5]), Integer.parseInt(args[6]), Integer.parseInt(args[7]), Integer.parseInt(args[8]));
+				break;
+			case "playerKilledSelf":
+				playerKilledSelf(Integer.parseInt(args[1]), Position.createPosition(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]));
+				break;
+			case "playerTeamkilled":
+				playerTeamkilled(Integer.parseInt(args[1]), Position.createPosition(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]), 
+						Integer.parseInt(args[6]), Position.createPosition(args[7]), Integer.parseInt(args[8]), Integer.parseInt(args[9]), Integer.parseInt(args[10]));
+				break;
+			case "playerKilled":
+				playerKilled(Integer.parseInt(args[1]), Position.createPosition(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]), 
+						Integer.parseInt(args[6]), Position.createPosition(args[7]), Integer.parseInt(args[8]), Integer.parseInt(args[9]), Integer.parseInt(args[10]), args[11]);
+				break;
+			case "playerDeath":
+				playerDeath(Integer.parseInt(args[1]), Position.createPosition(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]));
+				break;
+			case "playerDisconnect":
+				playerDisconnect(Integer.parseInt(args[1]));
+				break;
+					
+			// Vehicle events
+			case "enterVehicle":
+				enterVehicle(Integer.parseInt(args[1]), Integer.parseInt(args[2]), args[3], args[4]);
+				break;
+			case "exitVehicle":
+				exitVehicle(Integer.parseInt(args[1]), Integer.parseInt(args[2]), args[3], args[4]);
+				break;
+			case "vehicleDestroyed":
+				vehicleDestroyed(Integer.parseInt(args[1]), args[2]);
+				break;
+				
+			// Chat events
+			case "chatServer":
+				chatServer(args[1], args[2], args[3]);
+				break;
+			case "chatPlayer":
+				chatPlayer(args[1], args[2], Integer.parseInt(args[3]), args[4]);
+				break;
+				
+			default:
+				System.out.println("Unknown event type: [" + eventType +"] in message: [" + msg + "]");
+				break;
 		}
 	}
 
@@ -125,6 +125,7 @@ public class GameServerEventHandler /*implements GameStatusEventListener, ChatEv
 
 	private void gameStatePlaying(String team1Name, String team2Name, String mapName, int maxPlayers) {
 		server.setGameState(GameState.PLAYING);
+		server.setMapName(mapName.toLowerCase());
 	}
 
 	private void gameStateEndGame(String team1Name, int team1Tickets, String team2Name, int team2Tickets, String mapName) {

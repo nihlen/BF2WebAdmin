@@ -21,6 +21,8 @@ public class Player {
 	public int deaths;
 	public int ping;
 	
+	private int authLevel;
+	
 	public Player(int index, String name, int pid, String IpAddress, String hash, int teamId) {
 		this.index = index;
 		this.name = name;
@@ -29,6 +31,7 @@ public class Player {
 		this.hash = hash;
 		this.teamId = teamId;
 		this.isAlive = false;
+		this.authLevel = 0;
 	}
 	
 	/*public void delete() {
@@ -36,6 +39,10 @@ public class Player {
 			rootVehicle.removePlayer(this);
 		}
 	}*/
+	
+	public boolean isDriver() {
+		return ((rootVehicle != null) && (rootVehicle.templateName.equals(subVehicle)));
+	}
 	
 	public synchronized void updateScore(int totalScore, int kills, int deaths) {
 		this.totalScore = totalScore;
@@ -58,6 +65,10 @@ public class Player {
 	public synchronized void setVehicle(Vehicle rootVehicle, String subVehicle) {
 		this.rootVehicle = rootVehicle;
 		this.subVehicle = subVehicle;
+	}
+	
+	public int getAuthLevel() {
+		return authLevel;
 	}
 	
 	@Override

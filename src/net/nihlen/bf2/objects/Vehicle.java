@@ -27,5 +27,13 @@ public class Vehicle {
 			players.remove(player.index);
 		}
 	}
+	
+	public Player getDriver() {
+		for (Player p : players.values()) {
+			if (templateName.equals(p.subVehicle))
+				return p;
+		}
+		return null;
+	}
 
 }

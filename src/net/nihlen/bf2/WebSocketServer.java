@@ -5,31 +5,32 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 
+import net.nihlen.bf2.util.Log;
+
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
-import org.java_websocket.server.WebSocketServer;
 
 /**
  * A simple WebSocketServer implementation. Keeps track of a "chatroom".
  */
-public class WebAdminWebSocketServer extends WebSocketServer {
+public class WebSocketServer extends org.java_websocket.server.WebSocketServer {
 	
 	//private BF2SocketServer bf2SocketServer;
 	private HashMap<String, ArrayList<WebSocket>> webSocketConnections; // <ServerIP, WebSockets> to that server
 	
 	// Singleton
-	private static WebAdminWebSocketServer instance = null;
+	private static WebSocketServer instance = null;
 	
-	protected WebAdminWebSocketServer() {
+	protected WebSocketServer() {
 		super(new InetSocketAddress(BF2WebAdmin.WEB_SOCKET_SERVER_PORT));
 		//this.bf2SocketServer = BF2SocketServer.getInstance();
 		webSocketConnections = new HashMap<String, ArrayList<WebSocket>>();
-		System.out.println("WebSocketServer: Starting");
+		Log.write("WebSocketServer: Started on port " + BF2WebAdmin.WEB_SOCKET_SERVER_PORT);
 	}
 
-	public static WebAdminWebSocketServer getInstance() {
+	public static WebSocketServer getInstance() {
 		if (instance == null) {
-			instance = new WebAdminWebSocketServer();
+			instance = new WebSocketServer();
 		}
 		return instance;
 	}
@@ -51,20 +52,20 @@ public class WebAdminWebSocketServer extends WebSocketServer {
 		}
 		webSocketConnections.get("127.0.0.1").add(conn);
 		this.sendToAll("WebSocketServer: New connection: " + handshake.getResourceDescriptor());
-		System.out.println(conn.getRemoteSocketAddress().getHostName() + " entered the room!");
+		Log.write(conn.getRemoteSocketAddress().getHostName() + " entered the room!");
 	}
 
 	@Override
 	public void onClose(WebSocket conn, int code, String reason, boolean remote) {
 		// TODO: webSocketConnections remove ...
 		this.sendToAll(conn + " has left the room!");
-		System.out.println(conn + " has left the room!");
+		Log.write(conn + " has left the room!");
 	}
 
 	@Override
 	public void onMessage(WebSocket conn, String message) {
 		this.sendToAll(message);
-		System.out.println(conn.getRemoteSocketAddress().getHostName() + ": " + message);
+		Log.write(conn.getRemoteSocketAddress().getHostName() + ": " + message);
 	}
 
 	@Override
@@ -96,7 +97,8 @@ public class WebAdminWebSocketServer extends WebSocketServer {
 	public void send(String serverId, String message) {
 		if (webSocketConnections.containsKey(serverId)) {
 			for (WebSocket s : webSocketConnections.get(serverId)) {
-				s.send(message);
+				if (s.getReadyState() == WebSocket.READY_STATE_OPEN)
+					s.send(message);
 			}
 		}
 	}

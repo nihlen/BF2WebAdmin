@@ -1,6 +1,8 @@
 package net.nihlen.bf2;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 
 public class BF2WebAdmin {
 	
@@ -16,10 +18,26 @@ public class BF2WebAdmin {
 		bf2SocketServerThread.start();
 
 		// Web Socket Server accepts multiple WebSocket connections (each assigned to one BF2 Server)
-		WebAdminWebSocketServer webSocketServer = WebAdminWebSocketServer.getInstance();
+		WebSocketServer webSocketServer = WebSocketServer.getInstance();
 		Thread webSocketServerThread = new Thread(webSocketServer);
 		webSocketServerThread.setName("WebSocketServer Thread");
 		webSocketServerThread.start();
+		
+		InputStreamReader sr = new InputStreamReader(System.in);
+		BufferedReader br = new BufferedReader(sr);
+		
+		String input = "";
+		while (!input.equals("exit")) {
+			
+			if (input.length() > 0) {
+				System.out.println("Read: " + input);
+				BF2SocketServer.getInstance().send("127.0.0.1", input);
+			}
+			input = br.readLine();
+			
+		}
+		
+		System.exit(1);
 
 	}
 

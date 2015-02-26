@@ -12,12 +12,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import net.nihlen.bf2.objects.GameServer;
+import net.nihlen.bf2.util.Log;
 
 // http://stackoverflow.com/questions/12588476/multithreading-socket-communication-client-server
 public class BF2SocketServer implements Runnable {
 
 	private ServerSocket serverSocket;
-	private ExecutorService executorService = Executors.newFixedThreadPool(2);
+	private ExecutorService executorService = Executors.newFixedThreadPool(10);
 
 	// Use one or the other eventually
 	//private ArrayList<BF2SocketClient> bf2ServerClients = new ArrayList<BF2SocketClient>();
@@ -39,7 +40,9 @@ public class BF2SocketServer implements Runnable {
 	
 	public void send(String serverId, String message) {
 		if (bf2SocketConnections.containsKey(serverId)) {
-			bf2SocketConnections.get(serverId).write(message);
+			if (bf2SocketConnections.get(serverId).clientSocket.isConnected() && !bf2SocketConnections.get(serverId).clientSocket.isClosed()) {
+				bf2SocketConnections.get(serverId).write(message);
+			}
 		}
 	}
 
@@ -52,12 +55,12 @@ public class BF2SocketServer implements Runnable {
 
 		try {
 
-			System.out.println("BF2SocketServer: Starting");
 			serverSocket = new ServerSocket(BF2WebAdmin.BF2_SOCKET_SERVER_PORT);
+			Log.write("BF2SocketServer: Started on port " + BF2WebAdmin.BF2_SOCKET_SERVER_PORT);
 
 			while (true) {
 
-				System.out.println("BF2SocketServer: Waiting for request");
+				//Log.write("BF2SocketServer: Waiting for request");
 
 				try {
 					
@@ -71,22 +74,22 @@ public class BF2SocketServer implements Runnable {
 					if (bf2SocketConnections.containsKey(serverId)) {
 						bf2SocketConnections.get(client.getServerId()).close();
 						bf2SocketConnections.remove(serverId);
-						System.out.println("Closed " + serverId);
+						Log.write("BF2SocketServer: Reconnection from " + serverId);
 					}
 					
 					bf2SocketConnections.put(client.getServerId(), client);
 					executorService.submit(client);
 					
-					System.out.println("BF2SocketServer: Processing request");
+					//Log.write("BF2SocketServer: Processing request");
 
 				} catch (IOException ioe) {
-					System.out.println("BF2SocketServer: Error accepting connection");
+					Log.error("BF2SocketServer: Error accepting connection");
 					ioe.printStackTrace();
 				}
 			}
 
 		} catch (IOException e) {
-			System.out.println("BF2SocketServer: Error starting Server on "	+ BF2WebAdmin.BF2_SOCKET_SERVER_PORT);
+			Log.error("BF2SocketServer: Error starting Server on "	+ BF2WebAdmin.BF2_SOCKET_SERVER_PORT);
 			e.printStackTrace();
 		}
 	}
@@ -102,7 +105,7 @@ public class BF2SocketServer implements Runnable {
 			serverSocket.close();
 
 		} catch (IOException e) {
-			System.out.println("BF2SocketServer: Error in server shutdown");
+			Log.error("BF2SocketServer: Error in server shutdown");
 			e.printStackTrace();
 		}
 	}
@@ -121,7 +124,7 @@ public class BF2SocketServer implements Runnable {
 			this.clientSocket = clientSocket;
 			this.gameServer = new GameServer(clientSocket.getInetAddress().getHostAddress());
 			this.eventHandler = new GameServerEventHandler(gameServer);
-			System.out.println("BF2SocketClient: " + clientSocket.getInetAddress().getHostAddress() + " connected.");
+			Log.write("BF2SocketClient: " + clientSocket.getInetAddress().getHostAddress() + " connected.");
 		}
 		
 		public String getServerId() {
@@ -143,7 +146,7 @@ public class BF2SocketServer implements Runnable {
 				try {
 					clientSocket.close();
 				} catch (IOException e) {
-					System.out.println("BF2SocketClient: Error closing client connection");
+					Log.error("BF2SocketClient: Error closing client connection");
 				}
 				/*try {
 					clientSocket.getInputStream().close();
@@ -185,14 +188,14 @@ public class BF2SocketServer implements Runnable {
 				}
 				
 			} catch (SocketTimeoutException e) {
-				System.out.println("BF2SocketClient: Connection timed out (" + getServerId() + ")");
+				Log.write("BF2SocketClient: Connection timed out (" + getServerId() + ")");
 				
 			} catch (IOException e) {
-				System.out.println("BF2SocketClient: Connection closed (" + getServerId() + ")");
+				Log.write("BF2SocketClient: Connection closed (" + getServerId() + ")");
 				//throw new RuntimeException(e);
 				
 			} catch (Exception e) {
-				System.out.println("Exception: " + e.getMessage());
+				Log.error("Exception: " + e.getMessage());
 				e.printStackTrace();
 				
 			} finally {
@@ -210,7 +213,7 @@ public class BF2SocketServer implements Runnable {
 			try {
 				clientSocket.close();
 			} catch (IOException e) {
-				System.out.println("BF2SocketClient: Error closing client connection");
+				Log.error("BF2SocketClient: Error closing client connection");
 			}
 			
 			Thread.currentThread().setName("BF2SocketPool");

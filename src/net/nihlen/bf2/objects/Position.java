@@ -1,5 +1,11 @@
 package net.nihlen.bf2.objects;
 
+/**
+ * A game server object position.
+ * Format: x/height/y
+ * 
+ * @author Alex
+ */
 public class Position {
 	
 	public final double x, y;
@@ -17,9 +23,14 @@ public class Position {
 			double x = Double.parseDouble(parts[0]);
 			double height = Double.parseDouble(parts[1]);
 			double y = Double.parseDouble(parts[2]);
-			return new Position(x, y, height);
+			return new Position(x, height, y);
 		}
 		return new Position(0, 0, 0);
+	}
+	
+	@Override
+	public String toString() {
+		return String.format("%s/%s/%s", x, height, y);
 	}
 	
 }

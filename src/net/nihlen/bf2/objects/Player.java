@@ -1,33 +1,42 @@
 package net.nihlen.bf2.objects;
 
+/**
+ * A model of a player on the Battlefield 2 server.
+ * 
+ * @author Alex
+ */
 public class Player {
 	
 	public final int index;
 	public final String name;
 	public final int pid;
-	public final String IpAddress;
+	public final String ipAddress;
 	public final String hash;
-	
+	public String country;
+	public String countryCode;
+	public int rank;
+
 	public Position position;
+	public Rotation rotation;
 	public Vehicle rootVehicle;
 	public String subVehicle;
-	
+
 	public int teamId;
 	public boolean isAlive;
-	
+
 	public int totalScore;
 	public int teamScore;
 	public int kills;
 	public int deaths;
 	public int ping;
-	
+
 	private int authLevel;
-	
-	public Player(int index, String name, int pid, String IpAddress, String hash, int teamId) {
+
+	public Player(int index, String name, int pid, String ipAddress, String hash, int teamId) {
 		this.index = index;
 		this.name = name;
 		this.pid = pid;
-		this.IpAddress = IpAddress;
+		this.ipAddress = ipAddress;
 		this.hash = hash;
 		this.teamId = teamId;
 		this.isAlive = false;
@@ -44,16 +53,21 @@ public class Player {
 		return ((rootVehicle != null) && (rootVehicle.templateName.equals(subVehicle)));
 	}
 	
-	public synchronized void updateScore(int totalScore, int kills, int deaths) {
+	public synchronized void updateScore(int totalScore, int teamScore, int kills, int deaths) {
 		this.totalScore = totalScore;
+		this.teamScore = teamScore;
 		this.kills = kills;
 		this.deaths = deaths;
 	}
-	
+
 	public synchronized void setPosition(Position pos) {
 		this.position = pos;
 	}
-	
+
+	public synchronized void setRotation(Rotation rot) {
+		this.rotation = rot;
+	}
+
 	public synchronized void setAlive(boolean isAlive) {
 		this.isAlive = isAlive;
 	}
@@ -66,7 +80,11 @@ public class Player {
 		this.rootVehicle = rootVehicle;
 		this.subVehicle = subVehicle;
 	}
-	
+
+	public synchronized void setRank(int rankNum) {
+		this.rank = rankNum;
+	}
+
 	public int getAuthLevel() {
 		return authLevel;
 	}
@@ -75,7 +93,5 @@ public class Player {
 	public String toString() {
 		return name.trim();
 	}
-	
-	
-	
+
 }

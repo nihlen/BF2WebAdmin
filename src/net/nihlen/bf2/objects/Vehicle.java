@@ -2,13 +2,18 @@ package net.nihlen.bf2.objects;
 
 import java.util.HashMap;
 
+/**
+ * A model of a vehicle on the Battlefield 2 server.
+ *
+ * @author Alex
+ */
 public class Vehicle {
 	
 	public final int id;
 	public final String templateName;
 	
 	public Position position;
-	public HashMap<Integer, Player> players;
+	public final HashMap<Integer, Player> players;
 	
 	public Vehicle(int id, String templateName) {
 		this.id = id;
@@ -31,6 +36,14 @@ public class Vehicle {
 	public Player getDriver() {
 		for (Player p : players.values()) {
 			if (templateName.equals(p.subVehicle))
+				return p;
+		}
+		return null;
+	}
+
+	public Player getPassenger() {
+		for (Player p : players.values()) {
+			if (!templateName.equals(p.subVehicle))
 				return p;
 		}
 		return null;

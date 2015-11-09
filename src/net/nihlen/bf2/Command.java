@@ -1,5 +1,10 @@
 package net.nihlen.bf2;
 
+/**
+ * A chat command from the Battlefield 2 game server.
+ * 
+ * @author Alex
+ */
 public class Command {
 
 	public final String[] aliases;
@@ -15,6 +20,11 @@ public class Command {
 	}
 	
 	public int getAuthLevel() {
+		return authLevel;
+	}
+	
+	// TODO: Some way to set different auth depending on number of passed args
+	public int getAuthLevel(int argsCount) {
 		return authLevel;
 	}
 	

@@ -1,4 +1,4 @@
-package net.nihlen.bf2;
+package net.nihlen.bf2.data;
 
 import com.mysql.jdbc.jdbc2.optional.MysqlDataSource;
 import org.apache.logging.log4j.LogManager;
@@ -18,23 +18,13 @@ import java.util.Properties;
  *
  * @author Alex
  */
-public class Database {
+public class MySqlDatabase implements Database {
 
 	private static final Logger log = LogManager.getLogger();
 	private MysqlDataSource dataSource;
 
-	// Singleton
-	private static Database instance = null;
-
-	protected Database() {
+	public MySqlDatabase() {
 		connect();
-	}
-
-	public static Database getInstance() {
-		if (instance == null) {
-			instance = new Database();
-		}
-		return instance;
 	}
 
 	private void connect() {
@@ -60,12 +50,13 @@ public class Database {
 			log.error(e);
 
 		} catch (Exception e) {
-			log.error("Database: Missing file db.properties.", e);
+			log.error("MySqlDatabase: Missing file db.properties.", e);
 		}
 
 		return mysqlDS;
 	}
 
+	@Override
 	public String[] getTopPlayerMatch(String ip) {
 
 		ArrayList<String> names = new ArrayList<>();
@@ -106,6 +97,7 @@ public class Database {
 		return names.toArray(namesArr);
 	}
 
+	@Override
 	public boolean authorize(String key) {
 
 		Connection conn = null;

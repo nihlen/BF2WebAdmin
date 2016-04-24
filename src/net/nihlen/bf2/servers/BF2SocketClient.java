@@ -1,5 +1,6 @@
-package net.nihlen.bf2;
+package net.nihlen.bf2.servers;
 
+import net.nihlen.bf2.GameServerEventHandler;
 import net.nihlen.bf2.objects.GameServer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @author Alex
  */
-public 	class BF2SocketClient implements Runnable {
+public class BF2SocketClient implements Runnable {
 
 	private static final Logger log = LogManager.getLogger();
 
@@ -41,6 +42,7 @@ public 	class BF2SocketClient implements Runnable {
 
 	public BF2SocketClient(Socket clientSocket) {
 		this.clientSocket = clientSocket;
+
 		this.gameServer = new GameServer(clientSocket.getInetAddress().getHostAddress());
 		this.eventHandler = new GameServerEventHandler(gameServer);
 		this.responses = new ConcurrentHashMap<String, Response>();
@@ -191,7 +193,7 @@ public 	class BF2SocketClient implements Runnable {
 			}
 		}
 
-		// Tell the WebSocketServer of this GameServer
+		// Tell the WebSocketServer to remove GameServer
 		WebSocketServer.getInstance().removeGameServer(gameServer);
 
 		// Make sure to close

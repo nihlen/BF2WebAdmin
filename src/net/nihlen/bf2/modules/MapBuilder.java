@@ -1,6 +1,6 @@
 package net.nihlen.bf2.modules;
 
-import net.nihlen.bf2.BF2SocketServer;
+import net.nihlen.bf2.servers.BF2SocketServer;
 import net.nihlen.bf2.CommandExecutor;
 import net.nihlen.bf2.ModManager;
 import net.nihlen.bf2.objects.GameServer;

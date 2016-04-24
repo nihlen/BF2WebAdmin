@@ -4,7 +4,7 @@ import com.owlike.genson.Genson;
 import com.owlike.genson.GensonBuilder;
 import com.owlike.genson.reflect.VisibilityFilter;
 import net.nihlen.bf2.ModManager;
-import net.nihlen.bf2.WebSocketServer;
+import net.nihlen.bf2.servers.WebSocketServer;
 import net.nihlen.bf2.listeners.*;
 import net.nihlen.bf2.objects.*;
 import org.apache.logging.log4j.LogManager;
@@ -31,10 +31,21 @@ public class WebAdminModule implements BF2Module,
 	
 	public WebAdminModule(GameServer server) {
 		this.server = server;
-		this.genson = new GensonBuilder()
+		this.genson = configureGenson();
+	}
+
+	public void load(ModManager mm) {
+		mm.addWebSocketListener(this);
+		mm.addGameStateListener(this);
+		mm.addChatListener(this);
+		mm.addPlayerUpdateListener(this);
+	}
+
+	private Genson configureGenson() {
+		return new GensonBuilder()
 				.useFields(true, VisibilityFilter.ALL)
 				.useMethods(false)
-				// GameServer
+						// GameServer
 				.exclude("CHAT_BUFFER_LINES", GameServer.class)
 				.exclude("FAST_TIMER_INTERVAL", GameServer.class)
 				.exclude("mm", GameServer.class)
@@ -44,9 +55,9 @@ public class WebAdminModule implements BF2Module,
 				.rename("mapName", GameServer.class, "map")
 				.rename("mapList", GameServer.class, "maplist")
 				.rename("gameState", GameServer.class, "gamestate")
-				//.exclude("chatBuffer", GameServer.class)
-				//.exclude("chatBufferPosition", GameServer.class)
-				// Player
+						//.exclude("chatBuffer", GameServer.class)
+						//.exclude("chatBufferPosition", GameServer.class)
+						// Player
 				.rename("ipAddress", Player.class, "ip")
 				.rename("countryCode", Player.class, "country_code")
 				.rename("hash", Player.class, "key")
@@ -57,17 +68,10 @@ public class WebAdminModule implements BF2Module,
 				.rename("totalScore", Player.class, "total_score")
 				.rename("teamScore", Player.class, "team_score")
 				.exclude("authLevel", Player.class)
-				// Vehicle
+						// Vehicle
 				.rename("templateName", Vehicle.class, "template_name")
 				.exclude("players", Vehicle.class)
-			.create();
-	}
-
-	public void load(ModManager mm) {
-		mm.addWebSocketListener(this);
-		mm.addGameStateListener(this);
-		mm.addChatListener(this);
-		mm.addPlayerUpdateListener(this);
+				.create();
 	}
 
 	/*private void sendAll(String msg) {

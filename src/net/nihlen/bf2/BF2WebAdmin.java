@@ -1,9 +1,14 @@
 package net.nihlen.bf2;
 
+import net.nihlen.bf2.dependency.BF2WebAdminComponent;
+import net.nihlen.bf2.dependency.DaggerBF2WebAdminComponent;
+import net.nihlen.bf2.servers.BF2SocketServer;
+import net.nihlen.bf2.servers.WebSocketServer;
 import net.nihlen.bf2.util.BF2Rcon;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javax.inject.Inject;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 
@@ -24,11 +29,32 @@ public class BF2WebAdmin {
 	public static final int BF2_SOCKET_SERVER_PORT = 4300;
 	public static final int WEB_SOCKET_SERVER_PORT = 4301;
 
+	private final BF2SocketServer bf2SocketServer;
+	private final WebSocketServer webSocketServer;
+
+	@Inject
+	public BF2WebAdmin(BF2SocketServer bf2SocketServer, WebSocketServer webSocketServer) {
+		this.bf2SocketServer = bf2SocketServer;
+		this.webSocketServer = webSocketServer;
+	}
+
+	public BF2SocketServer getBF2SocketServer() {
+		return bf2SocketServer;
+	}
+
+	public WebSocketServer getWebSocketServer() {
+		return webSocketServer;
+	}
+
 	public static void main(String[] args) {
 
 		try {
 
 			Thread.currentThread().setName("BF2WebAdmin Main");
+
+			//BF2WebAdmin bf2WebAdmin = BF2WebAdminComponent.create();
+			BF2WebAdminComponent bf2WebAdmin = DaggerBF2WebAdminComponent.create();
+			bf2WebAdmin.bf2SocketServer();
 
 			// BF2 Socket Server accepts one socket connection per BF2 Server
 			BF2SocketServer bf2Socketserver = BF2SocketServer.getInstance();
@@ -46,9 +72,9 @@ public class BF2WebAdmin {
 			Thread.sleep(2000);
 			BF2WebAdmin.requestConnections();
 
-			InputStreamReader sr = new InputStreamReader(System.in);
-			BufferedReader br = new BufferedReader(sr);
-
+			// Listen to commands
+			InputStreamReader streamReader = new InputStreamReader(System.in);
+			BufferedReader bufferedReader = new BufferedReader(streamReader);
 			String input = "";
 			while (!input.equals("exit")) {
 
@@ -57,7 +83,7 @@ public class BF2WebAdmin {
 					String response = BF2SocketServer.getInstance().sendRcon("127.0.0.1", input);
 					log.debug("RCON Response: {}", response);
 				}
-				input = br.readLine();
+				input = bufferedReader.readLine();
 
 			}
 
@@ -85,7 +111,7 @@ public class BF2WebAdmin {
 		String command = "wa connect";
 		try {
 			String response = BF2Rcon.send(ipAddress, rconPort, password, command);
-			log.info("BF2 server connect response: " + response);
+			log.info("Reconnect response: " + response);
 		} catch (Exception e) {
 			log.error(e);
 		}

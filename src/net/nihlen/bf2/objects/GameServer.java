@@ -1,7 +1,7 @@
 package net.nihlen.bf2.objects;
 
 import net.nihlen.bf2.ModManager;
-import net.nihlen.bf2.WebSocketServer;
+import net.nihlen.bf2.servers.WebSocketServer;
 import net.nihlen.bf2.util.BF2Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

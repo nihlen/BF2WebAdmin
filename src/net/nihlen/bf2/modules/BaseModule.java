@@ -1,10 +1,10 @@
 package net.nihlen.bf2.modules;
 
 import com.owlike.genson.Genson;
-import net.nihlen.bf2.BF2SocketServer;
+import net.nihlen.bf2.servers.BF2SocketServer;
 import net.nihlen.bf2.CommandExecutor;
-import net.nihlen.bf2.Database;
 import net.nihlen.bf2.ModManager;
+import net.nihlen.bf2.data.Database;
 import net.nihlen.bf2.listeners.GameStateListener;
 import net.nihlen.bf2.listeners.PlayerUpdateListener;
 import net.nihlen.bf2.objects.*;
@@ -12,6 +12,7 @@ import net.nihlen.bf2.util.WebUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javax.inject.Inject;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -31,6 +32,7 @@ public class BaseModule implements BF2Module, CommandExecutor, GameStateListener
 	private static final Logger log = LogManager.getLogger();
 
 	private final GameServer server;
+	private final Database database;
 
 	private final HashMap<Player, GeoipResult> geoipPlayers;
 	private final HashMap<Player, Boolean> welcomedPlayers;
@@ -38,8 +40,10 @@ public class BaseModule implements BF2Module, CommandExecutor, GameStateListener
 
 	private boolean switchNext = false;
 
-	public BaseModule(GameServer server) {
+	@Inject
+	public BaseModule(GameServer server, Database database) {
 		this.server = server;
+		this.database = database;
 		geoipPlayers = new HashMap<Player, GeoipResult>();
 		welcomedPlayers = new HashMap<Player, Boolean>();
 		checkpoints = new HashMap<String, Position>();
@@ -441,7 +445,7 @@ public class BaseModule implements BF2Module, CommandExecutor, GameStateListener
 		if (args.length == 1) {
 			Player player = server.findPlayer(args[0]);
 			if (player != null) {
-				String[] namesArr = Database.getInstance().getTopPlayerMatch(player.ipAddress);
+				String[] namesArr = database.getTopPlayerMatch(player.ipAddress);
 				String names = String.join(", ", namesArr);
 				String cmd = String.format("rcon game.sayall \"§C1001Whois:§C1001 %s\"", names);
 				BF2SocketServer.getInstance().send(server.getServerId(), cmd);

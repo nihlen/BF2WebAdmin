@@ -1,0 +1,50 @@
+﻿websocket testing
+
+@section scripts {
+    <script type="text/javascript">
+
+        function Socket(uri) {
+            this.uri = uri;
+        }
+
+        Socket.prototype.connect = function () {
+            this.websocket = new WebSocket(this.uri);
+            //this.websocket = new WebSocket(uri, "json");
+            this.websocket.onopen = this.onOpen;
+            this.websocket.onclose = this.onClose;
+            this.websocket.onmessage = this.onMessage;
+            this.websocket.onerror = this.onError;
+        };
+
+        Socket.prototype.onOpen = function (event) {
+            console.log("Socket opened: " + JSON.stringify(event));
+        };
+
+        Socket.prototype.onClose = function (event) {
+            console.log("Socket closed: " + JSON.stringify(event));
+        };
+
+        Socket.prototype.onMessage = function (event) {
+            console.log("onMessage: " + event.data);
+        };
+
+        Socket.prototype.onError = function (event) {
+            console.log("Error: " + event.data);
+        };
+
+        Socket.prototype.disconnect = function () {
+            if (this.websocket !== null) {
+                this.websocket.close();
+                this.websocket = null;
+            }
+        };
+
+        Socket.prototype.send = function(message) {
+            this.websocket.send(message);
+        };
+
+        var socket = new Socket("ws://localhost:5000");
+        socket.connect();
+
+    </script>
+}

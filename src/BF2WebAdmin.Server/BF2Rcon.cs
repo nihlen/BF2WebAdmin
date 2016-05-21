@@ -2,13 +2,17 @@
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using log4net;
 
 namespace BF2WebAdmin.Server
 {
     public class BF2Rcon
     {
+        private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+
         private const string DigestSeedResponse = "### Digest seed: ";
         private const string NotAuthenticatedResponse = "error: not authenticated: you can only invoke 'login'";
         private const string AuthenticationFailedResponse = "Authentication failed.";
@@ -22,27 +26,29 @@ namespace BF2WebAdmin.Server
             {
                 while (true)
                 {
-                    var message = reader.ReadLine();
-                    Console.WriteLine($"> '{message}'");
-                    if (string.IsNullOrWhiteSpace(message))
+                    var msg = reader.ReadLine();
+                    Log.Debug($"RCON read: {msg}");
+                    //Console.WriteLine($"> '{msg}'");
+                    if (string.IsNullOrWhiteSpace(msg))
                         continue;
 
-                    if (message.StartsWith(DigestSeedResponse))
+                    if (msg.StartsWith(DigestSeedResponse))
                     {
-                        var hash = GetMD5Hash(message.Substring(17), password);
+                        var hash = GetMD5Hash(msg.Substring(17), password);
                         writer.Write(GetLoginBytes("login " + hash));
                     }
-                    else if (message.StartsWith(NotAuthenticatedResponse))
+                    else if (msg.StartsWith(NotAuthenticatedResponse))
                     {
                         throw new Exception("Not authenticated");
                     }
-                    else if (message.StartsWith(AuthenticationFailedResponse))
+                    else if (msg.StartsWith(AuthenticationFailedResponse))
                     {
                         throw new Exception("Authentication failed");
                     }
-                    else if (message.StartsWith(AuthenticationSuccessResponse))
+                    else if (msg.StartsWith(AuthenticationSuccessResponse))
                     {
-                        Console.WriteLine("Success");
+                        //Console.WriteLine("Success");
+                        Log.Info("RCON authenticated successfully");
                         break;
                     }
                 }
@@ -50,7 +56,7 @@ namespace BF2WebAdmin.Server
                 // Authenticated - Send command
                 writer.Write(GetCommandBytes(command));
                 var response = ReadCommandResponse(stream);
-                Console.WriteLine($"> '{response}'");
+                Log.Debug($"RCON reconnect response: {response}");
                 return response;
             }
         }

@@ -11,6 +11,8 @@ using log4net;
 
 namespace BF2WebAdmin.Server
 {
+    // Commands: .whois .autopad .follow @user .follow #hashtag .nasa blurs .shuffle teams/teleport .vote mg/nasa
+    // Auth: Steam
     class Program
     {
         private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
@@ -19,20 +21,33 @@ namespace BF2WebAdmin.Server
         {
             log4net.Config.XmlConfigurator.Configure();
 
-            var server = new BF2SocketServer();
-            server.Start();
+            var task = RunAsync();
+            task.Wait();
+        }
+
+        private static async Task RunAsync()
+        {
+            var server = new SocketServer();
+            var task = server.ListenAsync();
 
             try
             {
-                BF2Rcon.SendCommand(IPAddress.Parse("127.0.0.1"), 4711, "secret", "wa connect");
+                Rcon.SendCommand(IPAddress.Parse("127.0.0.1"), 4711, "secret", "wa connect");
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
                 // SocketException
-                Log.Error(e.Message);
+                Log.Error(ex.Message);
             }
 
-            Console.ReadLine();
+            try
+            {
+                await task;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex.Message);
+            }
         }
     }
 }

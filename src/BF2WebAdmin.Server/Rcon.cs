@@ -9,7 +9,7 @@ using log4net;
 
 namespace BF2WebAdmin.Server
 {
-    public class BF2Rcon
+    public class Rcon
     {
         private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 

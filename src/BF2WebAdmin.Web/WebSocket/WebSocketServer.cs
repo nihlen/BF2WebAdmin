@@ -4,7 +4,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNet.Http;
+using Microsoft.AspNetCore.Http;
 
 namespace BF2WebAdmin.Web
 {
@@ -37,7 +37,7 @@ namespace BF2WebAdmin.Web
             if (webSocket != null && webSocket.State == WebSocketState.Open)
             {
                 _sockets.Add(webSocket);
-                await webSocket.SendText("Connected!");
+                await webSocket.SendTextAsync("Connected!");
                 while (webSocket.State == WebSocketState.Open)
                 {
                     await AwaitMessage(webSocket);
@@ -60,7 +60,7 @@ namespace BF2WebAdmin.Web
                         buffer.Offset,
                         buffer.Count);
                     // Handle request here.
-                    await webSocket.SendText($"Received: {request}");
+                    await webSocket.SendTextAsync($"Received: {request}");
                     break;
                 case WebSocketMessageType.Binary:
                     break;
@@ -69,6 +69,16 @@ namespace BF2WebAdmin.Web
                 default:
                     throw new ArgumentOutOfRangeException();
             }
+        }
+    }
+
+    public static class WebSocketExtensions
+    {
+        public static async Task SendTextAsync(this WebSocket webSocket, string text)
+        {
+            var bytes = Encoding.UTF8.GetBytes(text);
+            var ar = new ArraySegment<byte>(bytes);
+            await webSocket.SendAsync(ar, WebSocketMessageType.Text, true, CancellationToken.None);
         }
     }
 }

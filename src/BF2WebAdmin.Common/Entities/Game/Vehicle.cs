@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace BF2WebAdmin.Server.Entities.Game
+namespace BF2WebAdmin.Common.Entities.Game
 {
     public class Vehicle : Entity
     {

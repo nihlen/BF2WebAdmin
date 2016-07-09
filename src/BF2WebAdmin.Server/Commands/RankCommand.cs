@@ -1,3 +1,4 @@
+using BF2WebAdmin.Common;
 using BF2WebAdmin.Server.Modules;
 
 namespace BF2WebAdmin.Server.Commands

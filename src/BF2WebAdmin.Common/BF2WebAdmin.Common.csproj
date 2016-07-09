@@ -62,12 +62,23 @@
   <ItemGroup>
     <Compile Include="CacheManager.cs" />
     <Compile Include="CountryResolver.cs" />
+    <Compile Include="Entities\Game\Entity.cs" />
+    <Compile Include="Entities\Game\Map.cs" />
+    <Compile Include="Entities\Game\Message.cs" />
+    <Compile Include="Entities\Game\Player.cs" />
+    <Compile Include="Entities\Game\Position.cs" />
+    <Compile Include="Entities\Game\Projectile.cs" />
+    <Compile Include="Entities\Game\Rotation.cs" />
+    <Compile Include="Entities\Game\Team.cs" />
+    <Compile Include="Entities\Game\Vehicle.cs" />
+    <Compile Include="Enums.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
     <None Include="packages.config" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

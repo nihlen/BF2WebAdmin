@@ -4,6 +4,9 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Reflection;
+using BF2WebAdmin.Common.Entities.Game;
+using BF2WebAdmin.DAL;
+using BF2WebAdmin.DAL.Repositories;
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Modules;
@@ -63,6 +66,7 @@ namespace BF2WebAdmin.Server
         private void ConfigureDependencies()
         {
             _container.Register(() => _gameServer);
+            _container.RegisterSingleton<IScriptRepository, RavenScriptRepository>();
         }
 
         private void CreateModules()

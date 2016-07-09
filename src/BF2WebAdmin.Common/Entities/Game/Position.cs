@@ -1,6 +1,6 @@
 ﻿using System.Globalization;
 
-namespace BF2WebAdmin.Server.Entities.Game
+namespace BF2WebAdmin.Common.Entities.Game
 {
     public class Position
     {

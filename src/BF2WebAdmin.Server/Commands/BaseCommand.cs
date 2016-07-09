@@ -1,5 +1,5 @@
-﻿using BF2WebAdmin.Server.Entities;
-using BF2WebAdmin.Server.Entities.Game;
+﻿using BF2WebAdmin.Common.Entities.Game;
+using BF2WebAdmin.Server.Entities;
 
 namespace BF2WebAdmin.Server.Commands
 {

@@ -1,4 +1,4 @@
-namespace BF2WebAdmin.Server.Entities
+namespace BF2WebAdmin.Common.Entities.Game
 {
     public class Map
     {

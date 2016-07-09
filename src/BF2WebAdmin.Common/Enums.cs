@@ -1,4 +1,4 @@
-﻿namespace BF2WebAdmin.Server
+﻿namespace BF2WebAdmin.Common
 {
     public enum Auth
     {

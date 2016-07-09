@@ -10,7 +10,6 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using BF2WebAdmin.Server.Entities;
-using BF2WebAdmin.Server.Entities.Game;
 using log4net;
 
 namespace BF2WebAdmin.Server

@@ -11,7 +11,7 @@ using log4net;
 
 namespace BF2WebAdmin.Server
 {
-    // Commands: .whois .autopad .follow @user .follow #hashtag .nasa blurs .shuffle teams/teleport .vote mg/nasa
+    // Commands: .whois .autopad .follow @user .follow #hashtag .nasa blurs .shuffle teams/teleport .vote mg/nasa, teleports on the map? (position)
     // Auth: Steam
     class Program
     {

@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Entities;
-using BF2WebAdmin.Server.Entities.Game;
 
 namespace BF2WebAdmin.Server
 {

@@ -1,7 +1,6 @@
 using System.Collections.Generic;
-using BF2WebAdmin.Server.Entities.Game;
 
-namespace BF2WebAdmin.Server.Entities
+namespace BF2WebAdmin.Common.Entities.Game
 {
     public class Team
     {

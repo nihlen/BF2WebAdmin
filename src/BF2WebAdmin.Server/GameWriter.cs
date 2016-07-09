@@ -2,7 +2,8 @@
 using System.IO;
 using System.Reflection;
 using System.Text;
-using BF2WebAdmin.Server.Entities.Game;
+using BF2WebAdmin.Common;
+using BF2WebAdmin.Common.Entities.Game;
 using log4net;
 
 namespace BF2WebAdmin.Server

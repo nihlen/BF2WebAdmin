@@ -52,7 +52,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Commands\BaseCommand.cs" />
-    <Compile Include="Enums.cs" />
     <Compile Include="Entities\IGameServer.cs" />
     <Compile Include="EventHandler.cs" />
     <Compile Include="EventParser.cs" />
@@ -60,6 +59,7 @@
     <Compile Include="IEventHandler.cs" />
     <Compile Include="IGameWriter.cs" />
     <Compile Include="ModManager.cs" />
+    <Compile Include="Modules\MapModule.cs" />
     <Compile Include="Modules\BF2Module.cs" />
     <Compile Include="Commands\ICommand.cs" />
     <Compile Include="Commands\CommandAttribute.cs" />
@@ -67,16 +67,7 @@
     <Compile Include="Commands\RankCommand.cs" />
     <Compile Include="Modules\IModule.cs" />
     <Compile Include="Rcon.cs" />
-    <Compile Include="Entities\Message.cs" />
-    <Compile Include="Entities\Map.cs" />
     <Compile Include="Entities\GameServer.cs" />
-    <Compile Include="Entities\Game\Player.cs" />
-    <Compile Include="Entities\Game\Projectile.cs" />
-    <Compile Include="Entities\Game\Entity.cs" />
-    <Compile Include="Entities\Game\Rotation.cs" />
-    <Compile Include="Entities\Game\Position.cs" />
-    <Compile Include="Entities\Team.cs" />
-    <Compile Include="Entities\Game\Vehicle.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SocketServer.cs" />
@@ -89,7 +80,16 @@
     <None Include="packages.config" />
     <None Include="README.md" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="..\BF2WebAdmin.Common\BF2WebAdmin.Common.csproj">
+      <Project>{f56e28d7-cb5f-4e0a-b314-628e6d8c3f2d}</Project>
+      <Name>BF2WebAdmin.Common</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\BF2WebAdmin.DAL\BF2WebAdmin.DAL.csproj">
+      <Project>{7d316a04-0223-44e9-b07b-745a041ab57c}</Project>
+      <Name>BF2WebAdmin.DAL</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

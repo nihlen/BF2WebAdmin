@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Entities;
-using BF2WebAdmin.Server.Entities.Game;
 using log4net;
 
 namespace BF2WebAdmin.Server

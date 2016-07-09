@@ -238,3 +238,6 @@ node_modules/
 # Secrets
 App.db.config
 App.secret.config
+
+# Seed scripts, map mods
+Seed/

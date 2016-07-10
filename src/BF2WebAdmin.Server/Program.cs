@@ -1,11 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
-using System.Net.Sockets;
-using System.Reflection;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using BF2WebAdmin.Server.Logging;
 using Microsoft.Extensions.Logging;
@@ -31,7 +25,10 @@ namespace BF2WebAdmin.Server
 
             try
             {
-                await Rcon.SendCommandAsync(IPAddress.Parse("127.0.0.1"), 4711, "secret", "wa connect");
+                using (var client = new RconClient(IPAddress.Parse("127.0.0.1"), 4711, "secret"))
+                {
+                    await client.SendAsync("wa connect");
+                }
             }
             catch (Exception ex)
             {

@@ -1,24 +1,19 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Data;
 using System.Linq;
 using System.Reflection;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.DAL;
+using BF2WebAdmin.DAL.Abstractions;
 using BF2WebAdmin.DAL.Repositories;
+using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands;
-using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Logging;
-using BF2WebAdmin.Server.Modules;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Raven.Client;
 
 namespace BF2WebAdmin.Server
 {
-    public interface IModManager { }
-
     public class ModManager : IModManager
     {
         private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<ModManager>();

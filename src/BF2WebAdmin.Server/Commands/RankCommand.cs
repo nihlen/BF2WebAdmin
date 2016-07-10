@@ -1,5 +1,5 @@
 using BF2WebAdmin.Common;
-using BF2WebAdmin.Server.Modules;
+using BF2WebAdmin.Server.Abstractions;
 
 namespace BF2WebAdmin.Server.Commands
 {

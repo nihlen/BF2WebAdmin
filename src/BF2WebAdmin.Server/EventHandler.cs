@@ -3,15 +3,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using BF2WebAdmin.Common.Entities.Game;
+using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Entities;
 
 namespace BF2WebAdmin.Server
 {
     public class EventHandler : IEventHandler
     {
-        private readonly GameServer _server;
+        private readonly IGameServer _server;
 
-        public EventHandler(GameServer server)
+        public EventHandler(IGameServer server)
         {
             _server = server;
         }

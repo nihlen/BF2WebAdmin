@@ -1,8 +1,5 @@
-﻿using System;
-using System.Linq;
-using BF2WebAdmin.DAL.Repositories;
-using BF2WebAdmin.Server.Commands;
-using BF2WebAdmin.Server.Entities;
+﻿using BF2WebAdmin.DAL.Abstractions;
+using BF2WebAdmin.Server.Abstractions;
 
 namespace BF2WebAdmin.Server.Modules
 {

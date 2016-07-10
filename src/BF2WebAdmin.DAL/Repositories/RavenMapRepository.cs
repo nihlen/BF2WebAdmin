@@ -1,4 +1,4 @@
-﻿using System.Data;
+﻿using BF2WebAdmin.DAL.Abstractions;
 using BF2WebAdmin.DAL.Entities;
 using Raven.Client;
 

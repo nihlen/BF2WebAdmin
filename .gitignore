@@ -241,3 +241,6 @@ App.secret.config
 
 # Seed scripts, map mods
 Seed/
+
+# Logs
+Logs/

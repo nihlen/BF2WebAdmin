@@ -1,14 +1,11 @@
 ﻿using System;
-using System.CodeDom.Compiler;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Data;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Reflection;
-using System.Threading;
 using System.Threading.Tasks;
+using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Logging;
 using Microsoft.Extensions.Logging;
@@ -77,10 +74,9 @@ namespace BF2WebAdmin.Server
             using (var reader = new StreamReader(stream))
             using (var writer = new BinaryWriter(stream))
             {
-                var gameWriter = new GameWriter(writer);
-                var gameServer = new GameServer(ipEndPoint.Address, gameWriter);
-                var eventHandler = new EventHandler(gameServer);
-                var eventParser = new EventParser(gameServer, eventHandler);
+                IGameWriter gameWriter = new GameWriter(writer);
+                IGameServer gameServer = new GameServer(ipEndPoint.Address, gameWriter);
+                IGameReader gameReader = new GameReader(gameServer);
 
                 while (client.Connected)
                 {
@@ -89,7 +85,7 @@ namespace BF2WebAdmin.Server
                         var message = await reader.ReadLineAsync();
                         if (message.StartsWith("playerPos")) continue; // TODO: temp ignore spam
                         Logger.LogDebug($"recv: {message}");
-                        eventParser.ParseMessage(message);
+                        gameReader.ParseMessage(message);
                     }
                     catch (IOException ex) when (ex.InnerException is SocketException)
                     {

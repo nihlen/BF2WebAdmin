@@ -9,9 +9,11 @@ using BF2WebAdmin.DAL;
 using BF2WebAdmin.DAL.Repositories;
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Entities;
+using BF2WebAdmin.Server.Logging;
 using BF2WebAdmin.Server.Modules;
-using log4net;
-using SimpleInjector;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Raven.Client;
 
 namespace BF2WebAdmin.Server
 {
@@ -19,8 +21,8 @@ namespace BF2WebAdmin.Server
 
     public class ModManager : IModManager
     {
-        private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
-        private static readonly Assembly CurrentAssembly = Assembly.GetAssembly(typeof(ModManager));
+        private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<ModManager>();
+        private static readonly Assembly CurrentAssembly = Assembly.GetEntryAssembly();
 
         private static readonly string CommandPrefix = ".";
 
@@ -45,7 +47,7 @@ namespace BF2WebAdmin.Server
         private Dictionary<Type, List<Action<ICommand>>> _commandHandlers =
             new Dictionary<Type, List<Action<ICommand>>>();
 
-        private Container _container = new Container();
+        private IServiceProvider _services;
 
         static ModManager()
         {
@@ -65,8 +67,20 @@ namespace BF2WebAdmin.Server
 
         private void ConfigureDependencies()
         {
-            _container.Register(() => _gameServer);
-            _container.RegisterSingleton<IScriptRepository, RavenScriptRepository>();
+            var serviceCollection = new ServiceCollection();
+
+            // Raven
+            serviceCollection.AddSingleton(DocumentStoreHolder.Store);
+
+            // Services
+            serviceCollection.AddSingleton(_gameServer);
+            serviceCollection.AddSingleton<IScriptRepository, RavenScriptRepository>();
+
+            // Modules
+            foreach (var moduleType in _moduleTypes)
+                serviceCollection.AddSingleton(moduleType);
+
+            _services = serviceCollection.BuildServiceProvider();
         }
 
         private void CreateModules()
@@ -74,8 +88,16 @@ namespace BF2WebAdmin.Server
             // Instantiate modules
             foreach (var moduleType in _moduleTypes)
             {
-                var moduleInstance = (IModule)_container.GetInstance(moduleType);
-                _modules.Add(moduleType, moduleInstance);
+                try
+                {
+                    var moduleInstance = (IModule)_services.GetRequiredService(moduleType);
+                    _modules.Add(moduleType, moduleInstance);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError("Resolve module error", ex);
+                    throw;
+                }
             }
         }
 
@@ -84,7 +106,7 @@ namespace BF2WebAdmin.Server
             foreach (var cmdType in _commandTypes)
             {
                 Action create = CreateCommandHandler<ICommand>;
-                var method = create.Method.GetGenericMethodDefinition();
+                var method = create.GetMethodInfo().GetGenericMethodDefinition();
                 var generic = method.MakeGenericMethod(cmdType);
                 generic.Invoke(this, null);
             }
@@ -156,7 +178,7 @@ namespace BF2WebAdmin.Server
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug("Handle exception", ex);
+                    Logger.LogDebug("Handle exception", ex);
                 }
             }
         }
@@ -214,7 +236,7 @@ namespace BF2WebAdmin.Server
         {
             return
                 from t in assembly.GetTypes()
-                let interfaces = t.GetInterfaces().Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IHandleCommand<>))
+                let interfaces = t.GetInterfaces().Where(i => i.GetTypeInfo().IsGenericType && i.GetGenericTypeDefinition() == typeof(IHandleCommand<>))
                 from i in interfaces
                 let args = i.GetGenericArguments()
                 select new CommandModule
@@ -233,13 +255,14 @@ namespace BF2WebAdmin.Server
         {
             return
                 from t in assembly.GetTypes()
-                where !t.IsAbstract && t.GetInterfaces().Any(i => i == typeof(T))
+                where !t.GetTypeInfo().IsAbstract && t.GetInterfaces().Any(i => i == typeof(T))
                 select t;
         }
 
-        private static IEnumerable<TAttr> AllAttributes<TAttr>(MemberInfo type)
+        private static IEnumerable<TAttr> AllAttributes<TAttr>(Type type) where TAttr : Attribute
         {
-            return Attribute.GetCustomAttributes(type, typeof(TAttr)).OfType<TAttr>();
+            var typeInfo = type.GetTypeInfo();
+            return typeInfo.GetCustomAttributes<TAttr>();
         }
 
         private class CommandModule

@@ -7,7 +7,8 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using log4net;
+using BF2WebAdmin.Server.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace BF2WebAdmin.Server
 {
@@ -15,12 +16,10 @@ namespace BF2WebAdmin.Server
     // Auth: Steam
     class Program
     {
-        private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<Program>();
 
         static void Main(string[] args)
         {
-            log4net.Config.XmlConfigurator.Configure();
-
             var task = RunAsync();
             task.Wait();
         }
@@ -32,12 +31,12 @@ namespace BF2WebAdmin.Server
 
             try
             {
-                Rcon.SendCommand(IPAddress.Parse("127.0.0.1"), 4711, "secret", "wa connect");
+                await Rcon.SendCommandAsync(IPAddress.Parse("127.0.0.1"), 4711, "secret", "wa connect");
             }
             catch (Exception ex)
             {
                 // SocketException
-                Log.Error(ex.Message);
+                Logger.LogError(ex.Message);
             }
 
             try
@@ -46,7 +45,7 @@ namespace BF2WebAdmin.Server
             }
             catch (Exception ex)
             {
-                Log.Error(ex.Message);
+                Logger.LogError(ex.Message);
             }
         }
     }

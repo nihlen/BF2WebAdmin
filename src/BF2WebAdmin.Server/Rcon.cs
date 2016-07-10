@@ -5,29 +5,31 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
-using log4net;
+using System.Threading.Tasks;
+using BF2WebAdmin.Server.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace BF2WebAdmin.Server
 {
     public class Rcon
     {
-        private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<Rcon>();
 
         private const string DigestSeedResponse = "### Digest seed: ";
         private const string NotAuthenticatedResponse = "error: not authenticated: you can only invoke 'login'";
         private const string AuthenticationFailedResponse = "Authentication failed.";
         private const string AuthenticationSuccessResponse = "Authentication successful, rcon ready.";
 
-        public static string SendCommand(IPAddress ipAddress, int port, string password, string command)
+        public static async Task<string> SendCommandAsync(IPAddress ipAddress, int port, string password, string command)
         {
-            using (var stream = GetStream(ipAddress, port))
+            using (var stream = await GetStreamAsync(ipAddress, port))
             using (var reader = new StreamReader(stream))
             using (var writer = new BinaryWriter(stream))
             {
                 while (true)
                 {
                     var msg = reader.ReadLine();
-                    Log.Debug($"RCON read: {msg}");
+                    Logger.LogDebug($"RCON read: {msg}");
                     //Console.WriteLine($"> '{msg}'");
                     if (string.IsNullOrWhiteSpace(msg))
                         continue;
@@ -48,7 +50,7 @@ namespace BF2WebAdmin.Server
                     else if (msg.StartsWith(AuthenticationSuccessResponse))
                     {
                         //Console.WriteLine("Success");
-                        Log.Info("RCON authenticated successfully");
+                        Logger.LogInformation("RCON authenticated successfully");
                         break;
                     }
                 }
@@ -56,15 +58,15 @@ namespace BF2WebAdmin.Server
                 // Authenticated - Send command
                 writer.Write(GetCommandBytes(command));
                 var response = ReadCommandResponse(stream);
-                Log.Debug($"RCON reconnect response: {response}");
+                Logger.LogDebug($"RCON reconnect response: {response}");
                 return response;
             }
         }
 
-        private static NetworkStream GetStream(IPAddress ipAddress, int port)
+        private static async Task<NetworkStream> GetStreamAsync(IPAddress ipAddress, int port)
         {
             var client = new TcpClient();
-            client.Connect(new IPEndPoint(ipAddress, port));
+            await client.ConnectAsync(ipAddress, port);
             return client.GetStream();
         }
 

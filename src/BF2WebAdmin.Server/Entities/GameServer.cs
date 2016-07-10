@@ -7,14 +7,14 @@ using System.Reflection;
 using System.Text;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
-using log4net;
-using log4net.Config;
+using BF2WebAdmin.Server.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace BF2WebAdmin.Server.Entities
 {
     public class GameServer : IGameServer
     {
-        private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<GameServer>();
 
         //private readonly IModManager _mm;
         //private readonly IGameWriter _writer;

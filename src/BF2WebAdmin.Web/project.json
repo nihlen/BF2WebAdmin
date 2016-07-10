@@ -21,7 +21,9 @@
     "Microsoft.Extensions.Options.ConfigurationExtensions": "1.0.0",
     "Microsoft.VisualStudio.Web.BrowserLink.Loader": "14.0.0",
     "Microsoft.AspNetCore.WebSockets.Server": "0.1.0",
-    "BundlerMinifier.Core": "2.1.258"
+    "BundlerMinifier.Core": "2.1.258",
+    "BF2WebAdmin.Common": "1.0.0-*",
+    "BF2WebAdmin.DAL": "1.0.0-*"
   },
 
   "tools": {

@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 // associated with an assembly.
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("BF2WebAdmin.Server")]
+[assembly: AssemblyProduct("BF2WebAdmin.Tests")]
 [assembly: AssemblyTrademark("")]
 
 // Setting ComVisible to false makes the types in this assembly not visible
@@ -16,4 +16,4 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 
 // The following GUID is for the ID of the typelib if this project is exposed to COM
-[assembly: Guid("eace38e4-634f-43ad-9f02-cb8c9773f069")]
+[assembly: Guid("953e99a7-ca1e-4752-a6b6-e232c78bcd32")]

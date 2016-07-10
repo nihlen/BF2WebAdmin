@@ -4,13 +4,15 @@ using System.Reflection;
 using System.Text;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
-using log4net;
+using BF2WebAdmin.Server.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace BF2WebAdmin.Server
 {
     public class GameWriter : IGameWriter
     {
-        private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<GameWriter>();
+
         private readonly BinaryWriter _writer;
         private int _responseCounter;
 
@@ -35,7 +37,7 @@ namespace BF2WebAdmin.Server
             }
             catch (Exception ex)
             {
-                Log.Error("Write error for server", ex);
+                Logger.LogError("Write error for server", ex);
             }
         }
 

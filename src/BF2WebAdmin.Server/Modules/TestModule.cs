@@ -1,12 +1,12 @@
 ﻿using System.Reflection;
 using BF2WebAdmin.Server.Commands;
-using log4net;
-using log4net.Config;
+using BF2WebAdmin.Server.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace BF2WebAdmin.Server.Modules
 {
     public class TestModule : IModule
     {
-        private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<TestModule>();
     }
 }

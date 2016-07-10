@@ -10,13 +10,14 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using BF2WebAdmin.Server.Entities;
-using log4net;
+using BF2WebAdmin.Server.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace BF2WebAdmin.Server
 {
     public class SocketServer
     {
-        private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<SocketServer>();
 
         private readonly ConcurrentDictionary<IPEndPoint, TcpClient> _connections;
 
@@ -28,7 +29,7 @@ namespace BF2WebAdmin.Server
         public async Task ListenAsync()
         {
             var server = StartTcpListener();
-            Log.Info("Server started");
+            Logger.LogInformation("Server started");
             var tasks = new List<Task>();
 
             while (server.Server.IsBound)
@@ -43,12 +44,20 @@ namespace BF2WebAdmin.Server
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(ex);
+                    Logger.LogError("Game server TCP error", ex);
                 }
             }
 
-            Log.Info("Server stopped");
-            await Task.WhenAll(tasks);
+            Logger.LogInformation("Server stopped");
+
+            try
+            {
+                await Task.WhenAll(tasks);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Handle connection error", ex);
+            }
         }
 
         private static TcpListener StartTcpListener()
@@ -62,7 +71,7 @@ namespace BF2WebAdmin.Server
         {
             var ipEndPoint = GetIpEndPoint(client);
 
-            Log.Info($"Client {ipEndPoint.Address}:{ipEndPoint.Port} connected");
+            Logger.LogInformation($"Client {ipEndPoint.Address}:{ipEndPoint.Port} connected");
 
             using (var stream = client.GetStream())
             using (var reader = new StreamReader(stream))
@@ -79,7 +88,7 @@ namespace BF2WebAdmin.Server
                     {
                         var message = await reader.ReadLineAsync();
                         if (message.StartsWith("playerPos")) continue; // TODO: temp ignore spam
-                        Log.Debug($"recv: {message}");
+                        Logger.LogDebug($"recv: {message}");
                         eventParser.ParseMessage(message);
                     }
                     catch (IOException ex) when (ex.InnerException is SocketException)
@@ -88,18 +97,18 @@ namespace BF2WebAdmin.Server
                     }
                     catch (NotImplementedException)
                     {
-                        Log.Error("Not implemented!");
+                        Logger.LogDebug("Not implemented!");
                     }
                     catch (Exception ex)
                     {
-                        Log.Error(ex);
+                        Logger.LogError("Error while handling server message", ex);
                     }
                 }
             }
 
             TcpClient removed;
             _connections.TryRemove(ipEndPoint, out removed);
-            Log.Info($"Client {ipEndPoint.Address}:{ipEndPoint.Port} disconnected");
+            Logger.LogInformation($"Client {ipEndPoint.Address}:{ipEndPoint.Port} disconnected");
         }
 
         private static IPEndPoint GetIpEndPoint(TcpClient client)

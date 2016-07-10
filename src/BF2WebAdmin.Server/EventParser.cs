@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using System.Reflection;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Entities;
-using log4net;
+using BF2WebAdmin.Server.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace BF2WebAdmin.Server
 {
     public class EventParser
     {
-        private static readonly ILog Log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<EventParser>();
 
         private readonly Dictionary<string, Action<string[]>> _eventHandlers;
 
@@ -30,7 +31,7 @@ namespace BF2WebAdmin.Server
             }
             else
             {
-                Log.Error($"Unknown server event: {eventType}");
+                Logger.LogError($"Unknown server event: {eventType}");
             }
         }
 

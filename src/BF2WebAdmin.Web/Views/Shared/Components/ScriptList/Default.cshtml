@@ -1,0 +1,39 @@
+﻿@model IEnumerable<BF2WebAdmin.DAL.Entities.GameScript>
+
+@{
+    ViewData["Title"] = "Scripts";
+}
+
+<h2>Scripts</h2>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var script in Model)
+        {
+            <tr>
+                <td><a href="@Url.Action("EditScript", "Manage", new {id = script.Id})"></a>@script.Name</td>
+                <td>
+                    @using (Html.BeginForm("RemoveScript", "Manage"))
+                {
+                        <button class="btn btn-danger" type="submit" name="" value="">Remove</button>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@using (Html.BeginForm("AddScript", "Manage"))
+{
+    <div class="form-horizontal">
+        <div class="form-control">
+            
+        </div>
+    </div>
+}

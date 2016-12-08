@@ -237,7 +237,9 @@ node_modules/
 
 # Secrets
 App.db.config
-App.secret.config
+*.secret.*
+*.secret
+appsecrets.*
 
 # Seed scripts, map mods
 Seed/

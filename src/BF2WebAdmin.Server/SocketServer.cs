@@ -16,10 +16,14 @@ namespace BF2WebAdmin.Server
     {
         private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<SocketServer>();
 
+        private readonly IPAddress _ipAddress;
+        private readonly int _port;
         private readonly ConcurrentDictionary<IPEndPoint, TcpClient> _connections;
 
-        public SocketServer()
+        public SocketServer(IPAddress ipAddress, int port)
         {
+            _ipAddress = ipAddress;
+            _port = port;
             _connections = new ConcurrentDictionary<IPEndPoint, TcpClient>();
         }
 
@@ -57,9 +61,9 @@ namespace BF2WebAdmin.Server
             }
         }
 
-        private static TcpListener StartTcpListener()
+        private TcpListener StartTcpListener()
         {
-            var server = new TcpListener(IPAddress.Parse("127.0.0.1"), 4300);
+            var server = new TcpListener(_ipAddress, _port);
             server.Start();
             return server;
         }
@@ -70,36 +74,44 @@ namespace BF2WebAdmin.Server
 
             Logger.LogInformation($"Client {ipEndPoint.Address}:{ipEndPoint.Port} connected");
 
-            using (var stream = client.GetStream())
-            using (var reader = new StreamReader(stream))
-            using (var writer = new BinaryWriter(stream))
+            try
             {
-                IGameWriter gameWriter = new GameWriter(writer);
-                IGameServer gameServer = new GameServer(ipEndPoint.Address, gameWriter);
-                IGameReader gameReader = new GameReader(gameServer);
-
-                while (client.Connected)
+                using (var stream = client.GetStream())
+                using (var reader = new StreamReader(stream))
+                using (var writer = new BinaryWriter(stream))
                 {
-                    try
+                    IGameWriter gameWriter = new GameWriter(writer);
+                    IGameServer gameServer = new GameServer(ipEndPoint.Address, gameWriter);
+                    IGameReader gameReader = new GameReader(gameServer);
+
+                    while (client.Connected)
                     {
-                        var message = await reader.ReadLineAsync();
-                        if (message.StartsWith("playerPos")) continue; // TODO: temp ignore spam
-                        Logger.LogDebug($"recv: {message}");
-                        gameReader.ParseMessage(message);
-                    }
-                    catch (IOException ex) when (ex.InnerException is SocketException)
-                    {
-                        // Disconnected
-                    }
-                    catch (NotImplementedException)
-                    {
-                        Logger.LogDebug("Not implemented!");
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogError("Error while handling server message", ex);
+                        try
+                        {
+                            var message = await reader.ReadLineAsync();
+                            if (message.StartsWith("playerPos")) continue; // TODO: temp ignore spam
+                            Logger.LogDebug($"recv: {message}");
+                            gameReader.ParseMessage(message);
+                        }
+                        catch (IOException ex) when (ex.InnerException is SocketException)
+                        {
+                            // Disconnected
+                            Logger.LogDebug("Disconnected");
+                        }
+                        catch (NotImplementedException)
+                        {
+                            Logger.LogDebug("Not implemented!");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogError("Error while handling server message", ex);
+                        }
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Error while handling connection", ex);
             }
 
             TcpClient removed;

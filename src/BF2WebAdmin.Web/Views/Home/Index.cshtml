@@ -2,53 +2,21 @@
     ViewData["Title"] = "Home Page";
 }
 
-websocket testing
+<div id="my-spa"
+     asp-prerender-module="App/boot-server"
+     asp-prerender-webpack-config="webpack.config.js"
+     asp-prerender-data="new {
+        IsGoldUser = true,
+        Cookies = @ViewContext.HttpContext.Request.Cookies
+    }">
+    Loading...
+</div>
 
 @section scripts {
-    <script type="text/javascript">
-
-        function Socket(uri) {
-            this.uri = uri;
-        }
-
-        Socket.prototype.connect = function () {
-            this.websocket = new WebSocket(this.uri);
-            //this.websocket = new WebSocket(uri, "json");
-            this.websocket.onopen = this.onOpen;
-            this.websocket.onclose = this.onClose;
-            this.websocket.onmessage = this.onMessage;
-            this.websocket.onerror = this.onError;
-        };
-
-        Socket.prototype.onOpen = function (event) {
-            console.log("Socket opened: " + JSON.stringify(event));
-        };
-
-        Socket.prototype.onClose = function (event) {
-            console.log("Socket closed: " + JSON.stringify(event));
-        };
-
-        Socket.prototype.onMessage = function (event) {
-            console.log("onMessage: " + event.data);
-        };
-
-        Socket.prototype.onError = function (event) {
-            console.log("Error: " + event.data);
-        };
-
-        Socket.prototype.disconnect = function () {
-            if (this.websocket !== null) {
-                this.websocket.close();
-                this.websocket = null;
-            }
-        };
-
-        Socket.prototype.send = function(message) {
-            this.websocket.send(message);
-        };
-
-        var socket = new Socket("ws://localhost:5000");
-        socket.connect();
-
-    </script>
+    <environment names="Development">
+        <script src="~/dist/main.js" asp-append-version="true"></script>
+    </environment>
+    <environment names="Staging,Production">
+        <script src="~/dist/main.min.js" asp-append-version="true"></script>
+    </environment>
 }

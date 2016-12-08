@@ -23,7 +23,12 @@
     "Microsoft.AspNetCore.WebSockets.Server": "0.1.0",
     "BundlerMinifier.Core": "2.1.258",
     "BF2WebAdmin.Common": "1.0.0-*",
-    "BF2WebAdmin.DAL": "1.0.0-*"
+    "BF2WebAdmin.DAL": "1.0.0-*",
+    "Serilog": "2.0.0",
+    "Serilog.Extensions.Logging": "1.0.0",
+    "Serilog.Sinks.Literate": "2.0.0",
+    "Serilog.Sinks.RollingFile": "2.1.0",
+    "Microsoft.AspNetCore.SpaServices": "1.0.0-beta-000007"
   },
 
   "tools": {

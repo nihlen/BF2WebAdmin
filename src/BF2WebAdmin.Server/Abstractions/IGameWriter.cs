@@ -17,5 +17,7 @@ namespace BF2WebAdmin.Server.Abstractions
         void SendScore(Player player, int totalScore, int teamScore, int kills, int deaths);
         void SendTeam(Player player, int teamId);
         void SendTeleport(Player player, Position position);
+
+        void SendText(string text);
     }
 }

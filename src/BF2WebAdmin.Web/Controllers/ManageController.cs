@@ -1,33 +1,83 @@
-﻿using Microsoft.AspNetCore.Mvc;
-
-// For more information on enabling Web API for empty projects, visit http://go.microsoft.com/fwlink/?LinkID=397860
+﻿using System;
+using BF2WebAdmin.DAL.Abstractions;
+using BF2WebAdmin.DAL.Entities;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace BF2WebAdmin.Web.Controllers
 {
     public class ManageController : Controller
     {
-        public IActionResult Index()
+        private readonly IScriptRepository _scriptRepository;
+        private readonly IMapRepository _mapRepository;
+        private readonly ILogger<HomeController> _logger;
+
+        public ManageController(IScriptRepository scriptRepository, IMapRepository mapRepository, ILogger<HomeController> logger)
         {
-            return View();
+            _scriptRepository = scriptRepository;
+            _mapRepository = mapRepository;
+            _logger = logger;
         }
 
-        public IActionResult About()
-        {
-            ViewData["Message"] = "Your application description page.";
+        //public IActionResult Index()
+        //{
+        //    return View();
+        //}
 
-            return View();
+        public IActionResult Scripts()
+        {
+            var model = _scriptRepository.Get();
+            return View(model);
         }
 
-        public IActionResult Contact()
+        public IActionResult AddScript()
         {
-            ViewData["Message"] = "Your contact page.";
-
-            return View();
+            return PartialView(new GameScript());
         }
 
-        public IActionResult Error()
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult AddScript(GameScript script)
         {
-            return View();
+            try
+            {
+                script.Id = Guid.NewGuid();
+                _scriptRepository.Create(script);
+                SuccessMessage($"Script {script.Id} added");
+            }
+            catch (Exception ex)
+            {
+                ErrorMessage("Error while adding script", ex);
+            }
+            return RedirectToAction("Scripts");
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult RemoveScript(Guid id)
+        {
+            try
+            {
+                _scriptRepository.Delete(id);
+                SuccessMessage($"Script {id} deleted");
+            }
+            catch (Exception ex)
+            {
+                ErrorMessage("Error while removing script", ex);
+            }
+            return RedirectToAction("Scripts");
+        }
+
+        private void SuccessMessage(string message)
+        {
+            ViewData["Success"] = message;
+        }
+
+        private void ErrorMessage(string message, Exception ex = null)
+        {
+            ViewData["Success"] = message;
+            if (ex != null)
+                _logger.LogError(message, ex);
         }
     }
 }

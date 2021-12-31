@@ -1,5 +1,3 @@
-using System.Threading.Tasks;
-
 namespace BF2WebAdmin.Server.Abstractions
 {
     public interface IHandleCommandAsync<in TCommand> where TCommand : ICommand

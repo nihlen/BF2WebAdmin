@@ -1,12 +1,16 @@
-﻿namespace BF2WebAdmin.Common
+﻿using System;
+
+namespace BF2WebAdmin.Common
 {
     public enum Auth
     {
-        Moldovan = 0,
+        Untrusted = 0,
         All = 10,
         Trusted = 20,
         Admin = 50,
-        God = 100
+        SuperAdmin = 75,
+        God = 100,
+        None = int.MaxValue
     }
 
     public enum GameState
@@ -17,6 +21,12 @@
         Paused,
         Restart,
         NotConnected
+    }
+
+    public enum SocketState
+    {
+        Connected,
+        Disconnected
     }
 
     public enum Rank

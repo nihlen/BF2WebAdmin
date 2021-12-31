@@ -2,6 +2,7 @@
 {
     public interface IGameReader
     {
-        void ParseMessage(string message);
+        //Task ParseMessageAsync(string message);
+        void QueueMessage(string message);
     }
 }

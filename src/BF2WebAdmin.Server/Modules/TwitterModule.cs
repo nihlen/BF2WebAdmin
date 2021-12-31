@@ -1,11 +1,8 @@
-﻿using System;
-using System.Linq;
-using System.Threading.Tasks;
-using BF2WebAdmin.Server.Abstractions;
+﻿using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands;
-using BF2WebAdmin.Server.Logging;
-using Microsoft.Extensions.Logging;
+using BF2WebAdmin.Server.Configuration.Models;
 using Microsoft.Extensions.Options;
+using Serilog;
 using Tweetinvi.Events;
 using Tweetinvi.Models;
 using Tweetinvi.Streaming;
@@ -16,7 +13,7 @@ namespace BF2WebAdmin.Server.Modules
         IHandleCommandAsync<TwitterFollowCommand>,
         IHandleCommand<TwitterUnfollowCommand>
     {
-        private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<ModManager>();
+        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<ModManager>();
 
         private readonly IGameServer _gameServer;
 
@@ -78,12 +75,12 @@ namespace BF2WebAdmin.Server.Modules
         {
             if (DateTime.UtcNow - _lastMessage < _messageDelay)
                 return;
-            if (ContainsLInk(args.Tweet.FullText) ||
+            if (ContainsLink(args.Tweet.FullText) ||
                 args.Tweet.IsRetweet ||
                 args.Tweet.InReplyToUserId != null)
                 return;
 
-            Logger.LogInformation($"Recieved tweet {args.Tweet.FullText}");
+            Log.Information("Received tweet {TweetText}", args.Tweet.FullText);
             _gameServer.GameWriter.SendText($"@{args.Tweet.CreatedBy.ScreenName} - {args.Tweet.FullText}");
             _lastMessage = DateTime.UtcNow;
         }
@@ -99,17 +96,9 @@ namespace BF2WebAdmin.Server.Modules
             await _activeStream.StartStreamMatchingAllConditionsAsync();
         }
 
-        private bool ContainsLInk(string text)
+        private bool ContainsLink(string text)
         {
             return text.Contains("http://") || text.Contains("https://");
         }
-    }
-
-    public class TwitterConfig
-    {
-        public string ConsumerKey { get; set; }
-        public string ConsumerSecret { get; set; }
-        public string AccessToken { get; set; }
-        public string AccessTokenSecret { get; set; }
     }
 }

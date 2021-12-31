@@ -1,19 +1,15 @@
-﻿using System;
-using System.IO;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
 using BF2WebAdmin.Server.Abstractions;
-using BF2WebAdmin.Server.Logging;
-using Microsoft.Extensions.Logging;
+using Serilog;
 
 namespace BF2WebAdmin.Server
 {
     public class RconClient : IRconClient, IDisposable
     {
-        private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<RconClient>();
+        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<RconClient>();
 
         private readonly IPAddress _ipAddress;
         private readonly int _port;
@@ -39,13 +35,14 @@ namespace BF2WebAdmin.Server
 
             _writer.Write(GetCommandBytes(command));
             var response = ReadCommandResponse(_stream);
-            Logger.LogDebug($"RCON reconnect response: {response}");
+            Log.Debug("RCON reconnect response: {Response}", response);
             return response;
         }
 
         private async Task AuthenticateClientAsync()
         {
-            _client = new TcpClient();
+            // Use IPv4 or BF2 Rcon fails
+            _client = new TcpClient(AddressFamily.InterNetwork);
             await _client.ConnectAsync(_ipAddress, _port);
 
             _stream = _client.GetStream();
@@ -56,7 +53,7 @@ namespace BF2WebAdmin.Server
             while (!_reader.EndOfStream)
             {
                 var msg = await _reader.ReadLineAsync();
-                Logger.LogDebug($"RCON read: {msg}");
+                Log.Debug("RCON read: {Message}", msg);
                 if (string.IsNullOrWhiteSpace(msg))
                     continue;
 
@@ -75,7 +72,7 @@ namespace BF2WebAdmin.Server
                 }
                 else if (msg.StartsWith(RconResponses.AuthenticationSuccessResponse))
                 {
-                    Logger.LogInformation("RCON authenticated successfully");
+                    Log.Information("RCON authenticated successfully");
                     authenticated = true;
                     break;
                 }
@@ -140,7 +137,7 @@ namespace BF2WebAdmin.Server
             public RconException(string message) : base(message) { }
         }
 
-        private static class RconResponses
+        public static class RconResponses
         {
             public const string DigestSeedResponse = "### Digest seed: ";
             public const string NotAuthenticatedResponse = "error: not authenticated: you can only invoke 'login'";

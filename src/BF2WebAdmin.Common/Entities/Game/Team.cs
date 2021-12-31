@@ -6,12 +6,6 @@ namespace BF2WebAdmin.Common.Entities.Game
     {
         public int Id { get; set; }
         public string Name { get; set; }
-        public List<Player> Players { get; set; }
-
-        public Team()
-        {
-            Players = new List<Player>();
-        }
-
+        public IList<Player> Players { get; } = new List<Player>();
     }
 }

@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "BF2WebAdmin.Server": {
+      "commandName": "Project"
+    },
+    "Docker": {
+      "commandName": "Docker"
+    }
+  }
+}

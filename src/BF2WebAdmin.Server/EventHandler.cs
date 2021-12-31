@@ -1,10 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
+using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
-using BF2WebAdmin.Server.Entities;
 
 namespace BF2WebAdmin.Server
 {
@@ -20,53 +17,60 @@ namespace BF2WebAdmin.Server
         /*
          * Server events
          */
-        public void OnServerInfo(string serverName, string maps, int gamePort, int queryPort, int maxPlayers)
+        public Task OnServerInfoAsync(string serverName, string maps, int gamePort, int queryPort, int maxPlayers)
         {
-            throw new NotImplementedException();
+            var mapNames = maps.Split(",").Select(l => l.Split("|").FirstOrDefault()).ToList();
+            return Task.WhenAll(
+                _server.UpdateServerInfoAsync(serverName, gamePort, queryPort, maxPlayers),
+                _server.UpdateMapsAsync(mapNames)
+            );
         }
 
         /*
          * Game status events
          */
-        public void OnGameStatePreGame()
+        public Task OnGameStatePreGameAsync()
         {
-            throw new NotImplementedException();
+            return _server.UpdateGameStateAsync(GameState.PreGame);
         }
 
-        public void OnGameStatePlaying(string team1Name, string team2Name, string mapName, int maxPlayers)
+        public Task OnGameStatePlayingAsync(string team1Name, string team2Name, string mapName, int maxPlayers)
         {
-            throw new NotImplementedException();
+            return Task.WhenAll(
+                _server.UpdateGameStateAsync(GameState.Playing),
+                _server.UpdateMapAsync(mapName, team1Name, team2Name)
+            );
         }
 
-        public void OnGameStateEndGame(string team1Name, int team1Tickets, string team2Name, int team2Tickets, string mapName)
+        public Task OnGameStateEndGameAsync(string team1Name, int team1Tickets, string team2Name, int team2Tickets, string mapName)
         {
-            throw new NotImplementedException();
+            return _server.UpdateGameStateAsync(GameState.EndGame);
         }
 
-        public void OnGameStatePaused()
+        public Task OnGameStatePausedAsync()
         {
-            throw new NotImplementedException();
+            return _server.UpdateGameStateAsync(GameState.Paused);
         }
 
-        public void OnGameStateRestart()
+        public Task OnGameStateRestartAsync()
         {
-            throw new NotImplementedException();
+            return _server.UpdateGameStateAsync(GameState.Restart);
         }
 
-        public void OnGameStateNotConnected()
+        public Task OnGameStateNotConnectedAsync()
         {
-            throw new NotImplementedException();
+            return _server.UpdateGameStateAsync(GameState.NotConnected);
         }
 
         /*
          * Game events
          */
-        public void OnControlPointCapture(int teamId, string cpName)
+        public Task OnControlPointCaptureAsync(int teamId, string cpName)
         {
             throw new NotImplementedException();
         }
 
-        public void OnControlPointNeutralised(string cpName)
+        public Task OnControlPointNeutralisedAsync(string cpName)
         {
             throw new NotImplementedException();
         }
@@ -74,25 +78,27 @@ namespace BF2WebAdmin.Server
         /*
          * Timer events
          */
-        public void OnTicketStatus(string team1Name, int team1Tickets, string team2Name, int team2Tickets, string mapName)
+        public Task OnTicketStatusAsync(string team1Name, int team1Tickets, string team2Name, int team2Tickets, string mapName)
         {
             throw new NotImplementedException();
         }
 
-        public void OnPlayerPositionUpdate(int playerIndex, Position position, Rotation rotation, int ping)
+        public Task OnPlayerPositionUpdateAsync(int playerIndex, Position position, Rotation rotation, int ping)
         {
-            throw new NotImplementedException();
+            var player = _server.GetPlayer(playerIndex);
+            return _server.UpdatePlayerAsync(player, position, rotation, ping);
         }
 
-        public void OnProjectilePositionUpdate(int id, string templateName, Position position, Rotation rotation)
+        public Task OnProjectilePositionUpdateAsync(int id, string templateName, Position position, Rotation rotation)
         {
-            throw new NotImplementedException();
+            var projectile = _server.GetProjectile(id, templateName, position);
+            return _server.UpdateProjectileAsync(projectile, position, rotation);
         }
 
         /*
          * Player events
          */
-        public void OnPlayerConnect(int index, string name, int pid, string ipAddress, string hash, int teamId)
+        public Task OnPlayerConnectAsync(int index, string name, int pid, string ipAddress, string hash, int teamId)
         {
             var player = new Player
             {
@@ -101,82 +107,93 @@ namespace BF2WebAdmin.Server
                 Index = index,
                 IpAddress = IPAddress.Parse(ipAddress),
                 Hash = hash,
-                Team = new Team { Id = teamId, Name = "Idk", Players = new List<Player>() } // TODO: Get real team from server
+                Team = _server.Teams.First(t => t.Id == teamId)
             };
-            _server.AddPlayer(player);
+            return _server.AddPlayerAsync(player);
         }
 
-        public void OnPlayerSpawn(int index, Position pos)
+        public Task OnPlayerSpawnAsync(int index, Position pos, Rotation rot)
+        {
+            var player = _server.GetPlayer(index);
+            return _server.SetPlayerSpawnAsync(player, pos, rot);
+        }
+
+        public Task OnPlayerChangeTeamAsync(int index, int teamId)
+        {
+            var player = _server.GetPlayer(index);
+            return _server.UpdatePlayerTeamAsync(player, teamId);
+        }
+
+        public Task OnPlayerScoreAsync(int index, int score, int teamScore, int kills, int deaths)
+        {
+            var player = _server.GetPlayer(index);
+            return _server.UpdatePlayerScoreAsync(player, teamScore, kills, deaths, score);
+        }
+
+        public Task OnPlayerRevivedAsync(int medicIndex, int reviveeIndex)
         {
             throw new NotImplementedException();
         }
 
-        public void OnPlayerChangeTeam(int index, int teamId)
+        public Task OnPlayerKilledSelfAsync(int index, Position pos)
         {
             throw new NotImplementedException();
         }
 
-        public void OnPlayerScore(int index, int score, int teamScore, int kills, int deaths)
+        public Task OnPlayerTeamkilledAsync(int attackerIndex, Position attackerPos, int victimIndex, Position victimPos)
         {
             throw new NotImplementedException();
         }
 
-        public void OnPlayerRevived(int medicIndex, int medicScore, int medicKills, int medicDeaths,
-            int reviveeIndex, int reviveeScore, int reviveeKills, int reviveeDeaths)
+        public Task OnPlayerKilledAsync(int attackerIndex, Position attackerPos, int victimIndex, Position victimPos, string weapon)
         {
-            throw new NotImplementedException();
+            var attacker = _server.GetPlayer(attackerIndex);
+            var victim = _server.GetPlayer(victimIndex);
+            return _server.SetPlayerKillAsync(attacker, attackerPos, victim, victimPos, weapon);
         }
 
-        public void OnPlayerKilledSelf(int index, Position pos, int score, int kills, int deaths)
+        public Task OnPlayerDeathAsync(int index, Position pos)
         {
-            throw new NotImplementedException();
+            var player = _server.GetPlayer(index);
+            return _server.SetPlayerDeathAsync(player, pos);
         }
 
-        public void OnPlayerTeamkilled(int attackerIndex, Position attackerPos, int attackerScore, int attackerKills, int attackerDeaths,
-            int victimIndex, Position victimPos, int victimScore, int victimKills, int victimDeaths)
+        public Task OnPlayerDisconnectAsync(int index)
         {
-            throw new NotImplementedException();
-        }
-
-        public void OnPlayerKilled(int attackerIndex, Position attackerPos, int attackerScore, int attackerKills, int attackerDeaths,
-            int victimIndex, Position victimPos, int victimScore, int victimKills, int victimDeaths, string weapon)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void OnPlayerDeath(int index, Position pos, int score, int kills, int deaths)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void OnPlayerDisconnect(int index)
-        {
-            var player = _server.Players.First(x => x.Index == index);
-            _server.RemovePlayer(player);
+            var player = _server.GetPlayer(index);
+            return _server.RemovePlayerAsync(player);
         }
 
         /*
          * Vehicle events
          */
-        public void OnEnterVehicle(int index, int vehicleId, string rootVehicleName, string vehicleName)
+        public Task OnEnterVehicleAsync(int index, int rootVehicleId, string rootVehicleName, string vehicleName)
         {
-            throw new NotImplementedException();
+            if (vehicleName.Contains("soldier"))
+                return Task.CompletedTask;
+
+            var player = _server.GetPlayer(index);
+            var vehicle = _server.GetVehicle(player, rootVehicleId, rootVehicleName, vehicleName);
+            return _server.UpdatePlayerVehicleAsync(player, vehicle, vehicleName);
         }
 
-        public void OnExitVehicle(int index, int vehicleId, string rootVehicleName, string vehicleName)
+        public Task OnExitVehicleAsync(int index, int rootVehicleId, string rootVehicleName, string vehicleName)
         {
-            throw new NotImplementedException();
+            var player = _server.GetPlayer(index);
+            return _server.UpdatePlayerVehicleAsync(player, null, null);
         }
 
-        public void OnVehicleDestroyed(int vehicleId, string vehicleName)
+        public Task OnVehicleDestroyedAsync(int vehicleId, string vehicleName)
         {
-            throw new NotImplementedException();
+            // vehicleId is currently always -1 here
+            //throw new NotImplementedException();
+            return Task.CompletedTask;
         }
 
         /*
          * Chat events	
          */
-        public void OnChatServer(string channel, string flags, string text)
+        public Task OnChatServerAsync(string channel, string flags, string text)
         {
             var message = new Message
             {
@@ -186,21 +203,21 @@ namespace BF2WebAdmin.Server
                 Type = MessageType.Server,
                 Time = DateTime.UtcNow
             };
-            _server.AddMessage(message);
+            return _server.AddMessageAsync(message);
         }
 
-        public void OnChatPlayer(string channel, string flags, int index, string text)
+        public Task OnChatPlayerAsync(string channel, string flags, int index, string text)
         {
             var message = new Message
             {
-                Player = _server.Players.First(x => x.Index == index),
+                Player = _server.GetPlayer(index),
                 Channel = channel,
                 Flags = flags,
                 Text = text,
                 Type = MessageType.Player,
                 Time = DateTime.UtcNow
             };
-            _server.AddMessage(message);
+            return _server.AddMessageAsync(message);
         }
     }
 }

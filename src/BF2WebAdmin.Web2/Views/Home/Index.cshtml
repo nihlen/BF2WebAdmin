@@ -1,0 +1,32 @@
+﻿@*@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div id="my-spa"
+     asp-prerender-module="App/boot-server"
+     asp-prerender-webpack-config="webpack.config.js"
+     asp-prerender-data="new {
+        IsGoldUser = true,
+        Cookies = @ViewContext.HttpContext.Request.Cookies
+    }">
+    Loading...
+</div>
+
+@section scripts {
+    <environment names="Development">
+        <script src="~/dist/main.js" asp-append-version="true"></script>
+    </environment>
+    <environment names="Staging,Production">
+        <script src="~/dist/main.min.js" asp-append-version="true"></script>
+    </environment>
+}*@
+@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div id="react-app">Loading...</div>
+@*<div id="react-app" asp-prerender-module="wwwroot/dist/main-server">Loading...</div>*@
+
+@section scripts {
+    <script src="~/dist/main-client.js" asp-append-version="true"></script>
+}

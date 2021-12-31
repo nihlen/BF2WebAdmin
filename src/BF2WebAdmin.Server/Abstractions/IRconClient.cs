@@ -1,6 +1,4 @@
-﻿using System.Threading.Tasks;
-
-namespace BF2WebAdmin.Server.Abstractions
+﻿namespace BF2WebAdmin.Server.Abstractions
 {
     public interface IRconClient
     {

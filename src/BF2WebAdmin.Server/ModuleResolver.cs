@@ -1,20 +1,19 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
+﻿using System.Reflection;
+using System.Text;
+using BF2WebAdmin.Common;
 using BF2WebAdmin.Server.Abstractions;
-using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Extensions;
-using BF2WebAdmin.Server.Logging;
-using Microsoft.Extensions.Logging;
+using Serilog;
 
 namespace BF2WebAdmin.Server
 {
     public class ModuleResolver : IModuleResolver
     {
-        private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<ModManager>();
+        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<ModManager>();
 
         private static readonly Assembly CurrentAssembly = Assembly.GetEntryAssembly();
+
+        private static readonly StringBuilder CommandDocumentation;
 
         public IEnumerable<Type> ModuleTypes => _moduleTypes;
         private static IEnumerable<Type> _moduleTypes;
@@ -26,23 +25,29 @@ namespace BF2WebAdmin.Server
         private static IDictionary<string, IList<Func<string[], ICommand>>> _commandParsers =
             new Dictionary<string, IList<Func<string[], ICommand>>>();
 
+        // Get auth level required for a command
+        public IDictionary<Type, Auth> AuthLevels => _authLevels;
+        private static IDictionary<Type, Auth> _authLevels = new Dictionary<Type, Auth>();
+
         // Invokes the handler module instance(s) with a command of the given Type
-        public IDictionary<Type, IList<Action<ICommand>>> CommandHandlers => GetCommandHandlers();
-        private IDictionary<Type, IList<Action<ICommand>>> _commandHandlers;
+        public IDictionary<Type, IList<Func<ICommand, Task>>> CommandHandlers => GetCommandHandlers();
+        private IDictionary<Type, IList<Func<ICommand, Task>>> _commandHandlers;
 
         // Module instances
         public IDictionary<Type, IModule> Modules { get; } = new Dictionary<Type, IModule>();
 
         static ModuleResolver()
         {
+            CommandDocumentation = new StringBuilder();
             ScanAssembly();
+            File.WriteAllText("commands.txt", CommandDocumentation.ToString());
         }
 
-        private IDictionary<Type, IList<Action<ICommand>>> GetCommandHandlers()
+        private IDictionary<Type, IList<Func<ICommand, Task>>> GetCommandHandlers()
         {
             if (_commandHandlers == null)
             {
-                _commandHandlers = new Dictionary<Type, IList<Action<ICommand>>>();
+                _commandHandlers = new Dictionary<Type, IList<Func<ICommand, Task>>>();
                 CreateCommandHandlers();
             }
 
@@ -70,42 +75,63 @@ namespace BF2WebAdmin.Server
             {
                 var commandType = commandHandler.CommandType;
                 if (!CommandHandlers.ContainsKey(commandType))
-                    CommandHandlers.Add(commandType, new List<Action<ICommand>>());
+                    CommandHandlers.Add(commandType, new List<Func<ICommand, Task>>());
 
-                // Has an instance been created of this module?
+                // Has an instance of this module been created?
                 if (!Modules.ContainsKey(commandHandler.ModuleType))
                     throw new NullReferenceException($"No instance of {commandHandler.ModuleType} exists");
 
-                // Check if this module is a valid synchrounous handler for TCommand
-                var syncHandler = Modules[commandHandler.ModuleType] as IHandleCommand<TCommand>;
-                if (syncHandler != null)
+                // Check if this module is a valid synchronous handler for TCommand
+                if (Modules[commandHandler.ModuleType] is IHandleCommand<TCommand> syncHandler)
                 {
                     CommandHandlers[commandType].Add(command =>
                     {
                         // Check command type since alias can map to different commands depending on parameters
-                        if (command is TCommand)
-                            syncHandler.Handle((TCommand)command);
+                        if (command is TCommand matchedCommand)
+                        {
+                            try
+                            {
+                                syncHandler.Handle(matchedCommand);
+                            }
+                            catch (Exception e)
+                            {
+                                Log.Error(e, "Command handling failed for {message} (sync)", matchedCommand.Message);
+                            }
+                        }
+
+                        return Task.CompletedTask;
                     });
+
                     handlerCount++;
                     continue;
                 }
 
                 // Ok, well maybe it's async
-                var asyncHandler = Modules[commandHandler.ModuleType] as IHandleCommandAsync<TCommand>;
-                if (asyncHandler != null)
+                if (Modules[commandHandler.ModuleType] is IHandleCommandAsync<TCommand> asyncHandler)
                 {
                     CommandHandlers[commandType].Add(async command =>
                     {
                         // Check command type since alias can map to different commands depending on parameters
-                        if (command is TCommand)
-                            await asyncHandler.HandleAsync((TCommand)command);
+                        if (command is TCommand matchedCommand)
+                        {
+                            try
+                            {
+                                await asyncHandler.HandleAsync(matchedCommand);
+                            }
+                            catch (Exception e)
+                            {
+                                Log.Error(e, "Command handling failed for {message} (async)", matchedCommand.Message);
+                            }
+                        }
                     });
+
                     handlerCount++;
+                    continue;
                 }
             }
 
             if (handlerCount == 0)
-                Logger.LogWarning($"No command handlers registered for {typeof(TCommand).Name}");
+                Log.Warning("No command handlers registered for {commandName}", typeof(TCommand).Name);
         }
 
         private static void ScanAssembly()
@@ -125,7 +151,13 @@ namespace BF2WebAdmin.Server
 
                         // Add a parser function for this alias
                         _commandParsers[alias].Add(GetCommandParser(commandType, attr));
+
+                        // Add auth level required for command
+                        _authLevels[commandType] = attr.AuthLevel;
                     }
+
+                    var parameters = attr.Parameters != null ? $"<{string.Join("> <", attr.Parameters)}>" : string.Empty;
+                    CommandDocumentation.AppendLine($"{string.Join("|", attr.Aliases ?? new string[0])} {parameters}\t{attr.AuthLevel}\t({commandType.Name})");
                 }
             }
         }
@@ -153,12 +185,14 @@ namespace BF2WebAdmin.Server
                         throw new CommandParseException($"No property {propertyName} found in {commandType}");
 
                     // Assign the rest of the string to the last parameter?
-                    var argumentValue = attr.Parameters.Length == (index + 1) && attr.CombineLast ?
+                    var shouldCombineRemainingParameters = attr.Parameters.Length == (index + 1) && attr.CombineLast;
+                    var argumentValue = shouldCombineRemainingParameters ?
                         string.Join(" ", args.Skip(index)) : args[index++];
 
                     var convertedValue = Convert.ChangeType(argumentValue, propertyInfo.PropertyType);
                     propertyInfo.SetValue(command, convertedValue);
                 }
+
                 return command;
             };
         }

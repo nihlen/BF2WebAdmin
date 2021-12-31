@@ -1,0 +1,33 @@
+{
+  "compileOnSave": true,
+  "compilerOptions": {
+    "outDir": "./wwwroot/dist/",
+    "noImplicitAny": false,
+    // "noImplicitReturns": true,
+    // "noImplicitUseStrict": false,
+    // "noFallthroughCasesInSwitch": true,
+    "noEmitOnError": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    // "pretty": true,
+    "module": "commonjs",
+    "target": "es2015",
+    "jsx": "react",
+    // "watch": false,
+    "baseUrl": ".",
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "sourceMap": true,
+    "skipDefaultLibCheck": true,
+    "lib": [ "es6", "dom" ],
+    "types": [ "webpack-env", "whatwg-fetch" ],
+    "paths": {
+      // Fixes "Duplicate identifier 'Redux'" error when packages were installed via Yarn (by specifying which .d.ts file is authoritative)
+      "redux": [ "./node_modules/@types/redux/index" ]
+    }
+  },
+  "exclude": [
+    "bin",
+    "node_modules"
+  ]
+}

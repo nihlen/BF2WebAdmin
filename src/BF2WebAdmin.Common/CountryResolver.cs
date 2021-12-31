@@ -1,36 +1,42 @@
 ﻿using System;
 using MaxMind.GeoIP2;
+using MaxMind.GeoIP2.Exceptions;
 using MaxMind.GeoIP2.Responses;
-using Microsoft.Extensions.Configuration;
 
 namespace BF2WebAdmin.Common
 {
-    public class CountryResolver
+    public interface ICountryResolver
     {
-        private static readonly IConfigurationRoot Config;
+        CountryResponse GetCountryResponse(string ipAddress);
+    }
 
-        static CountryResolver()
+    public class CountryResolver : ICountryResolver
+    {
+        private readonly string _geoipDatabasePath;
+
+        public CountryResolver(string geoipDatabasePath)
         {
-            var builder = new ConfigurationBuilder().AddJsonFile("appsettings.json");
-            Config = builder.Build();
+            _geoipDatabasePath = geoipDatabasePath;
         }
 
-        public static CountryResponse GetCountryResponse(string ipAddress)
+        public CountryResponse GetCountryResponse(string ipAddress)
         {
             var cached = CacheManager.Get<CountryResponse>(ipAddress);
             if (cached != null)
                 return cached;
 
-            var dbPath = Config["Geoip:DatabasePath"];
-            //var dbPath = ConfigurationManager.AppSettings["GeoipDbPath"];
-            if (dbPath == null)
+            if (string.IsNullOrWhiteSpace(_geoipDatabasePath))
                 throw new Exception("No GeoipDbPath found in appsettings");
 
-            using (var reader = new DatabaseReader(dbPath))
+            using (var reader = new DatabaseReader(_geoipDatabasePath))
             {
-                var response = reader.Country(ipAddress);
-                CacheManager.Add(ipAddress, response, DateTime.UtcNow.AddDays(1));
-                return response;
+                if (reader.TryCountry(ipAddress, out var response))
+                {
+                    CacheManager.Add(ipAddress, response, DateTime.UtcNow.AddDays(1));
+                    return response;
+                }
+
+                return null;
             }
         }
     }

@@ -3,7 +3,7 @@
     "windowsAuthentication": false,
     "anonymousAuthentication": true,
     "iisExpress": {
-      "applicationUrl": "http://localhost:11443/",
+      "applicationUrl": "http://localhost:56919/",
       "sslPort": 0
     }
   },
@@ -17,11 +17,10 @@
     },
     "BF2WebAdmin.Web": {
       "commandName": "Project",
-      "launchBrowser": true,
-      "launchUrl": "http://localhost:5000",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
-      }
+      },
+      "applicationUrl": "http://localhost:56920/"
     }
   }
 }

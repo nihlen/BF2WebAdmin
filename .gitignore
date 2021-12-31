@@ -240,9 +240,13 @@ App.db.config
 *.secret.*
 *.secret
 appsecrets.*
+RconScript.cs
 
 # Seed scripts, map mods
 Seed/
 
 # Logs
 Logs/
+
+# GeoIPLite 
+*.mmdb

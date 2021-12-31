@@ -1,5 +1,3 @@
-using System;
-using System.Linq;
 using BF2WebAdmin.Common;
 
 namespace BF2WebAdmin.Server.Extensions
@@ -16,6 +14,7 @@ namespace BF2WebAdmin.Server.Extensions
         {
             AuthLevel = authLevel;
             CombineLast = combineLast;
+
             if (!format.Contains(" "))
             {
                 Aliases = SplitAliases(format);
@@ -36,7 +35,8 @@ namespace BF2WebAdmin.Server.Extensions
 
         private static string[] SplitParameters(string[] parts)
         {
-            return parts.Skip(1)
+            return parts
+                .Skip(1)
                 .Select(p => p.Trim().Replace("<", "").Replace(">", ""))
                 .ToArray();
         }

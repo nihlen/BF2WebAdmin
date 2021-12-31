@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "DockerDaemonCoreTest": {
+      "commandName": "Project"
+    },
+    "Docker": {
+      "commandName": "Docker"
+    }
+  }
+}

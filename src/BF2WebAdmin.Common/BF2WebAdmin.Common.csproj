@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>BF2WebAdmin.Common</AssemblyName>
+    <PackageId>BF2WebAdmin.Common</PackageId>
+    <GenerateAssemblyConfigurationAttribute>false</GenerateAssemblyConfigurationAttribute>
+    <GenerateAssemblyCompanyAttribute>false</GenerateAssemblyCompanyAttribute>
+    <GenerateAssemblyProductAttribute>false</GenerateAssemblyProductAttribute>
+	<TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+  </PropertyGroup>
+
+  <!-- Fix for publish error detected package downgrade -->
+  <PropertyGroup> 
+	  <WarningsAsErrors></WarningsAsErrors> 
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MaxMind.GeoIP2" Version="2.9.0" />
+    <PackageReference Include="MessagePack" Version="1.7.3.1" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="2.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="2.0.0" />
+    <PackageReference Include="NetMQ" Version="4.0.1.6" />
+    <PackageReference Include="protobuf-net" Version="2.3.3" />
+  </ItemGroup>
+
+</Project>

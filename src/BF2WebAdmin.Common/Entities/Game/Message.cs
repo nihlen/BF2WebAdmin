@@ -21,6 +21,15 @@ namespace BF2WebAdmin.Common.Entities.Game
         }
     }
 
+    public class ChatChannel
+    {
+        public const string Squad = "Squad";
+        public const string Team = "Team";
+        public const string Global = "Global";
+        public const string ServerTeamMessage = "ServerTeamMessage";
+        public const string ServerMessage = "ServerMessage";
+    }
+
     public enum MessageType
     {
         Server,

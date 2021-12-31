@@ -1,26 +1,25 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31912.275
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{5C867785-181D-45F2-8A57-06B467B53944}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{5DB78FD9-DA8A-4690-9645-1C301AD7448D}"
-	ProjectSection(SolutionItems) = preProject
-		global.json = global.json
-	EndProjectSection
-EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "BF2WebAdmin.Common", "src\BF2WebAdmin.Common\BF2WebAdmin.Common.xproj", "{4BACDB85-82C9-4E5F-B112-B031CD95B30C}"
-EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "BF2WebAdmin.DAL", "src\BF2WebAdmin.DAL\BF2WebAdmin.DAL.xproj", "{1013BDC9-B219-49BD-BE31-86DBE464A53B}"
-EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "BF2WebAdmin.Server", "src\BF2WebAdmin.Server\BF2WebAdmin.Server.xproj", "{EACE38E4-634F-43AD-9F02-CB8C9773F069}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{AABA45D1-D9EF-4462-8475-01A3F7521897}"
 EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "BF2WebAdmin.Web", "src\BF2WebAdmin.Web\BF2WebAdmin.Web.xproj", "{4E70B887-D9C2-4969-A102-69C37CFF6956}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BF2WebAdmin.Common", "src\BF2WebAdmin.Common\BF2WebAdmin.Common.csproj", "{4BACDB85-82C9-4E5F-B112-B031CD95B30C}"
 EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "BF2WebAdmin.Tests", "test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.xproj", "{953E99A7-CA1E-4752-A6B6-E232C78BCD32}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BF2WebAdmin.Data", "src\BF2WebAdmin.DAL\BF2WebAdmin.Data.csproj", "{1013BDC9-B219-49BD-BE31-86DBE464A53B}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BF2WebAdmin.Server", "src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj", "{EACE38E4-634F-43AD-9F02-CB8C9773F069}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BF2WebAdmin.Tests", "test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj", "{953E99A7-CA1E-4752-A6B6-E232C78BCD32}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BF2WebAdmin.Web", "src\BF2WebAdmin.Web\BF2WebAdmin.Web.csproj", "{B3C90287-1CF0-44A1-A459-14E2E61F8E6F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BF2WebAdmin.Benchmarks", "BF2WebAdmin.Benchmarks\BF2WebAdmin.Benchmarks.csproj", "{29401ED7-B3A5-46DE-88C5-9F4F115B6D27}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -41,14 +40,18 @@ Global
 		{EACE38E4-634F-43AD-9F02-CB8C9773F069}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EACE38E4-634F-43AD-9F02-CB8C9773F069}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EACE38E4-634F-43AD-9F02-CB8C9773F069}.Release|Any CPU.Build.0 = Release|Any CPU
-		{4E70B887-D9C2-4969-A102-69C37CFF6956}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{4E70B887-D9C2-4969-A102-69C37CFF6956}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{4E70B887-D9C2-4969-A102-69C37CFF6956}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{4E70B887-D9C2-4969-A102-69C37CFF6956}.Release|Any CPU.Build.0 = Release|Any CPU
 		{953E99A7-CA1E-4752-A6B6-E232C78BCD32}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{953E99A7-CA1E-4752-A6B6-E232C78BCD32}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{953E99A7-CA1E-4752-A6B6-E232C78BCD32}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{953E99A7-CA1E-4752-A6B6-E232C78BCD32}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B3C90287-1CF0-44A1-A459-14E2E61F8E6F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B3C90287-1CF0-44A1-A459-14E2E61F8E6F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B3C90287-1CF0-44A1-A459-14E2E61F8E6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B3C90287-1CF0-44A1-A459-14E2E61F8E6F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{29401ED7-B3A5-46DE-88C5-9F4F115B6D27}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{29401ED7-B3A5-46DE-88C5-9F4F115B6D27}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{29401ED7-B3A5-46DE-88C5-9F4F115B6D27}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{29401ED7-B3A5-46DE-88C5-9F4F115B6D27}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -57,7 +60,11 @@ Global
 		{4BACDB85-82C9-4E5F-B112-B031CD95B30C} = {5C867785-181D-45F2-8A57-06B467B53944}
 		{1013BDC9-B219-49BD-BE31-86DBE464A53B} = {5C867785-181D-45F2-8A57-06B467B53944}
 		{EACE38E4-634F-43AD-9F02-CB8C9773F069} = {5C867785-181D-45F2-8A57-06B467B53944}
-		{4E70B887-D9C2-4969-A102-69C37CFF6956} = {5C867785-181D-45F2-8A57-06B467B53944}
 		{953E99A7-CA1E-4752-A6B6-E232C78BCD32} = {AABA45D1-D9EF-4462-8475-01A3F7521897}
+		{B3C90287-1CF0-44A1-A459-14E2E61F8E6F} = {5C867785-181D-45F2-8A57-06B467B53944}
+		{29401ED7-B3A5-46DE-88C5-9F4F115B6D27} = {AABA45D1-D9EF-4462-8475-01A3F7521897}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {FC72050A-8AE6-47B6-9321-F6B7538CE6BA}
 	EndGlobalSection
 EndGlobal

@@ -1,12 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Threading.Tasks;
-using BF2WebAdmin.Common;
-using BF2WebAdmin.Server.Abstractions;
+﻿using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands;
+using BF2WebAdmin.Server.Configuration.Models;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 
@@ -74,10 +68,5 @@ namespace BF2WebAdmin.Server.Modules
             [JsonProperty("cat")]
             public string Cat { get; set; }
         }
-    }
-
-    public class MashapeConfig
-    {
-        public string Key { get; set; }
     }
 }

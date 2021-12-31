@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System;
+using System.Globalization;
 
 namespace BF2WebAdmin.Common.Entities.Game
 {
@@ -8,11 +9,14 @@ namespace BF2WebAdmin.Common.Entities.Game
         public double Pitch { get; set; }
         public double Roll { get; set; }
 
-        public Rotation(double yaw, double roll, double pitch)
+        // BF2: Yaw/Pitch/Roll it seems
+        public static Rotation Neutral { get; } = new Rotation(0, 0, 0);
+
+        public Rotation(double yaw, double pitch, double roll)
         {
             Yaw = yaw;
-            Roll = roll;
             Pitch = pitch;
+            Roll = roll;
         }
 
         public static implicit operator Rotation(string rotation)
@@ -33,7 +37,8 @@ namespace BF2WebAdmin.Common.Entities.Game
 
         public override string ToString()
         {
-            return $"{Yaw}/{Roll}/{Pitch}";
+            //return $"{Yaw:0.000}/{Pitch:0.000}/{Roll:0.000}";
+            return string.Format(CultureInfo.InvariantCulture, "{0:0.000}/{1:0.000}/{2:0.000}", Yaw, Pitch, Roll);
         }
     }
 }

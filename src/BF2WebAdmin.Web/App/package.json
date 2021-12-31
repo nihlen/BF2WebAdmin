@@ -1,0 +1,36 @@
+{
+    "name": "bf2-webadmin",
+    "version": "0.1.0",
+    "private": true,
+    "dependencies": {
+        "react": "~16.2.0",
+        "react-dom": "~16.2.0",
+        "react-redux": "~5.0.6",
+        "react-router-dom": "~4.2.2",
+        "react-scripts-ts": "~2.8.0",
+        "redux": "~3.7.2",
+        "redux-observable": "~0.17.0",
+        "rxjs": "~5.5.5",
+        "protobufjs": "~6.8.3",
+        "pixi.js": "~4.6.2",
+        "three": "~0.89.0"
+    },
+    "scripts": {
+        "start": "react-scripts-ts start",
+        "build": "react-scripts-ts build",
+        "test": "react-scripts-ts test --env=jsdom",
+        "eject": "react-scripts-ts eject",
+        "protos": "node protobuild.js"
+    },
+    "devDependencies": {
+        "@types/jest": "~21.1.8",
+        "@types/node": "~8.5.1",
+        "@types/react": "~16.0.31",
+        "@types/react-dom": "~16.0.3",
+        "@types/react-redux": "~5.0.14",
+        "@types/react-router-dom": "~4.2.3",
+        "@types/pixi.js": "~4.6.3",
+        "@types/three": "~0.89.2",
+        "typescript": "~2.6.2"
+    }
+}

@@ -1,22 +1,23 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
-}
+﻿
+<h2>Index</h2>
 
-<div id="my-spa"
-     asp-prerender-module="App/boot-server"
-     asp-prerender-webpack-config="webpack.config.js"
-     asp-prerender-data="new {
-        IsGoldUser = true,
-        Cookies = @ViewContext.HttpContext.Request.Cookies
-    }">
-    Loading...
-</div>
-
-@section scripts {
-    <environment names="Development">
-        <script src="~/dist/main.js" asp-append-version="true"></script>
-    </environment>
-    <environment names="Staging,Production">
-        <script src="~/dist/main.min.js" asp-append-version="true"></script>
-    </environment>
-}
+<script>
+    var scheme = document.location.protocol == "https:" ? "wss" : "ws";
+    var port = document.location.port ? (":" + document.location.port) : "";
+    var socketUrl = scheme + "://" + document.location.hostname + port;
+    var socket = new WebSocket(socketUrl);
+    socket.onopen = function (event) {
+        console.log('onopen', event);
+    };
+    socket.onclose = function (event) {
+        console.log('onclose', event);
+    };
+    socket.onerror = function(event) {
+        console.log('onerror', event);
+    };
+    socket.onmessage = function (event) {
+        var message = JSON.parse(event.data);
+        message.payload['$type'] = '';
+        console.log(message.type, message.payload);
+    };
+</script>

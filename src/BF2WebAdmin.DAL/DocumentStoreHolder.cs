@@ -2,9 +2,9 @@
 using Raven.Client;
 using Raven.Client.Document;
 
-namespace BF2WebAdmin.DAL
+namespace BF2WebAdmin.Data
 {
-    public class DocumentStoreHolder
+    public static class DocumentStoreHolder
     {
         private static readonly Lazy<IDocumentStore> DocumentStore = new Lazy<IDocumentStore>(CreateStore);
 

@@ -1,5 +1,4 @@
-﻿using System;
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace BF2WebAdmin.Server.Extensions
 {
@@ -9,11 +8,19 @@ namespace BF2WebAdmin.Server.Extensions
         {
             var dir = AppContext.BaseDirectory;
 
-            dir = Regex.Replace(dir, @"(\\|\/)+bin(\\|\/)+.+$", string.Empty, 
+            dir = Regex.Replace(dir, @"(\\|\/)+bin(\\|\/)+.+$", string.Empty,
                 RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
             return dir;
         }
 
+        public static string GetEnvironmentName()
+        {
+#if DEBUG
+            return "debug";
+#else
+            return "release";
+#endif
+        }
     }
 }

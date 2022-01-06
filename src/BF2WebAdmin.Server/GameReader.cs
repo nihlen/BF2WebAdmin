@@ -13,7 +13,7 @@ namespace BF2WebAdmin.Server
         private readonly IGameServer _gameServer;
         private readonly string _gameLogPath;
         private readonly DateTime _startTime;
-        private readonly Dictionary<string, Func<string[], Task>> _eventHandlers;
+        private readonly Dictionary<string, Func<string[], ValueTask>> _eventHandlers;
         private readonly Stopwatch _messageStopWatch;
         private readonly Channel<string> _gameEventChannel;
 
@@ -40,6 +40,7 @@ namespace BF2WebAdmin.Server
 
         public void QueueMessage(string message)
         {
+            // TODO: tuple (string Message, DateTimeOffset TimeStamp) ?
             _gameEventChannel.Writer.TryWrite(message);
         }
 
@@ -100,9 +101,9 @@ namespace BF2WebAdmin.Server
             File.AppendAllText(_gameLogPath, line);
         }
 
-        private static Dictionary<string, Func<string[], Task>> GetEventsHandlers(IEventHandler eh)
+        private static Dictionary<string, Func<string[], ValueTask>> GetEventsHandlers(IEventHandler eh)
         {
-            return new Dictionary<string, Func<string[], Task>>
+            return new Dictionary<string, Func<string[], ValueTask>>
             {
                 // Server events
                 { "serverInfo", p => eh.OnServerInfoAsync(p[1], p[2], Int(p[3]), Int(p[4]), Int(p[5])) },

@@ -10,6 +10,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
 {
     // TODO: .clear should remember scores
     public class MapModule : IModule,
+        IHandleEventAsync<MapChangedEvent>,
         IHandleCommandAsync<MapLoadCommand>,
         IHandleCommandAsync<MapSaveCommand>,
         IHandleCommandAsync<MapClearCommand>,
@@ -28,15 +29,15 @@ namespace BF2WebAdmin.Server.Modules.BF2
             _mapRepository = mapRepository;
             _mapId = Guid.NewGuid();
             _mapObjects = new List<MapModObject>();
-            _gameServer.MapChanged += map =>
-            {
-                _mapId = Guid.NewGuid();
-                _mapObjects = new List<MapModObject>();
-                return Task.CompletedTask;
-            };
+            //_gameServer.MapChanged += map =>
+            //{
+            //    _mapId = Guid.NewGuid();
+            //    _mapObjects = new List<MapModObject>();
+            //    return Task.CompletedTask;
+            //};
         }
 
-        public async Task HandleAsync(MapLoadCommand command)
+        public async ValueTask HandleAsync(MapLoadCommand command)
         {
             var map = await GetMatchingMapAsync(command.Name);
             if (map == null)
@@ -64,7 +65,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
             _gameServer.GameWriter.SendText($"§C1001Loaded map '{command.Name}' ({map.Objects.Count()} objects)");
         }
 
-        public async Task HandleAsync(MapSaveCommand command)
+        public async ValueTask HandleAsync(MapSaveCommand command)
         {
             var existingMap = await GetMatchingMapAsync(command.Name);
             if (existingMap != null)
@@ -164,7 +165,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 _gameServer.GameWriter.SendText($"Spawned '{template}' at {position}");
         }
 
-        public async Task HandleAsync(MapClearCommand command)
+        public async ValueTask HandleAsync(MapClearCommand command)
         {
             var playerScores = _gameServer.Players.Select(p => (p, new[] { p.Score.Total, p.Score.Team, p.Score.Kills, p.Score.Deaths }));
             _gameServer.GameWriter.SendRcon(RconScript.RestartMap);
@@ -323,5 +324,11 @@ namespace BF2WebAdmin.Server.Modules.BF2
         //    }
         //}
 
+        public ValueTask HandleAsync(MapChangedEvent e)
+        {
+            _mapId = Guid.NewGuid();
+            _mapObjects = new List<MapModObject>();
+            return ValueTask.CompletedTask;
+        }
     }
 }

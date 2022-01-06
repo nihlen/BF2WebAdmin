@@ -15,6 +15,14 @@ namespace BF2WebAdmin.Server.Modules.BF2
     // TODO: /whois command using IP and guid matching from JoinHistory table
     // TODO: .need <players> command?
     public class DiscordModule : IModule,
+        IHandleEventAsync<SocketStateChangedEvent>,
+        IHandleEventAsync<ChatMessageEvent>,
+        IHandleEventAsync<MapChangedEvent>,
+        IHandleEventAsync<PlayerJoinEvent>,
+        IHandleEventAsync<PlayerSpawnEvent>,
+        IHandleEventAsync<PlayerLeftEvent>,
+        IHandleEventAsync<PlayerKillEvent>,
+        IHandleEventAsync<PlayerDeathEvent>,
         IHandleCommandAsync<LeaveCommand>
     {
         public const string DiscordBotHashGod = "DiscordBotHashGod";
@@ -391,81 +399,81 @@ namespace BF2WebAdmin.Server.Modules.BF2
         private void SetupGameEvents()
         {
             // TODO: Events return Func<Task> instead of Action so they can be safely awaited? test with exceptions in some common event to test locally, had to comment out PlayerKill
-            _game.SocketStateChanged += async state =>
-            {
-                await SendTextMessageToChannelsAsync($"{(state == SocketState.Connected ? ":green_square:` Connected to" : ":red_square:` Disconnected from")} {_game.Name}`");
+            //_game.SocketStateChanged += async state =>
+            //{
+            //    await SendTextMessageToChannelsAsync($"{(state == SocketState.Connected ? ":green_square:` Connected to" : ":red_square:` Disconnected from")} {_game.Name}`");
 
-                await UpdateActivityNameAsync();
-            };
+            //    await UpdateActivityNameAsync();
+            //};
 
-            _game.ChatMessage += async message =>
-            {
-                if (message.Type == MessageType.Player)
-                {
-                    var teamFlag = GetTeamFlag(message.Player.Team.Name);
-                    await SendTextMessageToChannelsAsync($"{teamFlag} `<{message.Channel}> {message.Player.DisplayName}: {Sanitize(message.Text)}`");
-                }
-                else
-                {
-                    await SendTextMessageToChannelsAsync($":globe_with_meridians: `<Server> {message.Text}`");
-                }
-            };
+            //_game.ChatMessage += async message =>
+            //{
+            //    if (message.Type == MessageType.Player)
+            //    {
+            //        var teamFlag = GetTeamFlag(message.Player.Team.Name);
+            //        await SendTextMessageToChannelsAsync($"{teamFlag} `<{message.Channel}> {message.Player.DisplayName}: {Sanitize(message.Text)}`");
+            //    }
+            //    else
+            //    {
+            //        await SendTextMessageToChannelsAsync($":globe_with_meridians: `<Server> {message.Text}`");
+            //    }
+            //};
 
-            _game.MapChanged += async map =>
-            {
-                await UpdateActivityNameAsync();
+            //_game.MapChanged += async map =>
+            //{
+            //    await UpdateActivityNameAsync();
 
-                await SendTextMessageToChannelsAsync($"`Map changed to {map.Name}`");
-            };
+            //    await SendTextMessageToChannelsAsync($"`Map changed to {map.Name}`");
+            //};
 
-            _game.PlayerJoin += async player =>
-            {
-                using (Profiler.Start("DEBUG PlayerJoin UpdateActivityNameAsync"))
-                {
-                    await UpdateActivityNameAsync();
-                }
+            //_game.PlayerJoin += async player =>
+            //{
+            //    using (Profiler.Start("DEBUG PlayerJoin UpdateActivityNameAsync"))
+            //    {
+            //        await UpdateActivityNameAsync();
+            //    }
 
-                using (Profiler.Start("DEBUG PlayerJoin SendTextMessageToChannelsAsync"))
-                {
-                    _newPlayers.TryAdd(player.Index, true);
-                    await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} is connecting`");
-                }
-            };
+            //    using (Profiler.Start("DEBUG PlayerJoin SendTextMessageToChannelsAsync"))
+            //    {
+            //        _newPlayers.TryAdd(player.Index, true);
+            //        await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} is connecting`");
+            //    }
+            //};
 
-            _game.PlayerSpawn += async (player, position, rotation) =>
-            {
-                if (!_newPlayers.ContainsKey(player.Index))
-                    return;
+            //_game.PlayerSpawn += async (player, position, rotation) =>
+            //{
+            //    if (!_newPlayers.ContainsKey(player.Index))
+            //        return;
 
-                _newPlayers.Remove(player.Index);
-                await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} joined (`:flag_{player.Country?.Code?.ToLower()}:`{player.Country.Code})`");
-            };
+            //    _newPlayers.Remove(player.Index);
+            //    await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} joined (`:flag_{player.Country?.Code?.ToLower()}:`{player.Country.Code})`");
+            //};
 
-            _game.PlayerLeft += async player =>
-            {
-                await UpdateActivityNameAsync();
+            //_game.PlayerLeft += async player =>
+            //{
+            //    await UpdateActivityNameAsync();
 
-                _newPlayers.Remove(player.Index);
-                await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} disconnected`");
-            };
+            //    _newPlayers.Remove(player.Index);
+            //    await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} disconnected`");
+            //};
 
-            _game.PlayerKill += async (attacker, attackerPosition, victim, victimPosition, weapon) =>
-            {
-                if (_game.State == GameState.Playing && _game.Players.Count() >= 4)
-                {
-                    var weaponName = GetWeaponName(weapon);
-                    var weaponText = attacker?.Team.Id == victim?.Team.Id ? "TK: " + weaponName : weaponName;
-                    await SendTextMessageToChannelsAsync($"`{Sanitize(attacker?.DisplayName)} [{weaponText}] {Sanitize(victim?.DisplayName)}`");
-                }
-            };
+            //_game.PlayerKill += async (attacker, attackerPosition, victim, victimPosition, weapon) =>
+            //{
+            //    if (_game.State == GameState.Playing && _game.Players.Count() >= 4)
+            //    {
+            //        var weaponName = GetWeaponName(weapon);
+            //        var weaponText = attacker?.Team.Id == victim?.Team.Id ? "TK: " + weaponName : weaponName;
+            //        await SendTextMessageToChannelsAsync($"`{Sanitize(attacker?.DisplayName)} [{weaponText}] {Sanitize(victim?.DisplayName)}`");
+            //    }
+            //};
 
-            _game.PlayerDeath += async (player, position, isSuicide) =>
-            {
-                if (_game.State == GameState.Playing && _game.Players.Count() >= 4 && !isSuicide)
-                {
-                    await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} died`", debug: true);
-                }
-            };
+            //_game.PlayerDeath += async (player, position, isSuicide) =>
+            //{
+            //    if (_game.State == GameState.Playing && _game.Players.Count() >= 4 && !isSuicide)
+            //    {
+            //        await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} died`", debug: true);
+            //    }
+            //};
         }
 
         private static string GetWeaponName(string weapon)
@@ -563,7 +571,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
             await Task.WhenAll(tasks);
         }
 
-        public async Task HandleAsync(LeaveCommand command)
+        public async ValueTask HandleAsync(LeaveCommand command)
         {
             // TODO: use Threading.Channels and send in a different Task so we don't block here if we are rate limited
             if (_adminChannels == null)
@@ -601,6 +609,80 @@ namespace BF2WebAdmin.Server.Modules.BF2
             var noMarkdown = Format.Sanitize(text);
             var noMentions = noMarkdown.Replace("@", "@\u200B").Replace("#", "#\u200B").Replace("<", "<\u200B");
             return noMentions;
+        }
+
+        public async ValueTask HandleAsync(SocketStateChangedEvent e)
+        {
+            await SendTextMessageToChannelsAsync($"{(e.SocketState == SocketState.Connected ? ":green_square:` Connected to" : ":red_square:` Disconnected from")} {_game.Name}`");
+            await UpdateActivityNameAsync();
+        }
+
+        public async ValueTask HandleAsync(ChatMessageEvent e)
+        {
+            if (e.Message.Type == MessageType.Player)
+            {
+                var teamFlag = GetTeamFlag(e.Message.Player.Team.Name);
+                await SendTextMessageToChannelsAsync($"{teamFlag} `<{e.Message.Channel}> {e.Message.Player.DisplayName}: {Sanitize(e.Message.Text)}`");
+            }
+            else
+            {
+                await SendTextMessageToChannelsAsync($":globe_with_meridians: `<Server> {e.Message.Text}`");
+            }
+        }
+
+        public async ValueTask HandleAsync(MapChangedEvent e)
+        {
+            await UpdateActivityNameAsync();
+            await SendTextMessageToChannelsAsync($"`Map changed to {e.Map.Name}`");
+        }
+
+        public async ValueTask HandleAsync(PlayerJoinEvent e)
+        {
+            using (Profiler.Start("DEBUG PlayerJoin UpdateActivityNameAsync"))
+            {
+                await UpdateActivityNameAsync();
+            }
+
+            using (Profiler.Start("DEBUG PlayerJoin SendTextMessageToChannelsAsync"))
+            {
+                _newPlayers.TryAdd(e.Player.Index, true);
+                await SendTextMessageToChannelsAsync($"`{Sanitize(e.Player.DisplayName)} is connecting`");
+            }
+        }
+
+        public async ValueTask HandleAsync(PlayerSpawnEvent e)
+        {
+            if (!_newPlayers.ContainsKey(e.Player.Index))
+                return;
+
+            _newPlayers.Remove(e.Player.Index);
+            await SendTextMessageToChannelsAsync($"`{Sanitize(e.Player.DisplayName)} joined (`:flag_{e.Player.Country?.Code?.ToLower()}:`{e.Player.Country.Code})`");
+        }
+
+        public async ValueTask HandleAsync(PlayerLeftEvent e)
+        {
+            await UpdateActivityNameAsync();
+
+            _newPlayers.Remove(e.Player.Index);
+            await SendTextMessageToChannelsAsync($"`{Sanitize(e.Player.DisplayName)} disconnected`");
+        }
+
+        public async ValueTask HandleAsync(PlayerKillEvent e)
+        {
+            if (_game.State == GameState.Playing && _game.Players.Count() >= 4)
+            {
+                var weaponName = GetWeaponName(e.Weapon);
+                var weaponText = e.Attacker?.Team.Id == e.Victim?.Team.Id ? "TK: " + weaponName : weaponName;
+                await SendTextMessageToChannelsAsync($"`{Sanitize(e.Attacker?.DisplayName)} [{weaponText}] {Sanitize(e.Victim?.DisplayName)}`");
+            }
+        }
+
+        public async ValueTask HandleAsync(PlayerDeathEvent e)
+        {
+            if (_game.State == GameState.Playing && _game.Players.Count() >= 4 && !e.IsSuicide)
+            {
+                await SendTextMessageToChannelsAsync($"`{Sanitize(e.Player.DisplayName)} died`", debug: true);
+            }
         }
     }
 }

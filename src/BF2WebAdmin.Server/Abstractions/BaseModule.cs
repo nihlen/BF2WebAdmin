@@ -7,6 +7,7 @@ namespace BF2WebAdmin.Server.Abstractions
     public abstract class BaseModule : IModule
     {
         protected readonly IGameServer GameServer;
+        protected IMediator Mediator => GameServer.ModManager.Mediator;
 
         protected BaseModule(IGameServer gameServer)
         {

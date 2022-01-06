@@ -415,14 +415,15 @@ namespace BF2WebAdmin.Server
             return result;
         }
 
-        private async Task<(IGameServer GameServer, IGameReader GameReader)> GetGameServerFromInitialMessageAsync(string message, IPEndPoint ipEndPoint, IGameWriter gameWriter)
+        private async Task<(IGameServer? GameServer, IGameReader? GameReader)> GetGameServerFromInitialMessageAsync(string message, IPEndPoint ipEndPoint, IGameWriter gameWriter)
         {
             var parts = message.Split('\t');
             var eventType = parts[0];
             if (eventType != "serverInfo")
             {
                 Log.Warning($"Unexpected server event {eventType} - expected serverInfo");
-                return (null, null);
+                return default;
+                //return (null, null);
             }
 
             var gamePort = int.Parse(parts[3]);

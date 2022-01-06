@@ -19,7 +19,7 @@ namespace BF2WebAdmin.Server.Entities
         private IGameWriter _gameWriter;
         public ServerInfo ServerInfo { get; private set; }
         public IGameWriter GameWriter => _gameWriter;
-        public IModManager ModManager { get; private set; }
+        public IModManager? ModManager { get; private set; }
 
         public string Id => $"{IpAddress}:{GamePort}";
         public string Name { get; private set; }
@@ -52,6 +52,7 @@ namespace BF2WebAdmin.Server.Entities
         public IEnumerable<Message> Messages => _chatBuffer.Get().OrderBy(x => x.Time);
         private readonly CircularBuffer<Message> _chatBuffer = new CircularBuffer<Message>(100);
 
+        // v1 - events
         //public event Action<string, int, int, int> ServerUpdate;
         //public event Action<GameState> GameStateChanged;
         //public event Action<SocketState> SocketStateChanged;
@@ -69,121 +70,122 @@ namespace BF2WebAdmin.Server.Entities
         //public event Action<Player, Position, Rotation, int> PlayerPosition;
         //public event Action<Projectile, Position, Rotation> ProjectilePosition;
 
-        public event Func<string, int, int, int, Task> ServerUpdate
-        {
-            add => _serverUpdateEvent.Add(value);
-            remove => _serverUpdateEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<string, int, int, int, Task>> _serverUpdateEvent = new AsyncEvent<Func<string, int, int, int, Task>>();
+        // v2 - async events
+        //public event Func<string, int, int, int, Task> ServerUpdate
+        //{
+        //    add => _serverUpdateEvent.Add(value);
+        //    remove => _serverUpdateEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<string, int, int, int, Task>> _serverUpdateEvent = new AsyncEvent<Func<string, int, int, int, Task>>();
 
-        public event Func<GameState, Task> GameStateChanged
-        {
-            add => _gameStateChangedEvent.Add(value);
-            remove => _gameStateChangedEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<GameState, Task>> _gameStateChangedEvent = new AsyncEvent<Func<GameState, Task>>();
+        //public event Func<GameState, Task> GameStateChanged
+        //{
+        //    add => _gameStateChangedEvent.Add(value);
+        //    remove => _gameStateChangedEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<GameState, Task>> _gameStateChangedEvent = new AsyncEvent<Func<GameState, Task>>();
 
-        public event Func<SocketState, Task> SocketStateChanged
-        {
-            add => _socketStateChangedEvent.Add(value);
-            remove => _socketStateChangedEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<SocketState, Task>> _socketStateChangedEvent = new AsyncEvent<Func<SocketState, Task>>();
+        //public event Func<SocketState, Task> SocketStateChanged
+        //{
+        //    add => _socketStateChangedEvent.Add(value);
+        //    remove => _socketStateChangedEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<SocketState, Task>> _socketStateChangedEvent = new AsyncEvent<Func<SocketState, Task>>();
 
-        public event Func<IEnumerable<Map>, Task> MapsChanged
-        {
-            add => _mapsChangedEvent.Add(value);
-            remove => _mapsChangedEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<IEnumerable<Map>, Task>> _mapsChangedEvent = new AsyncEvent<Func<IEnumerable<Map>, Task>>();
+        //public event Func<IEnumerable<Map>, Task> MapsChanged
+        //{
+        //    add => _mapsChangedEvent.Add(value);
+        //    remove => _mapsChangedEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<IEnumerable<Map>, Task>> _mapsChangedEvent = new AsyncEvent<Func<IEnumerable<Map>, Task>>();
 
-        public event Func<Map, Task> MapChanged
-        {
-            add => _mapChangedEvent.Add(value);
-            remove => _mapChangedEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Map, Task>> _mapChangedEvent = new AsyncEvent<Func<Map, Task>>();
+        //public event Func<Map, Task> MapChanged
+        //{
+        //    add => _mapChangedEvent.Add(value);
+        //    remove => _mapChangedEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Map, Task>> _mapChangedEvent = new AsyncEvent<Func<Map, Task>>();
 
-        public event Func<Message, Task> ChatMessage
-        {
-            add => _chatMessageEvent.Add(value);
-            remove => _chatMessageEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Message, Task>> _chatMessageEvent = new AsyncEvent<Func<Message, Task>>();
+        //public event Func<Message, Task> ChatMessage
+        //{
+        //    add => _chatMessageEvent.Add(value);
+        //    remove => _chatMessageEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Message, Task>> _chatMessageEvent = new AsyncEvent<Func<Message, Task>>();
 
-        public event Func<Player, Task> PlayerJoin
-        {
-            add => _playerJoinEvent.Add(value);
-            remove => _playerJoinEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Player, Task>> _playerJoinEvent = new AsyncEvent<Func<Player, Task>>();
+        //public event Func<Player, Task> PlayerJoin
+        //{
+        //    add => _playerJoinEvent.Add(value);
+        //    remove => _playerJoinEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Player, Task>> _playerJoinEvent = new AsyncEvent<Func<Player, Task>>();
 
-        public event Func<Player, Task> PlayerLeft
-        {
-            add => _playerLeftEvent.Add(value);
-            remove => _playerLeftEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Player, Task>> _playerLeftEvent = new AsyncEvent<Func<Player, Task>>();
+        //public event Func<Player, Task> PlayerLeft
+        //{
+        //    add => _playerLeftEvent.Add(value);
+        //    remove => _playerLeftEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Player, Task>> _playerLeftEvent = new AsyncEvent<Func<Player, Task>>();
 
-        public event Func<Player, Position, Rotation, Task> PlayerSpawn
-        {
-            add => _playerSpawnEvent.Add(value);
-            remove => _playerSpawnEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Player, Position, Rotation, Task>> _playerSpawnEvent = new AsyncEvent<Func<Player, Position, Rotation, Task>>();
+        //public event Func<Player, Position, Rotation, Task> PlayerSpawn
+        //{
+        //    add => _playerSpawnEvent.Add(value);
+        //    remove => _playerSpawnEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Player, Position, Rotation, Task>> _playerSpawnEvent = new AsyncEvent<Func<Player, Position, Rotation, Task>>();
 
-        public event Func<Player, Position, Player, Position, string, Task> PlayerKill
-        {
-            add => _playerKillEvent.Add(value);
-            remove => _playerKillEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Player, Position, Player, Position, string, Task>> _playerKillEvent = new AsyncEvent<Func<Player, Position, Player, Position, string, Task>>();
+        //public event Func<Player, Position, Player, Position, string, Task> PlayerKill
+        //{
+        //    add => _playerKillEvent.Add(value);
+        //    remove => _playerKillEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Player, Position, Player, Position, string, Task>> _playerKillEvent = new AsyncEvent<Func<Player, Position, Player, Position, string, Task>>();
 
-        public event Func<Player, Position, bool, Task> PlayerDeath
-        {
-            add => _playerDeathEvent.Add(value);
-            remove => _playerDeathEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Player, Position, bool, Task>> _playerDeathEvent = new AsyncEvent<Func<Player, Position, bool, Task>>();
+        //public event Func<Player, Position, bool, Task> PlayerDeath
+        //{
+        //    add => _playerDeathEvent.Add(value);
+        //    remove => _playerDeathEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Player, Position, bool, Task>> _playerDeathEvent = new AsyncEvent<Func<Player, Position, bool, Task>>();
 
-        public event Func<Player, Vehicle, Task> PlayerVehicle
-        {
-            add => _playerVehicleEvent.Add(value);
-            remove => _playerVehicleEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Player, Vehicle, Task>> _playerVehicleEvent = new AsyncEvent<Func<Player, Vehicle, Task>>();
+        //public event Func<Player, Vehicle, Task> PlayerVehicle
+        //{
+        //    add => _playerVehicleEvent.Add(value);
+        //    remove => _playerVehicleEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Player, Vehicle, Task>> _playerVehicleEvent = new AsyncEvent<Func<Player, Vehicle, Task>>();
 
-        public event Func<Player, Team, Task> PlayerTeam
-        {
-            add => _playerTeamEvent.Add(value);
-            remove => _playerTeamEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Player, Team, Task>> _playerTeamEvent = new AsyncEvent<Func<Player, Team, Task>>();
+        //public event Func<Player, Team, Task> PlayerTeam
+        //{
+        //    add => _playerTeamEvent.Add(value);
+        //    remove => _playerTeamEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Player, Team, Task>> _playerTeamEvent = new AsyncEvent<Func<Player, Team, Task>>();
 
-        public event Func<Player, int, int, int, int, Task> PlayerScore
-        {
-            add => _playerScoreEvent.Add(value);
-            remove => _playerScoreEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Player, int, int, int, int, Task>> _playerScoreEvent = new AsyncEvent<Func<Player, int, int, int, int, Task>>();
+        //public event Func<Player, int, int, int, int, Task> PlayerScore
+        //{
+        //    add => _playerScoreEvent.Add(value);
+        //    remove => _playerScoreEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Player, int, int, int, int, Task>> _playerScoreEvent = new AsyncEvent<Func<Player, int, int, int, int, Task>>();
 
-        public event Func<Player, Position, Rotation, int, Task> PlayerPosition
-        {
-            add => _playerPositionEvent.Add(value);
-            remove => _playerPositionEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Player, Position, Rotation, int, Task>> _playerPositionEvent = new AsyncEvent<Func<Player, Position, Rotation, int, Task>>();
+        //public event Func<Player, Position, Rotation, int, Task> PlayerPosition
+        //{
+        //    add => _playerPositionEvent.Add(value);
+        //    remove => _playerPositionEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Player, Position, Rotation, int, Task>> _playerPositionEvent = new AsyncEvent<Func<Player, Position, Rotation, int, Task>>();
 
-        public event Func<Projectile, Position, Rotation, Task> ProjectilePosition
-        {
-            add => _projectilePositionEvent.Add(value);
-            remove => _projectilePositionEvent.Remove(value);
-        }
-        private readonly AsyncEvent<Func<Projectile, Position, Rotation, Task>> _projectilePositionEvent = new AsyncEvent<Func<Projectile, Position, Rotation, Task>>();
+        //public event Func<Projectile, Position, Rotation, Task> ProjectilePosition
+        //{
+        //    add => _projectilePositionEvent.Add(value);
+        //    remove => _projectilePositionEvent.Remove(value);
+        //}
+        //private readonly AsyncEvent<Func<Projectile, Position, Rotation, Task>> _projectilePositionEvent = new AsyncEvent<Func<Projectile, Position, Rotation, Task>>();
 
 
         private bool _enablePositionUpdates = true;
-        private readonly SemaphoreSlim _modManagerLock = new SemaphoreSlim(1);
+        private readonly SemaphoreSlim _modManagerLock = new(1);
 
         private GameServer(IPAddress ipAddress, IGameWriter writer, ServerInfo serverInfo)
         {
@@ -191,32 +193,32 @@ namespace BF2WebAdmin.Server.Entities
             _gameWriter = writer;
             ServerInfo = serverInfo;
 
-            ServerUpdate += async (name, gamePort, queryPort, maxPlayers) =>
-            {
-                // TODO: don't run this here since errors are not logged/handled, and remove after running once so it doesn't create new ModManagers
-                // Server has the correct id now, so we can load player/server settings and setup mods
-                try
-                {
-                    // Avoid creating multiple modmanagers if called at the same time
-                    await _modManagerLock.WaitAsync();
-                    try
-                    {
-                        if (ModManager == null)
-                        {
-                            ModManager = await Server.ModManager.CreateAsync(this);
-                            await _socketStateChangedEvent.InvokeAsync(SocketState).ConfigureAwait(false);
-                        }
-                    }
-                    finally
-                    {
-                        _modManagerLock.Release();
-                    }
-                }
-                catch (Exception e)
-                {
-                    Log.Error(e, "ModManager creation failed on ServerUpdate");
-                }
-            };
+            //ServerUpdate += async (name, gamePort, queryPort, maxPlayers) =>
+            //{
+            //    // TODO: don't run this here since errors are not logged/handled, and remove after running once so it doesn't create new ModManagers
+            //    // Server has the correct id now, so we can load player/server settings and setup mods
+            //    try
+            //    {
+            //        // Avoid creating multiple modmanagers if called at the same time
+            //        await _modManagerLock.WaitAsync();
+            //        try
+            //        {
+            //            if (ModManager == null)
+            //            {
+            //                ModManager = await Server.ModManager.CreateAsync(this);
+            //                await _socketStateChangedEvent.InvokeAsync(SocketState).ConfigureAwait(false);
+            //            }
+            //        }
+            //        finally
+            //        {
+            //            _modManagerLock.Release();
+            //        }
+            //    }
+            //    catch (Exception e)
+            //    {
+            //        Log.Error(e, "ModManager creation failed on ServerUpdate");
+            //    }
+            //};
         }
 
         public static async Task<GameServer> CreateAsync(IPAddress ipAddress, IGameWriter writer, ServerInfo serverInfo)
@@ -231,7 +233,7 @@ namespace BF2WebAdmin.Server.Entities
             return gameServer;
         }
 
-        public async Task SetReconnectedAsync(IGameWriter gameWriter)
+        public async ValueTask SetReconnectedAsync(IGameWriter gameWriter)
         {
             StartTime = DateTime.UtcNow;
 
@@ -249,34 +251,72 @@ namespace BF2WebAdmin.Server.Entities
             GameWriter.SendRcon(RconScript.InitServer);
         }
 
-        public Task UpdateServerInfoAsync(string name, int gamePort, int queryPort, int maxPlayers)
+        public async ValueTask UpdateServerInfoAsync(string name, int gamePort, int queryPort, int maxPlayers)
         {
             Name = name;
             GamePort = gamePort;
             QueryPort = queryPort;
             MaxPlayers = maxPlayers;
-            return _serverUpdateEvent.InvokeAsync(name, gamePort, queryPort, maxPlayers);
+            //return _serverUpdateEvent.InvokeAsync(name, gamePort, queryPort, maxPlayers);
+            await CreateModManagerAsync();
+            await ModManager.Mediator.PublishAsync(new ServerUpdateEvent(name, gamePort, queryPort, maxPlayers, DateTimeOffset.UtcNow));
         }
 
-        public Task UpdateGameStateAsync(GameState state)
+        //ServerUpdate += async(name, gamePort, queryPort, maxPlayers) =>
+        private async ValueTask CreateModManagerAsync()
+        {
+            // TODO: don't run this here since errors are not logged/handled, and remove after running once so it doesn't create new ModManagers
+            // Server has the correct id now, so we can load player/server settings and setup mods
+            try
+            {
+                // Avoid creating multiple modmanagers if called at the same time
+                await _modManagerLock.WaitAsync();
+                try
+                {
+                    if (ModManager == null)
+                    {
+                        ModManager = await Server.ModManager.CreateAsync(this);
+                        //await _socketStateChangedEvent.InvokeAsync(SocketState).ConfigureAwait(false);
+                        await ModManager.Mediator.PublishAsync(new SocketStateChangedEvent(SocketState, DateTimeOffset.UtcNow));
+                    }
+                }
+                finally
+                {
+                    _modManagerLock.Release();
+                }
+            }
+            catch (Exception e)
+            {
+                Log.Error(e, "ModManager creation failed on ServerUpdate");
+            }
+        }
+
+        private ValueTask PublishEventAsync(IEvent e)
+        {
+            return ModManager?.Mediator?.PublishAsync(e) ?? ValueTask.CompletedTask;
+        }
+
+        public ValueTask UpdateGameStateAsync(GameState state)
         {
             State = state;
-            return _gameStateChangedEvent.InvokeAsync(state);
+            //return _gameStateChangedEvent.InvokeAsync(state);
+            return PublishEventAsync(new GameStateChangedEvent(state, DateTimeOffset.UtcNow));
         }
 
-        public Task UpdateSocketStateAsync(SocketState state)
+        public ValueTask UpdateSocketStateAsync(SocketState state)
         {
             // TODO: Stop all running tasks/commands when disconnecting - wait for reconnection
             if (state != SocketState)
             {
                 SocketState = state;
-                return _socketStateChangedEvent.InvokeAsync(state);
+                //return _socketStateChangedEvent.InvokeAsync(state);
+                return PublishEventAsync(new SocketStateChangedEvent(state, DateTimeOffset.UtcNow));
             }
 
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
-        public Task UpdateMapsAsync(IList<string> maps)
+        public ValueTask UpdateMapsAsync(IList<string> maps)
         {
             _maps.Clear();
 
@@ -290,10 +330,11 @@ namespace BF2WebAdmin.Server.Entities
                 });
             }
 
-            return _mapsChangedEvent.InvokeAsync(Maps);
+            //return _mapsChangedEvent.InvokeAsync(Maps);
+            return PublishEventAsync(new MapsChangedEvent(Maps, DateTimeOffset.UtcNow));
         }
 
-        public Task UpdateMapAsync(string mapName, string team1Name, string team2Name)
+        public ValueTask UpdateMapAsync(string mapName, string team1Name, string team2Name)
         {
             Map = _maps.FirstOrDefault(m => m.Name == mapName);
 
@@ -304,10 +345,11 @@ namespace BF2WebAdmin.Server.Entities
             // Some settings get cleared when we change map so we need to do it again
             GameWriter.SendRcon(RconScript.InitServer);
 
-            return _mapChangedEvent.InvokeAsync(Map);
+            //return _mapChangedEvent.InvokeAsync(Map);
+            return PublishEventAsync(new MapChangedEvent(Map, DateTimeOffset.UtcNow));
         }
 
-        public Task AddPlayerAsync(Player player)
+        public ValueTask AddPlayerAsync(Player player)
         {
             if (DateTime.UtcNow - StartTime > TimeSpan.FromMinutes(1))
             {
@@ -319,10 +361,11 @@ namespace BF2WebAdmin.Server.Entities
             }
 
             _players.Add(player);
-            return _playerJoinEvent.InvokeAsync(player);
+            //return _playerJoinEvent.InvokeAsync(player);
+            return PublishEventAsync(new PlayerJoinEvent(player, DateTimeOffset.UtcNow));
         }
 
-        public Task UpdatePlayerAsync(Player player, Position position, Rotation rotation, int ping)
+        public ValueTask UpdatePlayerAsync(Player player, Position position, Rotation rotation, int ping)
         {
             player.Position = position;
             player.Rotation = rotation;
@@ -334,12 +377,15 @@ namespace BF2WebAdmin.Server.Entities
             player.Score.Ping = ping;
 
             if (_enablePositionUpdates)
-                return _playerPositionEvent.InvokeAsync(player, position, rotation, ping);
+            {
+                //return _playerPositionEvent.InvokeAsync(player, position, rotation, ping);
+                return PublishEventAsync(new PlayerPositionEvent(player, position, rotation, ping, DateTimeOffset.UtcNow));
+            }
 
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
-        public Task UpdatePlayerVehicleAsync(Player player, Vehicle vehicle, string subVehicleTemplate)
+        public async ValueTask UpdatePlayerVehicleAsync(Player player, Vehicle vehicle, string subVehicleTemplate)
         {
             if (player.Vehicle != null)
             {
@@ -347,29 +393,32 @@ namespace BF2WebAdmin.Server.Entities
                 player.PreviousVehicle.Players.Remove(player);
             }
 
-            var tasks = new List<Task>(2);
+            //var tasks = new List<Task>(2);
 
             if (!player.IsAlive)
             {
                 // Spawning directly in vehicle doesn't send a PlayerSpawn event
                 player.IsAlive = true;
-                tasks.Add(_playerSpawnEvent.InvokeAsync(player, player.Position ?? new Position(0, 0, 0), player.Rotation ?? new Rotation(0, 0, 0)));
+                //tasks.Add(_playerSpawnEvent.InvokeAsync(player, player.Position ?? new Position(0, 0, 0), player.Rotation ?? new Rotation(0, 0, 0)));
+                await PublishEventAsync(new PlayerSpawnEvent(player, player.Position ?? new Position(0, 0, 0), player.Rotation ?? new Rotation(0, 0, 0), DateTimeOffset.UtcNow));
             }
 
             player.Vehicle = vehicle;
             player.SubVehicleTemplate = subVehicleTemplate;
-            tasks.Add(_playerVehicleEvent.InvokeAsync(player, vehicle));
+            //tasks.Add(_playerVehicleEvent.InvokeAsync(player, vehicle));
+            await PublishEventAsync(new PlayerVehicleEvent(player, vehicle, DateTimeOffset.UtcNow));
 
-            return Task.WhenAll(tasks);
+            //return Task.WhenAll(tasks);
         }
 
-        public Task UpdatePlayerTeamAsync(Player player, int teamId)
+        public ValueTask UpdatePlayerTeamAsync(Player player, int teamId)
         {
             player.Team = _teams.First(t => t.Id == teamId);
-            return _playerTeamEvent.InvokeAsync(player, player.Team);
+            //return _playerTeamEvent.InvokeAsync(player, player.Team);
+            return PublishEventAsync(new PlayerTeamEvent(player, player.Team, DateTimeOffset.UtcNow));
         }
 
-        public Task UpdatePlayerScoreAsync(Player player, int teamScore, int kills, int deaths, int totalScore)
+        public ValueTask UpdatePlayerScoreAsync(Player player, int teamScore, int kills, int deaths, int totalScore)
         {
             //if (player.Score == null)
             //{
@@ -381,53 +430,63 @@ namespace BF2WebAdmin.Server.Entities
             player.Score.Deaths = deaths;
             player.Score.Total = totalScore;
 
-            return _playerScoreEvent.InvokeAsync(player, teamScore, kills, deaths, totalScore);
+            //return _playerScoreEvent.InvokeAsync(player, teamScore, kills, deaths, totalScore);
+            return PublishEventAsync(new PlayerScoreEvent(player, teamScore, kills, deaths, totalScore, DateTimeOffset.UtcNow));
         }
 
-        public Task UpdateProjectileAsync(Projectile projectile, Position position, Rotation rotation)
+        public ValueTask UpdateProjectileAsync(Projectile projectile, Position position, Rotation rotation)
         {
             projectile.Position = position;
             projectile.Rotation = rotation;
 
             if (_enablePositionUpdates)
-                return _projectilePositionEvent.InvokeAsync(projectile, position, rotation);
+            {
+                //return _projectilePositionEvent.InvokeAsync(projectile, position, rotation);
+                return PublishEventAsync(new ProjectilePositionEvent(projectile, position, rotation, DateTimeOffset.UtcNow));
+            }
 
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
-        public Task RemovePlayerAsync(Player player)
+        public ValueTask RemovePlayerAsync(Player player)
         {
             _players.Remove(player);
-            return _playerLeftEvent.InvokeAsync(player);
+            //return _playerLeftEvent.InvokeAsync(player);
+            return PublishEventAsync(new PlayerLeftEvent(player, DateTimeOffset.UtcNow));
         }
 
-        public Task SetPlayerSpawnAsync(Player player, Position position, Rotation rotation)
+        public ValueTask SetPlayerSpawnAsync(Player player, Position position, Rotation rotation)
         {
             player.IsAlive = true;
             player.Position = position;
             player.Rotation = rotation;
 
-            return _playerSpawnEvent.InvokeAsync(player, position, rotation);
+            //return _playerSpawnEvent.InvokeAsync(player, position, rotation);
+            return PublishEventAsync(new PlayerSpawnEvent(player, position, rotation, DateTimeOffset.UtcNow));
         }
 
-        public Task SetPlayerKillAsync(Player attacker, Position attackerPosition, Player victim, Position victimPosition, string weapon)
+        public ValueTask SetPlayerKillAsync(Player attacker, Position attackerPosition, Player victim, Position victimPosition, string weapon)
         {
             victim.IsAlive = false;
-            return _playerKillEvent.InvokeAsync(attacker, attackerPosition, victim, victimPosition, weapon);
+            //return _playerKillEvent.InvokeAsync(attacker, attackerPosition, victim, victimPosition, weapon);
+            return PublishEventAsync(new PlayerKillEvent(attacker, attackerPosition, victim, victimPosition, weapon, DateTimeOffset.UtcNow));
         }
 
-        public Task SetPlayerDeathAsync(Player player, Position position)
+        public ValueTask SetPlayerDeathAsync(Player player, Position position)
         {
             // TODO: it always thinks it's suicide - which order does kill/death events come?
             var isSuicide = player.IsAlive;
             player.IsAlive = false;
-            return _playerDeathEvent.InvokeAsync(player, position, isSuicide);
+            //return _playerDeathEvent.InvokeAsync(player, position, isSuicide);
+            return PublishEventAsync(new PlayerDeathEvent(player, position, isSuicide, DateTimeOffset.UtcNow));
         }
 
-        public Task AddMessageAsync(Message message)
+        public async ValueTask AddMessageAsync(Message message)
         {
             _chatBuffer.Add(message);
-            return _chatMessageEvent.InvokeAsync(message);
+            //return _chatMessageEvent.InvokeAsync(message);
+            await ModManager.HandleChatMessageAsync(message);
+            await PublishEventAsync(new ChatMessageEvent(message, DateTimeOffset.UtcNow));
         }
 
         public void SetRconResponse(string responseCode, string value)

@@ -19,6 +19,7 @@ namespace BF2WebAdmin.Server
         private static IEnumerable<Type> _moduleTypes;
 
         private static IEnumerable<Type> _commandTypes;
+        private static IEnumerable<Type> _eventTypes;
 
         // Parses different command aliases and parameters to their respective ICommand(s)
         public IDictionary<string, IList<Func<string[], ICommand>>> CommandParsers => _commandParsers;
@@ -30,8 +31,12 @@ namespace BF2WebAdmin.Server
         private static IDictionary<Type, Auth> _authLevels = new Dictionary<Type, Auth>();
 
         // Invokes the handler module instance(s) with a command of the given Type
-        public IDictionary<Type, IList<Func<ICommand, Task>>> CommandHandlers => GetCommandHandlers();
-        private IDictionary<Type, IList<Func<ICommand, Task>>> _commandHandlers;
+        public IDictionary<Type, IList<Func<ICommand, ValueTask>>> CommandHandlers => GetCommandHandlers();
+        private IDictionary<Type, IList<Func<ICommand, ValueTask>>> _commandHandlers;
+
+        // Invokes the handler module instance(s) with a command of the given Type
+        public IDictionary<Type, IList<Func<IEvent, ValueTask>>> EventHandlers => GetEventHandlers();
+        private IDictionary<Type, IList<Func<IEvent, ValueTask>>> _eventHandlers;
 
         // Module instances
         public IDictionary<Type, IModule> Modules { get; } = new Dictionary<Type, IModule>();
@@ -43,11 +48,11 @@ namespace BF2WebAdmin.Server
             File.WriteAllText("commands.txt", CommandDocumentation.ToString());
         }
 
-        private IDictionary<Type, IList<Func<ICommand, Task>>> GetCommandHandlers()
+        private IDictionary<Type, IList<Func<ICommand, ValueTask>>> GetCommandHandlers()
         {
             if (_commandHandlers == null)
             {
-                _commandHandlers = new Dictionary<Type, IList<Func<ICommand, Task>>>();
+                _commandHandlers = new Dictionary<Type, IList<Func<ICommand, ValueTask>>>();
                 CreateCommandHandlers();
             }
 
@@ -56,11 +61,11 @@ namespace BF2WebAdmin.Server
 
         private void CreateCommandHandlers()
         {
-            foreach (var cmdType in _commandTypes)
+            foreach (var commandType in _commandTypes)
             {
                 Action create = CreateCommandHandler<ICommand>;
                 var method = create.GetMethodInfo().GetGenericMethodDefinition();
-                var generic = method.MakeGenericMethod(cmdType);
+                var generic = method.MakeGenericMethod(commandType);
                 generic.Invoke(this, null);
             }
         }
@@ -75,7 +80,7 @@ namespace BF2WebAdmin.Server
             {
                 var commandType = commandHandler.CommandType;
                 if (!CommandHandlers.ContainsKey(commandType))
-                    CommandHandlers.Add(commandType, new List<Func<ICommand, Task>>());
+                    CommandHandlers.Add(commandType, new List<Func<ICommand, ValueTask>>());
 
                 // Has an instance of this module been created?
                 if (!Modules.ContainsKey(commandHandler.ModuleType))
@@ -99,7 +104,7 @@ namespace BF2WebAdmin.Server
                             }
                         }
 
-                        return Task.CompletedTask;
+                        return ValueTask.CompletedTask;
                     });
 
                     handlerCount++;
@@ -134,10 +139,81 @@ namespace BF2WebAdmin.Server
                 Log.Warning("No command handlers registered for {commandName}", typeof(TCommand).Name);
         }
 
+        private IDictionary<Type, IList<Func<IEvent, ValueTask>>> GetEventHandlers()
+        {
+            if (_eventHandlers == null)
+            {
+                _eventHandlers = new Dictionary<Type, IList<Func<IEvent, ValueTask>>>();
+                CreateEventHandlers();
+            }
+
+            return _eventHandlers;
+        }
+
+        private void CreateEventHandlers()
+        {
+            foreach (var eventType in _eventTypes)
+            {
+                Action create = CreateEventHandler<IEvent>;
+                var method = create.GetMethodInfo().GetGenericMethodDefinition();
+                var generic = method.MakeGenericMethod(eventType);
+                generic.Invoke(this, null);
+            }
+        }
+
+        private void CreateEventHandler<TEvent>() where TEvent : IEvent
+        {
+            // TODO: Search in IModules instead of whole assembly?
+            var assemblyEventHandlers = GetEventHandlers(CurrentAssembly);
+
+            var handlerCount = 0;
+            foreach (var eventHandler in assemblyEventHandlers)
+            {
+                var eventType = eventHandler.EventType;
+                if (!EventHandlers.ContainsKey(eventType))
+                    EventHandlers.Add(eventType, new List<Func<IEvent, ValueTask>>());
+
+                // Has an instance of this module been created?
+                if (!Modules.ContainsKey(eventHandler.ModuleType))
+                {
+                    //throw new NullReferenceException($"No instance of {eventHandler.ModuleType} exists");
+                    Log.Warning($"No instance of {eventHandler.ModuleType.Name} exists for {eventHandler.EventType.Name}");
+                    continue;
+                }
+
+                // Ok, well maybe it's async
+                if (Modules[eventHandler.ModuleType] is IHandleEventAsync<TEvent> asyncHandler)
+                {
+                    EventHandlers[eventType].Add(async gameEvent =>
+                    {
+                        // Check command type since alias can map to different commands depending on parameters
+                        if (gameEvent is TEvent matchedEvent)
+                        {
+                            try
+                            {
+                                await asyncHandler.HandleAsync(matchedEvent);
+                            }
+                            catch (Exception e)
+                            {
+                                Log.Error(e, "Event handling failed for {Event} (async)", matchedEvent);
+                            }
+                        }
+                    });
+
+                    handlerCount++;
+                    continue;
+                }
+            }
+
+            if (handlerCount == 0)
+                Log.Warning("No event handlers registered for {EventName}", typeof(TEvent).Name);
+        }
+
         private static void ScanAssembly()
         {
             _moduleTypes = GetModules(CurrentAssembly).ToArray();
             _commandTypes = GetCommands(CurrentAssembly).ToArray();
+            _eventTypes = GetEvents(CurrentAssembly).ToArray();
 
             foreach (var commandType in _commandTypes)
             {
@@ -157,7 +233,7 @@ namespace BF2WebAdmin.Server
                     }
 
                     var parameters = attr.Parameters != null ? $"<{string.Join("> <", attr.Parameters)}>" : string.Empty;
-                    CommandDocumentation.AppendLine($"{string.Join("|", attr.Aliases ?? new string[0])} {parameters}\t{attr.AuthLevel}\t({commandType.Name})");
+                    CommandDocumentation.AppendLine($"{string.Join("|", attr.Aliases ?? Array.Empty<string>())} {parameters}\t{attr.AuthLevel}\t({commandType.Name})");
                 }
             }
         }
@@ -216,6 +292,20 @@ namespace BF2WebAdmin.Server
                 };
         }
 
+        private static IEnumerable<EventModule> GetEventHandlers(Assembly assembly)
+        {
+            return
+                from t in assembly.GetTypes()
+                let interfaces = t.GetInterfaces().Where(IsEventHandler)
+                from i in interfaces
+                let args = i.GetGenericArguments()
+                select new EventModule
+                {
+                    EventType = args[0],
+                    ModuleType = t
+                };
+        }
+
         private static bool IsCommandHandler(Type type)
         {
             return type.GetTypeInfo().IsGenericType &&
@@ -223,9 +313,20 @@ namespace BF2WebAdmin.Server
                 type.GetGenericTypeDefinition() == typeof(IHandleCommandAsync<>));
         }
 
+        private static bool IsEventHandler(Type type)
+        {
+            return type.GetTypeInfo().IsGenericType &&
+                (type.GetGenericTypeDefinition() == typeof(IHandleEventAsync<>));
+        }
+
         private static IEnumerable<Type> GetCommands(Assembly assembly)
         {
             return AllTypesWithInterface<ICommand>(assembly);
+        }
+
+        private static IEnumerable<Type> GetEvents(Assembly assembly)
+        {
+            return AllTypesWithInterface<IEvent>(assembly);
         }
 
         private static IEnumerable<Type> AllTypesWithInterface<T>(Assembly assembly)
@@ -245,6 +346,12 @@ namespace BF2WebAdmin.Server
         private class CommandModule
         {
             public Type CommandType { get; set; }
+            public Type ModuleType { get; set; }
+        }
+
+        private class EventModule
+        {
+            public Type EventType { get; set; }
             public Type ModuleType { get; set; }
         }
     }

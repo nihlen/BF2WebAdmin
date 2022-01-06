@@ -7,9 +7,11 @@ namespace BF2WebAdmin.Server.Abstractions
     {
         Data.Entities.Server ServerSettings { get; }
         ILookup<string, ServerPlayerAuth> AuthPlayers { get; }
+        IMediator Mediator { get; }
         T GetModule<T>() where T : IModule;
         //T GetModule<T>(IGameServer gameServer) where T : IModule;
         Task GetAuthPlayersAsync();
         Task HandleFakeChatMessageAsync(Message message);
+        ValueTask HandleChatMessageAsync(Message message);
     }
 }

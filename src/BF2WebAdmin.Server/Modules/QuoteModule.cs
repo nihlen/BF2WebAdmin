@@ -19,13 +19,13 @@ namespace BF2WebAdmin.Server.Modules
             _config = config.Value;
         }
 
-        public async Task HandleAsync(QuoteCommand command)
+        public async ValueTask HandleAsync(QuoteCommand command)
         {
             var quote = await GetQuoteAsync("movies");
             _gameServer.GameWriter.SendText(quote);
         }
 
-        public async Task HandleAsync(QuoteCategoryCommand command)
+        public async ValueTask HandleAsync(QuoteCategoryCommand command)
         {
             if (command.Category != "movies" && command.Category != "famous")
             {

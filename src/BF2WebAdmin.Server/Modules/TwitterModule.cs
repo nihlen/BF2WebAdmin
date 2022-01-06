@@ -33,7 +33,7 @@ namespace BF2WebAdmin.Server.Modules
                 config.Value.AccessTokenSecret);
         }
 
-        public async Task HandleAsync(TwitterFollowCommand command)
+        public async ValueTask HandleAsync(TwitterFollowCommand command)
         {
             if (command.Stream.StartsWith("#"))
                 await FollowHashTagAsync(command.Stream.Replace("#", string.Empty));

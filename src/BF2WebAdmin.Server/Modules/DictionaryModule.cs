@@ -14,7 +14,7 @@ namespace BF2WebAdmin.Server.Modules
             _gameServer = server;
         }
 
-        public async Task HandleAsync(DefineCommand command)
+        public async ValueTask HandleAsync(DefineCommand command)
         {
             var term = Uri.EscapeDataString(command.Term);
             var client = new HttpClient();

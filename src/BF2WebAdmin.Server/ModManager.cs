@@ -28,6 +28,7 @@ namespace BF2WebAdmin.Server
         private const string CommandPrefix = ".";
 
         private readonly IModuleResolver _moduleResolver;
+        //private readonly IMediator _mediator;
         private readonly IGameServer _gameServer;
 
         private IConfiguration Configuration { get; set; }
@@ -36,6 +37,8 @@ namespace BF2WebAdmin.Server
         public ILookup<string, ServerPlayerAuth> AuthPlayers { get; private set; }
 
         public Data.Entities.Server ServerSettings { get; private set; }
+
+        public IMediator Mediator { get; private set; }
 
         static ModManager()
         {
@@ -95,7 +98,8 @@ namespace BF2WebAdmin.Server
         {
             _gameServer = gameServer;
             _moduleResolver = new ModuleResolver();
-            gameServer.ChatMessage += async message => await HandleChatMessageAsync(message);
+            Mediator = new Mediator(_moduleResolver);
+            //gameServer.ChatMessage += async message => await HandleChatMessageAsync(message);
 
             BuildConfiguration();
             ConfigureDependencies();
@@ -166,6 +170,7 @@ namespace BF2WebAdmin.Server
             serviceCollection.AddSingleton<ICountryResolver>(c => new CountryResolver(geoipConfig["DatabasePath"]));
             serviceCollection.AddSingleton<IReadOnlyPolicyRegistry<string>>(PolicyRegistry);
             serviceCollection.AddSingleton<IChatLogger, DiscordChatLogger>();
+            serviceCollection.AddSingleton<IMediator>(c => Mediator);
 
             // Modules
             foreach (var moduleType in _moduleResolver.ModuleTypes)
@@ -220,25 +225,25 @@ namespace BF2WebAdmin.Server
             AuthPlayers = authPlayers.ToLookup(p => p.PlayerHash);
         }
 
-        public Task HandleFakeChatMessageAsync(Message message)
+        public async Task HandleFakeChatMessageAsync(Message message)
         {
-            return HandleChatMessageAsync(message);
+            await HandleChatMessageAsync(message);
         }
 
-        private Task HandleChatMessageAsync(Message message)
+        public ValueTask HandleChatMessageAsync(Message message)
         {
             if (message.Type != MessageType.Player)
-                return Task.CompletedTask;
+                return ValueTask.CompletedTask;
 
             // Cleanup *DEAD*
             message.Text = Regex.Replace(message.Text, @"^\*[^\*]+\*", string.Empty, RegexOptions.Compiled);
             if (message.Text.StartsWith(CommandPrefix))
                 return HandleCommandAsync(message);
 
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
-        private Task HandleCommandAsync(Message message)
+        private async ValueTask HandleCommandAsync(Message message)
         {
             // TODO: rate limit low users
             var cmd = message.Text[CommandPrefix.Length..];
@@ -248,7 +253,7 @@ namespace BF2WebAdmin.Server
 
             // Unknown command
             if (!_moduleResolver.CommandParsers.ContainsKey(alias))
-                return Task.CompletedTask;
+                return;
 
             // Try to parse the message into different commands
             var insufficientPermissionsCount = 0;
@@ -270,29 +275,32 @@ namespace BF2WebAdmin.Server
                         continue;
                     }
 
+                    // TODO: move the below part to Mediator?
                     // Append the message if it's a BaseCommand
                     if (command is BaseCommand baseCommand)
                         baseCommand.Message = message;
                     else
                         Log.Warning("{CommandName} is not a {BaseCommand}", commandType.Name, nameof(BaseCommand));
 
-                    if (!_moduleResolver.CommandHandlers.ContainsKey(commandType))
-                        throw new Exception($"No command handler registered for {commandType.Name}");
+                    await Mediator.HandleAsync(command);
+                    
+                    //if (!_moduleResolver.CommandHandlers.ContainsKey(commandType))
+                    //    throw new Exception($"No command handler registered for {commandType.Name}");
 
-                    //var commandTasks = new List<Task>();
+                    ////var commandTasks = new List<Task>();
 
-                    // TODO: properly hand async commands - always return Func<Task> and await Task.WhenAll?
-                    foreach (var handler in _moduleResolver.CommandHandlers[commandType])
-                    {
-                        // Errors are handled in the command handler wrapper
-                        _ = Task.Run(async () => await handler(command));
-                        //commandTasks.Add(Task.Run(async () => await handler(command)));
-                        //commandTasks.Add(handler(command));
-                        handledCount++;
-                    }
+                    //// TODO: properly hand async commands - always return Func<Task> and await Task.WhenAll?
+                    //foreach (var handler in _moduleResolver.CommandHandlers[commandType])
+                    //{
+                    //    // Errors are handled in the command handler wrapper
+                    //    _ = Task.Run(async () => await handler(command));
+                    //    //commandTasks.Add(Task.Run(async () => await handler(command)));
+                    //    //commandTasks.Add(handler(command));
+                    //    handledCount++;
+                    //}
 
-                    // TODO: necessary to await this? we don't want to block other events, and don't care about the result
-                    //await Task.WhenAll(commandTasks);
+                    //// TODO: necessary to await this? we don't want to block other events, and don't care about the result
+                    ////await Task.WhenAll(commandTasks);
                 }
                 catch (CommandArgumentCountException ex)
                 {
@@ -313,8 +321,6 @@ namespace BF2WebAdmin.Server
             {
                 _gameServer.GameWriter.SendText("Insufficient permissions");
             }
-
-            return Task.CompletedTask;
         }
     }
 }

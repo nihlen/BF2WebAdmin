@@ -17,47 +17,51 @@ namespace BF2WebAdmin.Server
         /*
          * Server events
          */
-        public Task OnServerInfoAsync(string serverName, string maps, int gamePort, int queryPort, int maxPlayers)
+        public async ValueTask OnServerInfoAsync(string serverName, string maps, int gamePort, int queryPort, int maxPlayers)
         {
             var mapNames = maps.Split(",").Select(l => l.Split("|").FirstOrDefault()).ToList();
-            return Task.WhenAll(
-                _server.UpdateServerInfoAsync(serverName, gamePort, queryPort, maxPlayers),
-                _server.UpdateMapsAsync(mapNames)
-            );
+            //return Task.WhenAll(
+            //    _server.UpdateServerInfoAsync(serverName, gamePort, queryPort, maxPlayers),
+            //    _server.UpdateMapsAsync(mapNames)
+            //);
+            await _server.UpdateServerInfoAsync(serverName, gamePort, queryPort, maxPlayers);
+            await _server.UpdateMapsAsync(mapNames);
         }
 
         /*
          * Game status events
          */
-        public Task OnGameStatePreGameAsync()
+        public ValueTask OnGameStatePreGameAsync()
         {
             return _server.UpdateGameStateAsync(GameState.PreGame);
         }
 
-        public Task OnGameStatePlayingAsync(string team1Name, string team2Name, string mapName, int maxPlayers)
+        public async ValueTask OnGameStatePlayingAsync(string team1Name, string team2Name, string mapName, int maxPlayers)
         {
-            return Task.WhenAll(
-                _server.UpdateGameStateAsync(GameState.Playing),
-                _server.UpdateMapAsync(mapName, team1Name, team2Name)
-            );
+            //return Task.WhenAll(
+            //    _server.UpdateGameStateAsync(GameState.Playing),
+            //    _server.UpdateMapAsync(mapName, team1Name, team2Name)
+            //);
+            await _server.UpdateGameStateAsync(GameState.Playing);
+            await _server.UpdateMapAsync(mapName, team1Name, team2Name);
         }
 
-        public Task OnGameStateEndGameAsync(string team1Name, int team1Tickets, string team2Name, int team2Tickets, string mapName)
+        public ValueTask OnGameStateEndGameAsync(string team1Name, int team1Tickets, string team2Name, int team2Tickets, string mapName)
         {
             return _server.UpdateGameStateAsync(GameState.EndGame);
         }
 
-        public Task OnGameStatePausedAsync()
+        public ValueTask OnGameStatePausedAsync()
         {
             return _server.UpdateGameStateAsync(GameState.Paused);
         }
 
-        public Task OnGameStateRestartAsync()
+        public ValueTask OnGameStateRestartAsync()
         {
             return _server.UpdateGameStateAsync(GameState.Restart);
         }
 
-        public Task OnGameStateNotConnectedAsync()
+        public ValueTask OnGameStateNotConnectedAsync()
         {
             return _server.UpdateGameStateAsync(GameState.NotConnected);
         }
@@ -65,12 +69,12 @@ namespace BF2WebAdmin.Server
         /*
          * Game events
          */
-        public Task OnControlPointCaptureAsync(int teamId, string cpName)
+        public ValueTask OnControlPointCaptureAsync(int teamId, string cpName)
         {
             throw new NotImplementedException();
         }
 
-        public Task OnControlPointNeutralisedAsync(string cpName)
+        public ValueTask OnControlPointNeutralisedAsync(string cpName)
         {
             throw new NotImplementedException();
         }
@@ -78,18 +82,18 @@ namespace BF2WebAdmin.Server
         /*
          * Timer events
          */
-        public Task OnTicketStatusAsync(string team1Name, int team1Tickets, string team2Name, int team2Tickets, string mapName)
+        public ValueTask OnTicketStatusAsync(string team1Name, int team1Tickets, string team2Name, int team2Tickets, string mapName)
         {
             throw new NotImplementedException();
         }
 
-        public Task OnPlayerPositionUpdateAsync(int playerIndex, Position position, Rotation rotation, int ping)
+        public ValueTask OnPlayerPositionUpdateAsync(int playerIndex, Position position, Rotation rotation, int ping)
         {
             var player = _server.GetPlayer(playerIndex);
             return _server.UpdatePlayerAsync(player, position, rotation, ping);
         }
 
-        public Task OnProjectilePositionUpdateAsync(int id, string templateName, Position position, Rotation rotation)
+        public ValueTask OnProjectilePositionUpdateAsync(int id, string templateName, Position position, Rotation rotation)
         {
             var projectile = _server.GetProjectile(id, templateName, position);
             return _server.UpdateProjectileAsync(projectile, position, rotation);
@@ -98,7 +102,7 @@ namespace BF2WebAdmin.Server
         /*
          * Player events
          */
-        public Task OnPlayerConnectAsync(int index, string name, int pid, string ipAddress, string hash, int teamId)
+        public ValueTask OnPlayerConnectAsync(int index, string name, int pid, string ipAddress, string hash, int teamId)
         {
             var player = new Player
             {
@@ -112,53 +116,53 @@ namespace BF2WebAdmin.Server
             return _server.AddPlayerAsync(player);
         }
 
-        public Task OnPlayerSpawnAsync(int index, Position pos, Rotation rot)
+        public ValueTask OnPlayerSpawnAsync(int index, Position pos, Rotation rot)
         {
             var player = _server.GetPlayer(index);
             return _server.SetPlayerSpawnAsync(player, pos, rot);
         }
 
-        public Task OnPlayerChangeTeamAsync(int index, int teamId)
+        public ValueTask OnPlayerChangeTeamAsync(int index, int teamId)
         {
             var player = _server.GetPlayer(index);
             return _server.UpdatePlayerTeamAsync(player, teamId);
         }
 
-        public Task OnPlayerScoreAsync(int index, int score, int teamScore, int kills, int deaths)
+        public ValueTask OnPlayerScoreAsync(int index, int score, int teamScore, int kills, int deaths)
         {
             var player = _server.GetPlayer(index);
             return _server.UpdatePlayerScoreAsync(player, teamScore, kills, deaths, score);
         }
 
-        public Task OnPlayerRevivedAsync(int medicIndex, int reviveeIndex)
+        public ValueTask OnPlayerRevivedAsync(int medicIndex, int reviveeIndex)
         {
             throw new NotImplementedException();
         }
 
-        public Task OnPlayerKilledSelfAsync(int index, Position pos)
+        public ValueTask OnPlayerKilledSelfAsync(int index, Position pos)
         {
             throw new NotImplementedException();
         }
 
-        public Task OnPlayerTeamkilledAsync(int attackerIndex, Position attackerPos, int victimIndex, Position victimPos)
+        public ValueTask OnPlayerTeamkilledAsync(int attackerIndex, Position attackerPos, int victimIndex, Position victimPos)
         {
             throw new NotImplementedException();
         }
 
-        public Task OnPlayerKilledAsync(int attackerIndex, Position attackerPos, int victimIndex, Position victimPos, string weapon)
+        public ValueTask OnPlayerKilledAsync(int attackerIndex, Position attackerPos, int victimIndex, Position victimPos, string weapon)
         {
             var attacker = _server.GetPlayer(attackerIndex);
             var victim = _server.GetPlayer(victimIndex);
             return _server.SetPlayerKillAsync(attacker, attackerPos, victim, victimPos, weapon);
         }
 
-        public Task OnPlayerDeathAsync(int index, Position pos)
+        public ValueTask OnPlayerDeathAsync(int index, Position pos)
         {
             var player = _server.GetPlayer(index);
             return _server.SetPlayerDeathAsync(player, pos);
         }
 
-        public Task OnPlayerDisconnectAsync(int index)
+        public ValueTask OnPlayerDisconnectAsync(int index)
         {
             var player = _server.GetPlayer(index);
             return _server.RemovePlayerAsync(player);
@@ -167,33 +171,33 @@ namespace BF2WebAdmin.Server
         /*
          * Vehicle events
          */
-        public Task OnEnterVehicleAsync(int index, int rootVehicleId, string rootVehicleName, string vehicleName)
+        public ValueTask OnEnterVehicleAsync(int index, int rootVehicleId, string rootVehicleName, string vehicleName)
         {
             if (vehicleName.Contains("soldier"))
-                return Task.CompletedTask;
+                return ValueTask.CompletedTask;
 
             var player = _server.GetPlayer(index);
             var vehicle = _server.GetVehicle(player, rootVehicleId, rootVehicleName, vehicleName);
             return _server.UpdatePlayerVehicleAsync(player, vehicle, vehicleName);
         }
 
-        public Task OnExitVehicleAsync(int index, int rootVehicleId, string rootVehicleName, string vehicleName)
+        public ValueTask OnExitVehicleAsync(int index, int rootVehicleId, string rootVehicleName, string vehicleName)
         {
             var player = _server.GetPlayer(index);
             return _server.UpdatePlayerVehicleAsync(player, null, null);
         }
 
-        public Task OnVehicleDestroyedAsync(int vehicleId, string vehicleName)
+        public ValueTask OnVehicleDestroyedAsync(int vehicleId, string vehicleName)
         {
             // vehicleId is currently always -1 here
             //throw new NotImplementedException();
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
         /*
          * Chat events	
          */
-        public Task OnChatServerAsync(string channel, string flags, string text)
+        public ValueTask OnChatServerAsync(string channel, string flags, string text)
         {
             var message = new Message
             {
@@ -206,7 +210,7 @@ namespace BF2WebAdmin.Server
             return _server.AddMessageAsync(message);
         }
 
-        public Task OnChatPlayerAsync(string channel, string flags, int index, string text)
+        public ValueTask OnChatPlayerAsync(string channel, string flags, int index, string text)
         {
             var message = new Message
             {

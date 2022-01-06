@@ -8,7 +8,10 @@ using SixLabors.ImageSharp;
 
 namespace BF2WebAdmin.Server.Modules.BF2
 {
-    public class ChopperMayhemModule : BaseModule
+    public class ChopperMayhemModule : BaseModule,
+        IHandleEventAsync<MapChangedEvent>,
+        IHandleEventAsync<PlayerKillEvent>,
+        IHandleEventAsync<PlayerPositionEvent>
     {
         //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<ChopperMayhemModule>();
         private static readonly IDictionary<string, IList<SafeArea>> MapSafeAreas = new Dictionary<string, IList<SafeArea>>
@@ -85,124 +88,125 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
         public ChopperMayhemModule(IGameServer gameServer) : base(gameServer)
         {
-            GameServer.MapChanged += OnMapChangedAsync;
-            GameServer.PlayerKill += OnPlayerKillAntiBaserapeAsync;
-            GameServer.PlayerPosition += OnPlayerPositionPortalAsync;
-            //GameServer.PlayerPosition += OnPlayerPositionAntiNasa;
+            //GameServer.MapChanged += OnMapChangedAsync;
+            //GameServer.PlayerKill += OnPlayerKillAntiBaserapeAsync;
+            //GameServer.PlayerPosition += OnPlayerPositionPortalAsync;
+            ////GameServer.PlayerPosition += OnPlayerPositionAntiNasa;
 
-            // Testing
-            GameServer.PlayerSpawn += OnPlayerSpawnAsync;
-            GameServer.PlayerJoin += OnPlayerJoinAsync;
-            GameServer.ChatMessage += OnChatMessageAsync;
+            //// Testing
+            //GameServer.PlayerSpawn += OnPlayerSpawnAsync;
+            //GameServer.PlayerJoin += OnPlayerJoinAsync;
+            //GameServer.ChatMessage += OnChatMessageAsync;
         }
 
-        private async Task OnMapChangedAsync(Map map)
-        {
-            GameServer.GameWriter.SendRcon(RconScript.HeliLessBsDamageOn);
-            GameServer.GameWriter.SendRcon(
-                // No J10 damage
-                "ObjectTemplate.activeSafe GenericProjectile AIR_J10_Cannon_Projectile",
-                "ObjectTemplate.detonation.explosionDamage 0",
-                "ObjectTemplate.minDamage 1",
-                "ObjectTemplate.damage 1",
-                "ObjectTemplate.detonation.explosionRadius 5",
-                "ObjectTemplate.detonation.explosionForce 1000",
-                "ObjectTemplate.detonation.explosionDamage 1",
-                "ObjectTemplate.activeSafe GenericProjectile aa11_archer",
-                "ObjectTemplate.detonation.explosionDamage 0",
-                "ObjectTemplate.minDamage 1",
-                "ObjectTemplate.damage 1",
-                "ObjectTemplate.detonation.explosionRadius 25",
-                "ObjectTemplate.detonation.explosionForce 10000000",
-                "ObjectTemplate.detonation.explosionDamage 1",
-                "ObjectTemplate.activeSafe GenericProjectile mec_250_bomb",
-                "ObjectTemplate.detonation.explosionDamage 0",
-                "ObjectTemplate.minDamage 1",
-                "ObjectTemplate.damage 1",
-                "ObjectTemplate.detonation.explosionRadius 25",
-                "ObjectTemplate.detonation.explosionForce 10000000",
-                "ObjectTemplate.detonation.explosionDamage 1",
+        //private async Task OnMapChangedAsync(Map map)
+        //{
+        //    GameServer.GameWriter.SendRcon(RconScript.HeliLessBsDamageOn);
+        //    GameServer.GameWriter.SendRcon(
+        //        // No J10 damage
+        //        "ObjectTemplate.activeSafe GenericProjectile AIR_J10_Cannon_Projectile",
+        //        "ObjectTemplate.detonation.explosionDamage 0",
+        //        "ObjectTemplate.minDamage 1",
+        //        "ObjectTemplate.damage 1",
+        //        "ObjectTemplate.detonation.explosionRadius 5",
+        //        "ObjectTemplate.detonation.explosionForce 1000",
+        //        "ObjectTemplate.detonation.explosionDamage 1",
+        //        "ObjectTemplate.activeSafe GenericProjectile aa11_archer",
+        //        "ObjectTemplate.detonation.explosionDamage 0",
+        //        "ObjectTemplate.minDamage 1",
+        //        "ObjectTemplate.damage 1",
+        //        "ObjectTemplate.detonation.explosionRadius 25",
+        //        "ObjectTemplate.detonation.explosionForce 10000000",
+        //        "ObjectTemplate.detonation.explosionDamage 1",
+        //        "ObjectTemplate.activeSafe GenericProjectile mec_250_bomb",
+        //        "ObjectTemplate.detonation.explosionDamage 0",
+        //        "ObjectTemplate.minDamage 1",
+        //        "ObjectTemplate.damage 1",
+        //        "ObjectTemplate.detonation.explosionRadius 25",
+        //        "ObjectTemplate.detonation.explosionForce 10000000",
+        //        "ObjectTemplate.detonation.explosionDamage 1",
 
-                // No F35B damage
-                "ObjectTemplate.activeSafe GenericProjectile Air_F35b_AutoCannon_Projectile",
-                "ObjectTemplate.detonation.explosionDamage 0",
-                "ObjectTemplate.minDamage 1",
-                "ObjectTemplate.damage 1",
-                "ObjectTemplate.detonation.explosionRadius 5",
-                "ObjectTemplate.detonation.explosionForce 1000",
-                "ObjectTemplate.detonation.explosionDamage 1",
-                "ObjectTemplate.activeSafe GenericProjectile aim9m_sidewinder",
-                "ObjectTemplate.detonation.explosionDamage 0",
-                "ObjectTemplate.minDamage 1",
-                "ObjectTemplate.damage 1",
-                "ObjectTemplate.detonation.explosionRadius 25",
-                "ObjectTemplate.detonation.explosionForce 10000000",
-                "ObjectTemplate.detonation.explosionDamage 1",
-                "ObjectTemplate.activeSafe GenericProjectile mk82_dumbbomb",
-                "ObjectTemplate.detonation.explosionDamage 0",
-                "ObjectTemplate.minDamage 1",
-                "ObjectTemplate.damage 1",
-                "ObjectTemplate.detonation.explosionRadius 25",
-                "ObjectTemplate.detonation.explosionForce 10000000",
-                "ObjectTemplate.detonation.explosionDamage 1"
-            );
+        //        // No F35B damage
+        //        "ObjectTemplate.activeSafe GenericProjectile Air_F35b_AutoCannon_Projectile",
+        //        "ObjectTemplate.detonation.explosionDamage 0",
+        //        "ObjectTemplate.minDamage 1",
+        //        "ObjectTemplate.damage 1",
+        //        "ObjectTemplate.detonation.explosionRadius 5",
+        //        "ObjectTemplate.detonation.explosionForce 1000",
+        //        "ObjectTemplate.detonation.explosionDamage 1",
+        //        "ObjectTemplate.activeSafe GenericProjectile aim9m_sidewinder",
+        //        "ObjectTemplate.detonation.explosionDamage 0",
+        //        "ObjectTemplate.minDamage 1",
+        //        "ObjectTemplate.damage 1",
+        //        "ObjectTemplate.detonation.explosionRadius 25",
+        //        "ObjectTemplate.detonation.explosionForce 10000000",
+        //        "ObjectTemplate.detonation.explosionDamage 1",
+        //        "ObjectTemplate.activeSafe GenericProjectile mk82_dumbbomb",
+        //        "ObjectTemplate.detonation.explosionDamage 0",
+        //        "ObjectTemplate.minDamage 1",
+        //        "ObjectTemplate.damage 1",
+        //        "ObjectTemplate.detonation.explosionRadius 25",
+        //        "ObjectTemplate.detonation.explosionForce 10000000",
+        //        "ObjectTemplate.detonation.explosionDamage 1"
+        //    );
 
-            if (map.Name.ToLower() == "dalian_plant")
-            {
-                await GameServer.ModManager.GetModule<MapModule>().HandleAsync(new MapLoadCommand
-                {
-                    Name = "dalian_mayhem6",
-                    Message = new Message()
-                });
-            }
+        //    if (map.Name.ToLower() == "dalian_plant")
+        //    {
+        //        await GameServer.ModManager.GetModule<MapModule>().HandleAsync(new MapLoadCommand
+        //        {
+        //            Name = "dalian_mayhem6",
+        //            Message = new Message()
+        //        });
+        //    }
 
-            GameServer.GameWriter.SendText("Chopper Mayhem init");
-        }
+        //    GameServer.GameWriter.SendText("Chopper Mayhem init");
+        //}
 
-        private Task OnPlayerPositionPortalAsync(Player player, Position position, Rotation rotation, int ping)
-        {
-            var isInHeli = player.Vehicle?.RootVehicleTemplate.StartsWith("ahe_") ?? false;
-            if (!isInHeli)
-                return Task.CompletedTask;
+        //private Task OnPlayerPositionPortalAsync(Player player, Position position, Rotation rotation, int ping)
+        //{
+        //    var isInHeli = player.Vehicle?.RootVehicleTemplate.StartsWith("ahe_") ?? false;
+        //    if (!isInHeli)
+        //        return Task.CompletedTask;
 
-            var hasPortals = MapPortals.TryGetValue(GameServer.Map.Name.ToLower(), out var portals);
-            if (!hasPortals)
-                return Task.CompletedTask;
+        //    var hasPortals = MapPortals.TryGetValue(GameServer.Map.Name.ToLower(), out var portals);
+        //    if (!hasPortals)
+        //        return Task.CompletedTask;
 
-            var inPortal = portals.FirstOrDefault(p => p.InPosition.Distance(position) < 10);
-            if (inPortal == null)
-                return Task.CompletedTask;
+        //    var inPortal = portals.FirstOrDefault(p => p.InPosition.Distance(position) < 10);
+        //    if (inPortal == null)
+        //        return Task.CompletedTask;
 
-            //var objectId = player.SubVehicle.RootVehicleId;
-            //var replacements = new Dictionary<string, string>
-            //{
-            //    {"{OBJECT_ID}", objectId.ToString()}
-            //};
-            //var scriptOn = RconScript.NoclipOn.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
-            //var scriptOff = RconScript.NoclipOff.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
+        //    //var objectId = player.SubVehicle.RootVehicleId;
+        //    //var replacements = new Dictionary<string, string>
+        //    //{
+        //    //    {"{OBJECT_ID}", objectId.ToString()}
+        //    //};
+        //    //var scriptOn = RconScript.NoclipOn.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
+        //    //var scriptOff = RconScript.NoclipOff.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
 
-            //GameServer.GameWriter.SendRcon(scriptOn);
-            //for (var i = 0; i < 100; i++)
-            //{
-            //    await Task.Delay(50);
-            //    GameServer.GameWriter.SendText("Tele #" + i);
-            //    GameServer.GameWriter.SendRotate(player, inPortal.OutRotation);
-            //    GameServer.GameWriter.SendTeleport(player, new Position(0, 10000, 0));
-            //}
-            GameServer.GameWriter.SendRotate(player, inPortal.OutRotation);
-            GameServer.GameWriter.SendTeleport(player, inPortal.OutPosition);
+        //    //GameServer.GameWriter.SendRcon(scriptOn);
+        //    //for (var i = 0; i < 100; i++)
+        //    //{
+        //    //    await Task.Delay(50);
+        //    //    GameServer.GameWriter.SendText("Tele #" + i);
+        //    //    GameServer.GameWriter.SendRotate(player, inPortal.OutRotation);
+        //    //    GameServer.GameWriter.SendTeleport(player, new Position(0, 10000, 0));
+        //    //}
+        //    GameServer.GameWriter.SendRotate(player, inPortal.OutRotation);
+        //    GameServer.GameWriter.SendTeleport(player, inPortal.OutPosition);
 
-            //Task.Run(async () =>
-            //{
-            //    await Task.Delay(5000);
-            //    GameServer.GameWriter.SendRcon(scriptOff);
-            //    GameServer.GameWriter.SendText("Done");
-            //});
-            return Task.CompletedTask;
-        }
+        //    //Task.Run(async () =>
+        //    //{
+        //    //    await Task.Delay(5000);
+        //    //    GameServer.GameWriter.SendRcon(scriptOff);
+        //    //    GameServer.GameWriter.SendText("Done");
+        //    //});
+        //    return Task.CompletedTask;
+        //}
 
         private Task OnPlayerPositionAntiNasaAsync(Player player, Position position, Rotation rotation, int ping)
         {
+            // TODO: use this again?
             var isInHeli = player.Vehicle?.RootVehicleTemplate.StartsWith("ahe_") ?? false;
             if (!isInHeli)
                 return Task.CompletedTask;
@@ -239,38 +243,38 @@ namespace BF2WebAdmin.Server.Modules.BF2
             return Task.CompletedTask;
         }
 
-        private Task OnPlayerKillAntiBaserapeAsync(Player attacker, Position attackerPosition, Player victim, Position victimPosition, string weapon)
-        {
-            //if (attacker.Team == victim.Team)
-            //    return;
+        //private Task OnPlayerKillAntiBaserapeAsync(Player attacker, Position attackerPosition, Player victim, Position victimPosition, string weapon)
+        //{
+        //    //if (attacker.Team == victim.Team)
+        //    //    return;
 
-            // vicimPosition bugged
-            victimPosition = victim.Position;
+        //    // vicimPosition bugged
+        //    victimPosition = victim.Position;
 
-            //GameServer.GameWriter.SendText($"Attacker: {attackerPosition}, Victim: {victimPosition}");
+        //    //GameServer.GameWriter.SendText($"Attacker: {attackerPosition}, Victim: {victimPosition}");
 
-            var hasSafeAreas = MapSafeAreas.TryGetValue(GameServer.Map.Name.ToLower(), out var safeAreas);
-            if (!hasSafeAreas)
-                return Task.CompletedTask;
+        //    var hasSafeAreas = MapSafeAreas.TryGetValue(GameServer.Map.Name.ToLower(), out var safeAreas);
+        //    if (!hasSafeAreas)
+        //        return Task.CompletedTask;
 
-            var isVictimWithinSafeArea = safeAreas
-                //.Where(z => z.TeamId == victim.Team.Id)
-                .Any(z => victimPosition.Height < z.MaxAltitude && victimPosition.IsInArea(z.Area));
+        //    var isVictimWithinSafeArea = safeAreas
+        //        //.Where(z => z.TeamId == victim.Team.Id)
+        //        .Any(z => victimPosition.Height < z.MaxAltitude && victimPosition.IsInArea(z.Area));
 
-            if (isVictimWithinSafeArea)
-            {
-                KillPlayer(attacker);
-                GameServer.GameWriter.SendScore(attacker, attacker.Score.Total - 2, attacker.Score.Team, attacker.Score.Kills - 1, attacker.Score.Deaths);
-                GameServer.GameWriter.SendScore(victim, victim.Score.Total, victim.Score.Team, victim.Score.Kills, victim.Score.Deaths - 1);
-                GameServer.GameWriter.SendText($"Baserape is not allowed ({attacker.DisplayName})");
-            }
-            //else
-            //{
-            //    GameServer.GameWriter.SendText($"{victim.Name} is not in a safe area {victimPosition}");
-            //}
+        //    if (isVictimWithinSafeArea)
+        //    {
+        //        KillPlayer(attacker);
+        //        GameServer.GameWriter.SendScore(attacker, attacker.Score.Total - 2, attacker.Score.Team, attacker.Score.Kills - 1, attacker.Score.Deaths);
+        //        GameServer.GameWriter.SendScore(victim, victim.Score.Total, victim.Score.Team, victim.Score.Kills, victim.Score.Deaths - 1);
+        //        GameServer.GameWriter.SendText($"Baserape is not allowed ({attacker.DisplayName})");
+        //    }
+        //    //else
+        //    //{
+        //    //    GameServer.GameWriter.SendText($"{victim.Name} is not in a safe area {victimPosition}");
+        //    //}
 
-            return Task.CompletedTask;
-        }
+        //    return Task.CompletedTask;
+        //}
 
         private async Task OnChatMessageAsync(Message message)
         {
@@ -463,6 +467,144 @@ namespace BF2WebAdmin.Server.Modules.BF2
             //);
             //GameServer.GameWriter.SendText($"Created custom spawn point");
             return Task.CompletedTask;
+        }
+
+        public async ValueTask HandleAsync(MapChangedEvent e)
+        {
+            GameServer.GameWriter.SendRcon(RconScript.HeliLessBsDamageOn);
+            GameServer.GameWriter.SendRcon(
+                // No J10 damage
+                "ObjectTemplate.activeSafe GenericProjectile AIR_J10_Cannon_Projectile",
+                "ObjectTemplate.detonation.explosionDamage 0",
+                "ObjectTemplate.minDamage 1",
+                "ObjectTemplate.damage 1",
+                "ObjectTemplate.detonation.explosionRadius 5",
+                "ObjectTemplate.detonation.explosionForce 1000",
+                "ObjectTemplate.detonation.explosionDamage 1",
+                "ObjectTemplate.activeSafe GenericProjectile aa11_archer",
+                "ObjectTemplate.detonation.explosionDamage 0",
+                "ObjectTemplate.minDamage 1",
+                "ObjectTemplate.damage 1",
+                "ObjectTemplate.detonation.explosionRadius 25",
+                "ObjectTemplate.detonation.explosionForce 10000000",
+                "ObjectTemplate.detonation.explosionDamage 1",
+                "ObjectTemplate.activeSafe GenericProjectile mec_250_bomb",
+                "ObjectTemplate.detonation.explosionDamage 0",
+                "ObjectTemplate.minDamage 1",
+                "ObjectTemplate.damage 1",
+                "ObjectTemplate.detonation.explosionRadius 25",
+                "ObjectTemplate.detonation.explosionForce 10000000",
+                "ObjectTemplate.detonation.explosionDamage 1",
+
+                // No F35B damage
+                "ObjectTemplate.activeSafe GenericProjectile Air_F35b_AutoCannon_Projectile",
+                "ObjectTemplate.detonation.explosionDamage 0",
+                "ObjectTemplate.minDamage 1",
+                "ObjectTemplate.damage 1",
+                "ObjectTemplate.detonation.explosionRadius 5",
+                "ObjectTemplate.detonation.explosionForce 1000",
+                "ObjectTemplate.detonation.explosionDamage 1",
+                "ObjectTemplate.activeSafe GenericProjectile aim9m_sidewinder",
+                "ObjectTemplate.detonation.explosionDamage 0",
+                "ObjectTemplate.minDamage 1",
+                "ObjectTemplate.damage 1",
+                "ObjectTemplate.detonation.explosionRadius 25",
+                "ObjectTemplate.detonation.explosionForce 10000000",
+                "ObjectTemplate.detonation.explosionDamage 1",
+                "ObjectTemplate.activeSafe GenericProjectile mk82_dumbbomb",
+                "ObjectTemplate.detonation.explosionDamage 0",
+                "ObjectTemplate.minDamage 1",
+                "ObjectTemplate.damage 1",
+                "ObjectTemplate.detonation.explosionRadius 25",
+                "ObjectTemplate.detonation.explosionForce 10000000",
+                "ObjectTemplate.detonation.explosionDamage 1"
+            );
+
+            if (e.Map.Name.ToLower() == "dalian_plant")
+            {
+                await GameServer.ModManager.GetModule<MapModule>().HandleAsync(new MapLoadCommand
+                {
+                    Name = "dalian_mayhem6",
+                    Message = new Message()
+                });
+            }
+
+            GameServer.GameWriter.SendText("Chopper Mayhem init");
+        }
+
+        public ValueTask HandleAsync(PlayerKillEvent e)
+        {
+            //if (attacker.Team == victim.Team)
+            //    return;
+
+            // victimPosition bugged
+            var victimPosition = e.Victim.Position;
+
+            //GameServer.GameWriter.SendText($"Attacker: {attackerPosition}, Victim: {victimPosition}");
+
+            var hasSafeAreas = MapSafeAreas.TryGetValue(GameServer.Map.Name.ToLower(), out var safeAreas);
+            if (!hasSafeAreas)
+                return ValueTask.CompletedTask;
+
+            var isVictimWithinSafeArea = safeAreas
+                //.Where(z => z.TeamId == victim.Team.Id)
+                .Any(z => victimPosition.Height < z.MaxAltitude && victimPosition.IsInArea(z.Area));
+
+            if (isVictimWithinSafeArea)
+            {
+                KillPlayer(e.Attacker);
+                GameServer.GameWriter.SendScore(e.Attacker, e.Attacker.Score.Total - 2, e.Attacker.Score.Team, e.Attacker.Score.Kills - 1, e.Attacker.Score.Deaths);
+                GameServer.GameWriter.SendScore(e.Victim, e.Victim.Score.Total, e.Victim.Score.Team, e.Victim.Score.Kills, e.Victim.Score.Deaths - 1);
+                GameServer.GameWriter.SendText($"Baserape is not allowed ({e.Attacker.DisplayName})");
+            }
+            //else
+            //{
+            //    GameServer.GameWriter.SendText($"{victim.Name} is not in a safe area {victimPosition}");
+            //}
+
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask HandleAsync(PlayerPositionEvent e)
+        {
+            var isInHeli = e.Player.Vehicle?.RootVehicleTemplate.StartsWith("ahe_") ?? false;
+            if (!isInHeli)
+                return ValueTask.CompletedTask;
+
+            var hasPortals = MapPortals.TryGetValue(GameServer.Map.Name.ToLower(), out var portals);
+            if (!hasPortals)
+                return ValueTask.CompletedTask;
+
+            var inPortal = portals.FirstOrDefault(p => p.InPosition.Distance(e.Position) < 10);
+            if (inPortal == null)
+                return ValueTask.CompletedTask;
+
+            //var objectId = player.SubVehicle.RootVehicleId;
+            //var replacements = new Dictionary<string, string>
+            //{
+            //    {"{OBJECT_ID}", objectId.ToString()}
+            //};
+            //var scriptOn = RconScript.NoclipOn.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
+            //var scriptOff = RconScript.NoclipOff.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
+
+            //GameServer.GameWriter.SendRcon(scriptOn);
+            //for (var i = 0; i < 100; i++)
+            //{
+            //    await Task.Delay(50);
+            //    GameServer.GameWriter.SendText("Tele #" + i);
+            //    GameServer.GameWriter.SendRotate(player, inPortal.OutRotation);
+            //    GameServer.GameWriter.SendTeleport(player, new Position(0, 10000, 0));
+            //}
+            GameServer.GameWriter.SendRotate(e.Player, inPortal.OutRotation);
+            GameServer.GameWriter.SendTeleport(e.Player, inPortal.OutPosition);
+
+            //Task.Run(async () =>
+            //{
+            //    await Task.Delay(5000);
+            //    GameServer.GameWriter.SendRcon(scriptOff);
+            //    GameServer.GameWriter.SendText("Done");
+            //});
+            return ValueTask.CompletedTask;
         }
     }
 

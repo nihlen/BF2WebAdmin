@@ -9,7 +9,7 @@ namespace BF2WebAdmin.Server.Abstractions
         ILookup<string, ServerPlayerAuth> AuthPlayers { get; }
         IMediator Mediator { get; }
         T GetModule<T>() where T : IModule;
-        //T GetModule<T>(IGameServer gameServer) where T : IModule;
+        T GetGlobalService<T>() where T : notnull;
         Task GetAuthPlayersAsync();
         Task HandleFakeChatMessageAsync(Message message);
         ValueTask HandleChatMessageAsync(Message message);

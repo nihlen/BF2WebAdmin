@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using BF2WebAdmin.Common;
-using BF2WebAdmin.Common.Communication.Messages;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Entities;
@@ -21,13 +20,10 @@ using Polly.Registry;
 using Serilog;
 using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;
 
-// TODO: Remove async voids after testing 2v2 counting
-// TODO: Handle "pad" (reset depending on how long after go) and draws
-// TODO: .load sandrosbunker
-// TODO: .send awsm (freeze in front of SEND NUDES objects)
+// TODO: split match and command handling
 namespace BF2WebAdmin.Server.Modules.BF2
 {
-    public class Heli2v2Module : BaseModule, // TODO: re-add
+    public class Heli2v2Module : BaseModule,
         IHandleEventAsync<MapChangedEvent>,
         IHandleEventAsync<ChatMessageEvent>,
         IHandleEventAsync<PlayerKillEvent>,
@@ -42,6 +38,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
         IHandleEventAsync<RoundStartEvent>,
         IHandleEventAsync<RoundEndEvent>,
         IHandleCommand<SwitchCommand>,
+        IHandleCommand<SwitchIdCommand>,
         IHandleCommand<SwitchAllCommand>,
         IHandleCommand<SwitchLaterCommand>,
         IHandleCommand<HeliMgCommand>,
@@ -61,10 +58,9 @@ namespace BF2WebAdmin.Server.Modules.BF2
         IHandleCommandAsync<SetTvMissileValueCommand>,
         IHandleCommandAsync<SetTvMissileTypeCommand>
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<Heli2v2Module>();
         private readonly IGameServer _gameServer;
         private readonly IMatchRepository _matchRepository;
-        private readonly IReadOnlyPolicyRegistry<string> _polichRegistry;
+        private readonly IReadOnlyPolicyRegistry<string> _policyRegistry;
         private const int DefaultDelay = 25; // 1000/35 fps ~ 28.5
         private const int AltitudeOffset = 140; // Dalian?
         private const double DefaultPositionTrackerInterval = 0.25; // Dalian?
@@ -79,51 +75,18 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
         private bool _roundsActive;
         private IList<Match> _matches;
-        //private IList<Round> _rounds;
-
-        //private event Action<RoundStartEvent> RoundStarted;
-        //private event Action<RoundEndEvent> RoundEnded;
-
-        //public event Func<MatchStartEvent, Task> MatchStarted
-        //{
-        //    add => _matchStartEvent.Add(value);
-        //    remove => _matchStartEvent.Remove(value);
-        //}
-        //private readonly AsyncEvent<Func<MatchStartEvent, Task>> _matchStartEvent = new AsyncEvent<Func<MatchStartEvent, Task>>();
-
-        //public event Func<MatchEndEvent, Task> MatchEnded
-        //{
-        //    add => _matchEndEvent.Add(value);
-        //    remove => _matchEndEvent.Remove(value);
-        //}
-        //private readonly AsyncEvent<Func<MatchEndEvent, Task>> _matchEndEvent = new AsyncEvent<Func<MatchEndEvent, Task>>();
-
-        //public event Func<RoundStartEvent, Task> RoundStarted
-        //{
-        //    add => _roundStartEvent.Add(value);
-        //    remove => _roundStartEvent.Remove(value);
-        //}
-        //private readonly AsyncEvent<Func<RoundStartEvent, Task>> _roundStartEvent = new AsyncEvent<Func<RoundStartEvent, Task>>();
-
-        //public event Func<RoundEndEvent, Task> RoundEnded
-        //{
-        //    add => _roundEndEvent.Add(value);
-        //    remove => _roundEndEvent.Remove(value);
-        //}
-        //private readonly AsyncEvent<Func<RoundEndEvent, Task>> _roundEndEvent = new AsyncEvent<Func<RoundEndEvent, Task>>();
 
         private Player _stalker;
         private Player _stalked;
 
-        public Heli2v2Module(IGameServer server, IMatchRepository matchRepository, IReadOnlyPolicyRegistry<string> polichRegistry) : base(server)
+        public Heli2v2Module(IGameServer server, IMatchRepository matchRepository, IReadOnlyPolicyRegistry<string> policyRegistry) : base(server)
         {
             _gameServer = server;
             _matchRepository = matchRepository;
-            _polichRegistry = polichRegistry;
+            _policyRegistry = policyRegistry;
             ClearMatches();
             SetupRoundEvents();
 
-            //_gameServer.MapChanged += OnMapChangedAsync;
             //var test = MapStatsRenderer.GetMapMovementPathImage("dalian_2_v_2", null, null);
         }
 
@@ -134,7 +97,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             _antiNasaAltitude = 0;
             _antiNasaActive = false;
             _matches = new List<Match>();
-            //_rounds = new List<Round>();
         }
 
         private Task SendDiscordMessageAsync(string text)
@@ -159,118 +121,24 @@ namespace BF2WebAdmin.Server.Modules.BF2
             return Task.CompletedTask;
         }
 
-        //private Task OnMapChangedAsync(Map map)
-        //{
-        //    _gameServer.GameWriter.SendRcon(RconScript.InitServer);
-        //    _gameServer.GameWriter.SendTimerInterval(DefaultPositionTrackerInterval);
-        //    SetDefaultTvMissile();
-        //    ClearMatches();
-        //    return Task.CompletedTask;
-        //}
-
         private async void SetupRoundEvents()
         {
-            //// Server events
-            //_gameServer.ChatMessage += OnChatMessageAsync;
-            //_gameServer.PlayerKill += OnPlayerKillAsync;
-            //_gameServer.PlayerDeath += OnPlayerDeathAsync;
-            //_gameServer.PlayerTeam += OnPlayerTeamAsync;
-            //_gameServer.PlayerLeft += OnPlayerLeftAsync;
-            //_gameServer.PlayerPosition += OnPlayerPositionAsync;
-            //_gameServer.ProjectilePosition += OnProjectilePositionAsync;
-            //_gameServer.MapChanged += OnMapChanged;
-
-            //// Custom events
-            //MatchStarted += OnMatchStartedAsync;
-            //MatchEnded += OnMatchEndedAsync;
-            //RoundStarted += OnRoundStartedAsync;
-            //RoundEnded += OnRoundEndedAsync;
-
             _roundsActive = true;
             await SendDiscordMessageAsync("2v2 mode enabled");
-            //_gameServer.GameWriter.SendText("2v2 mode enabled");
         }
-
-        //private async Task OnMapChanged(Map map)
-        //{
-        //    var match = GetActiveMatch();
-        //    if (match != null && match.Map != map.Name)
-        //    {
-        //        match.MatchEnd = match.Rounds.LastOrDefault()?.RoundEnd ?? DateTime.UtcNow;
-        //        await _matchEndEvent.InvokeAsync(new MatchEndEvent { Match = match });
-        //    }
-        //}
-
-        //private async Task OnMatchStartedAsync(MatchStartEvent e)
-        //{
-        //    Log.Information("Saving new match {MatchId}", e.Match.Id);
-
-        //    await _polichRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
-        //        await _matchRepository.InsertMatchAsync(ToMatchEntity(e.Match))
-        //    );
-        //    await SendDiscordMessageAsync("New 2v2 match started");
-        //    _gameServer.GameWriter.SendText("New 2v2 match started");
-        //}
 
         private string Sanitize(string text)
         {
             return DiscordModule.Sanitize(text);
         }
 
-        //private async Task OnMatchEndedAsync(MatchEndEvent e)
-        //{
-        //    Log.Information("Saving match end results for {MatchId}", e.Match.Id);
-
-        //    await _polichRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
-        //        await _matchRepository.UpdateMatchAsync(ToMatchEntity(e.Match))
-        //    );
-
-        //    var duration = e.Match.MatchEnd!.Value - e.Match.MatchStart!.Value;
-        //    _gameServer.GameWriter.SendText($"2v2 match ended after {duration.Humanize()}.");
-
-        //    try
-        //    {
-        //        await GetMatchStatisticsAsync(e.Match);
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        Log.Error(ex, "Failed to get match statistics");
-        //    }
-        //}
-
-        public class TeamStats
-        {
-            public string TeamHash { get; set; }
-            public int Wins { get; set; }
-        }
-
-        public class PlayerStats
-        {
-            public string PlayerHash { get; set; }
-            public int PilotCount { get; set; }
-            public int GunnerCount { get; set; }
-            public int TeamUsCount { get; set; }
-            public int TeamChCount { get; set; }
-            public int Ah1zCount { get; set; }
-            public int Z10Count { get; set; }
-            public int TvWinCount { get; set; }
-            public int HydraWinCount { get; set; }
-            public int MgWinCount { get; set; }
-            public int EnemyCrashWinCount { get; set; }
-            public int RdyStartCount { get; set; }
-            public int GoStartCount { get; set; }
-            public double TotalDistanceFromPad { get; set; }
-            public double TotalAverageAltitude { get; set; }
-            public double TotalAverageSpeed { get; set; }
-        }
-
-        // Dalian US pad ground: 255.100/148.400/-258.700
-        // Dalian CH pad ground: -218.000/153.900/159.000
-        private Position _dalianUsPad = Position.Parse("255.100/148.400/-258.700");
-        private Position _dalianChPad = Position.Parse("-218.000/153.900/159.000");
-
         private async Task GetMatchStatisticsAsync(Match match)
         {
+            // Dalian US pad ground: 255.100/148.400/-258.700
+            // Dalian CH pad ground: -218.000/153.900/159.000
+            var dalianUsPad = Position.Parse("255.100/148.400/-258.700");
+            var dalianChPad = Position.Parse("-218.000/153.900/159.000");
+
             var builder = new EmbedBuilder();
             builder.WithColor(Color.Blue);
 
@@ -316,7 +184,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
                         if (match.Map == "dalian_2_v_2")
                         {
-                            playerStats[player.Player.Hash].TotalDistanceFromPad += player.StartPosition?.Distance(player.TeamId == 2 ? _dalianUsPad : _dalianChPad) ?? 0;
+                            playerStats[player.Player.Hash].TotalDistanceFromPad += player.StartPosition?.Distance(player.TeamId == 2 ? dalianUsPad : dalianChPad) ?? 0;
                         }
 
                         if (player.MovementPath != null && player.MovementPath.Any())
@@ -513,27 +381,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             return value < 0.5 ? "0%" : $"{value:##}%";
         }
 
-        //private Task OnPlayerPositionAsync(Player player, Position position, Rotation rotation, int ping)
-        //{
-        //    var round = GetActiveRound();
-        //    if (round == null)
-        //        return Task.CompletedTask;
-
-        //    var timestamp = (DateTime.UtcNow - round.RoundStart!.Value).TotalMilliseconds;
-        //    round.Players
-        //        .FirstOrDefault(p => p.Player.Hash == player.Hash)
-        //        ?.MovementPath.Add(new RoundPosition
-        //        {
-        //            Id = player.Index,
-        //            Timestamp = (int)timestamp,
-        //            Position = position,
-        //            Rotation = rotation,
-        //            Ping = player.Score.Ping
-        //        });
-
-        //    return Task.CompletedTask;
-        //}
-
         private Match GetActiveMatch()
         {
             return _matches.FirstOrDefault(m => m.IsActive);
@@ -543,115 +390,11 @@ namespace BF2WebAdmin.Server.Modules.BF2
         {
             return GetActiveMatch()?.Rounds.FirstOrDefault(r => r.IsActive);
         }
-
-        //private Task OnProjectilePositionAsync(Projectile projectile, Position position, Rotation rotation)
-        //{
-        //    var now = DateTime.UtcNow;
-        //    if (projectile.Owner == null)
-        //        return Task.CompletedTask;
-
-        //    var round = GetActiveRound();
-        //    var roundPlayer = round?.Players.FirstOrDefault(p => p.Player.Hash == projectile.Owner.Hash);
-        //    var isLoggedTv = _tvLogPlayers.TryGetValue(projectile.Owner.Hash, out var path);
-        //    if (roundPlayer == null && !isLoggedTv)
-        //        return Task.CompletedTask;
-
-        //    var timestamp = (now - (round?.RoundStart ?? now)).TotalMilliseconds;
-        //    var roundPosition = new RoundPosition
-        //    {
-        //        Id = projectile.Id,
-        //        Timestamp = (int)timestamp,
-        //        Position = projectile.Position,
-        //        Rotation = projectile.Rotation,
-        //        Ping = projectile.Owner.Score.Ping
-        //    };
-
-        //    if (isLoggedTv)
-        //    {
-        //        if (path.Projectile?.Id != projectile.Id)
-        //        {
-        //            path.Projectile = projectile;
-        //            path.Path.Clear();
-        //            _ = Task.Run(async () =>
-        //            {
-        //                try
-        //                {
-        //                    // TODO: get max X and Y angles per s or ms and see what you can get max as default
-        //                    await Task.Delay(4000);
-        //                    var (distance, angle) = CalculateTvStats(path.Path, true);
-        //                    _gameServer.GameWriter.SendText($"{projectile.Owner.ShortName} TV: est. {distance:###} m {angle:###} degrees");
-        //                }
-        //                catch (Exception e)
-        //                {
-        //                    Log.Error("Projectile message failed");
-        //                }
-        //            });
-        //        }
-
-        //        path.Path.Add(roundPosition);
-        //        //_gameServer.GameWriter.SendText($"P:{position} R:{rotation}");
-        //    }
-
-        //    if (roundPlayer != null)
-        //    {
-        //        if (roundPlayer.LastProjectileId != projectile.Id)
-        //        {
-        //            roundPlayer.ProjectilePaths.Add(new List<RoundPosition>());
-        //            //roundPlayer.LastProjectilePath.Clear();
-        //            roundPlayer.LastProjectileId = projectile.Id;
-        //        }
-
-        //        //roundPlayer.LastProjectilePath.Add((position, rotation));
-        //        roundPlayer.ProjectilePaths.Last().Add(roundPosition);
-        //    }
-
-        //    return Task.CompletedTask;
-        //}
-
-        //private async Task OnPlayerLeftAsync(Player player)
-        //{
-        //    RemoveActiveRoundWithPlayer(player.Hash);
-
-        //    var match = GetActiveMatch();
-        //    if (match != null)
-        //    {
-        //        var onlinePlayersCount = match.Rounds.FirstOrDefault()?.Players
-        //            .Count(p => _gameServer.Players.Any(gp => gp.Hash == p.Player.Hash));
-        //        if (onlinePlayersCount <= 2)
-        //        {
-        //            match.MatchEnd = match.Rounds.LastOrDefault()?.RoundEnd ?? DateTime.UtcNow;
-        //            await _matchEndEvent.InvokeAsync(new MatchEndEvent { Match = match });
-        //        }
-        //    }
-        //}
-
-        //private Task OnPlayerTeamAsync(Player player, Team team)
-        //{
-        //    RemoveActiveRoundWithPlayer(player.Hash);
-        //    return Task.CompletedTask;
-        //}
-
+        
         private async void RemoveRoundEvents()
         {
-            //// Server events
-            //_gameServer.ChatMessage -= OnChatMessageAsync;
-            //_gameServer.PlayerKill -= OnPlayerKillAsync;
-            //_gameServer.PlayerDeath -= OnPlayerDeathAsync;
-            //_gameServer.PlayerTeam -= OnPlayerTeamAsync;
-            //_gameServer.PlayerLeft -= OnPlayerLeftAsync;
-            //_gameServer.PlayerPosition -= OnPlayerPositionAsync;
-            //_gameServer.ProjectilePosition -= OnProjectilePositionAsync;
-            //_gameServer.MapChanged -= OnMapChanged;
-
-            //// Custom events
-            //MatchStarted -= OnMatchStartedAsync;
-            //MatchEnded -= OnMatchEndedAsync;
-            //RoundStarted -= OnRoundStartedAsync;
-            //RoundEnded -= OnRoundEndedAsync;
-
             _roundsActive = false;
             await SendDiscordMessageAsync("2v2 mode disabled");
-            //_gameServer.GameWriter.SendText("2v2 mode disabled");
         }
 
         private void RemoveActiveRoundWithPlayer(string playerHash)
@@ -669,327 +412,9 @@ namespace BF2WebAdmin.Server.Modules.BF2
         }
 
         private Round _pendingRound;
-
-        //private async Task OnChatMessageAsync(Message message)
-        //{
-        //    if (message.Type != MessageType.Player || message.Channel != ChatChannel.Global)
-        //        return;
-
-        //    const string padPattern = @"^j?pad$";
-        //    var isPadMatch = Regex.IsMatch(message.Text, padPattern, RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-        //    if (isPadMatch)
-        //    {
-        //        RemoveActiveRoundWithPlayer(message.Player.Hash);
-        //        return;
-        //    }
-
-        //    // TODO: fix 2 players ready on 1 team then switching
-        //    //var readyPattern = @"^(j?([rdy]+|[go0]+))";
-        //    //const string readyPattern = @"^j?([1234ready]{1,5}|[go0]{1,3})[A-z0-9\?\!\.]{0,4}$";
-        //    //const string readyPattern = @"^j?(?!gg)(([ready]{1,8}|[go]{1,5})[A-z0-9\?\!\.]{0,2})$";
-        //    const string readyPattern = @"^j?[^0-9A-Za-z]*(?!gg)(([ready]{1,8}|[go]{1,5})[A-z0-9\?\!\.]{0,2})[^0-9A-Za-z]*$";
-        //    const string readyPatternWithOtherText = @"(^(j?rd[y]?|j?g[o]?)[ ]+)|[ ]+(rd[y]?|g[o]?)$";
-
-        //    var isReadyMatch = Regex.IsMatch(message.Text, readyPattern, RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-        //    var isReadyWithOtherMatch = Regex.IsMatch(message.Text, readyPatternWithOtherText, RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-        //    if ((!isReadyMatch && !isReadyWithOtherMatch) || message.Text == "yes")
-        //        return;
-
-        //    var teamPlayers = message.Player.Vehicle?.Players;
-        //    if ((teamPlayers?.Count ?? 0) < 2)
-        //        return;
-
-        //    if (teamPlayers!.Any(p => p.Team.Id != teamPlayers[0].Team.Id))
-        //    {
-        //        _gameServer.GameWriter.SendText($"Team mismatch for {string.Join(" & ", teamPlayers.Select(p => $"{p.ShortName}"))} - switch team to fix match");
-        //        await SendDiscordMessageAsync($"2v2 team ID mismatch for {string.Join(", ", teamPlayers.Select(p => $"{p.DisplayName}={p.Team.Name}"))}");
-        //        Log.Warning("2v2 team ID mismatch for {PlayerTeamNames}", string.Join(", ", teamPlayers.Select(p => $"{p.DisplayName}={p.Team.Name}")));
-        //        return;
-        //    }
-
-        //    if (_pendingRound != null && (DateTime.UtcNow - _pendingRound?.ReadyTime) > TimeSpan.FromMinutes(5))
-        //    {
-        //        Log.Debug("Pending round was over 5 minutes - clearing");
-        //        _pendingRound = null;
-        //    }
-
-        //    var newReady = true;
-        //    //var match = GetActiveMatch();
-        //    //var round = match?.Rounds.FirstOrDefault(r => !r.IsFinished);
-        //    if (_pendingRound == null)
-        //    {
-        //        _pendingRound = new Round
-        //        {
-        //            Id = Guid.NewGuid(),
-        //            ReadyTime = DateTime.UtcNow,
-        //            PositionTrackerInterval = _gameServer.GameWriter.CurrentTrackerInterval
-        //        };
-        //        //_rounds.Add(round);
-        //    }
-
-        //    var teamHash = GetTeamHash(teamPlayers[0], teamPlayers[1]);
-        //    foreach (var vehiclePlayer in message.Player.Vehicle!.Players)
-        //    {
-        //        var roundPlayer = _pendingRound.Players.FirstOrDefault(p => p.Player.Hash == vehiclePlayer.Hash);
-        //        if (roundPlayer == null)
-        //        {
-        //            roundPlayer = new RoundPlayer(vehiclePlayer, teamHash, _pendingRound.Id);
-        //            _pendingRound.Players.Add(roundPlayer);
-        //        }
-
-        //        if (roundPlayer.IsReady)
-        //            newReady = false;
-        //        else
-        //            roundPlayer.IsReady = true;
-        //    }
-
-        //    var team1Ready = _pendingRound.Players.Any(p => p.IsReady && p.Player.Team.Id == 1);
-        //    var team2Ready = _pendingRound.Players.Any(p => p.IsReady && p.Player.Team.Id == 2);
-        //    if (_pendingRound.Players.Count == 4 && team1Ready && team2Ready && !_pendingRound.IsActive)
-        //    {
-        //        _pendingRound.RoundStart = DateTime.UtcNow;
-        //        var goTeamId = message.Player.Team.Id;
-        //        foreach (var roundPlayer in _pendingRound.Players)
-        //        {
-        //            roundPlayer.SaidGo = goTeamId == roundPlayer.TeamId;
-        //            roundPlayer.SubVehicle = roundPlayer.Player.SubVehicleTemplate;
-        //            roundPlayer.StartPosition = roundPlayer.Player.Position;
-        //        }
-
-        //        if (_pendingRound.MatchId == null)
-        //        {
-        //            var teamHashes = _pendingRound.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
-        //            var match = _matches.FirstOrDefault(m => m.IsActive && m.TeamHashes.Contains(teamHashes[0]) && m.TeamHashes.Contains(teamHashes[1]));
-        //            if (match == null)
-        //            {
-        //                var previousMatch = GetActiveMatch();
-        //                if (previousMatch != null)
-        //                {
-        //                    previousMatch.MatchEnd = previousMatch.Rounds.LastOrDefault()?.RoundEnd ?? DateTime.UtcNow;
-        //                    await _matchEndEvent.InvokeAsync(new MatchEndEvent { Match = previousMatch });
-        //                }
-
-        //                match = new Match
-        //                {
-        //                    Id = Guid.NewGuid(),
-        //                    MatchStart = _pendingRound.RoundStart.Value,
-        //                    Map = _gameServer.Map.Name,
-        //                    ServerId = _gameServer.Id,
-        //                    ServerName = _gameServer.Name,
-        //                    TeamHashes = teamHashes,
-        //                    Type = "HELI_2V2",
-        //                };
-        //                _matches.Add(match);
-
-        //                match.Rounds.Add(_pendingRound);
-        //                _pendingRound.MatchId = match.Id;
-
-        //                await _matchStartEvent.InvokeAsync(new MatchStartEvent { Match = match });
-        //            }
-        //            else
-        //            {
-        //                match.Rounds.Add(_pendingRound);
-        //                _pendingRound.MatchId = match.Id;
-        //            }
-        //        }
-
-        //        await _roundStartEvent.InvokeAsync(new RoundStartEvent { Round = _pendingRound });
-
-        //        _pendingRound = null;
-        //    }
-        //    else if (newReady)
-        //    {
-        //        await SendDiscordMessageAsync($"{message.Player.Team?.Name} READY");
-        //        //_gameServer.GameWriter.SendText($"{message.Player.Team.Name} READY");
-        //    }
-        //}
-
-        //private Task OnPlayerKillAsync(Player attacker, Position attackerPosition, Player victim, Position victimPosition, string weapon)
-        //{
-        //    return HandleRoundKillAsync(attacker, attackerPosition, victim, victimPosition, weapon);
-        //}
-
-        //private Task OnPlayerDeathAsync(Player player, Position position, bool isSuicide)
-        //{
-        //    return HandleRoundKillAsync(null, null, player, position, null);
-        //}
-
-        //private async Task OnRoundStartedAsync(RoundStartEvent e)
-        //{
-        //    //_gameServer.GameWriter.SendText($"Round {_roundCounter} started ({e.Round.Players.Count})");
-        //    await SendDiscordMessageAsync($"GO");
-        //    //_gameServer.GameWriter.SendText("§3§c1001GO");
-        //    //return Task.CompletedTask;
-        //}
-
+        
         private bool enableEndOfRoundTeleport = true;
-
-        //private async Task OnRoundEndedAsync(RoundEndEvent e)
-        //{
-        //    try
-        //    {
-        //        // TODO: combine discord messages to avoid rate limiting
-        //        var winningTeam = _gameServer.Teams.FirstOrDefault(t => t.Id == e.Round.WinningTeamId);
-        //        var timeDiff = e.Round.RoundEnd!.Value - e.Round.RoundStart!.Value;
-
-        //        //var team1Id = _gameServer.Teams.Min(t => t.Id);
-        //        //var team2Id = _gameServer.Teams.Max(t => t.Id);
-        //        //var team1Players = e.Round.Players.Where(p => p.TeamId == team1Id).ToList();
-        //        //var team2Players = e.Round.Players.Where(p => p.TeamId == team2Id).ToList();
-        //        //var teamRounds = _rounds.Where(r =>
-        //        //{
-        //        //    var allPlayersMatch = r.Players.All(p => e.Round.Players.Any(rp => rp.Player.Hash == p.Player.Hash));
-        //        //    var playerTeamsMatch = team1Players[0].Player.Hash;
-
-        //        //    return allPlayersMatch;
-        //        //});
-        //        //return string.Compare(p1.Hash, p2.Hash, StringComparison.Ordinal) <= 0 ? p1.Hash + p2.Hash : p2.Hash + p1.Hash;
-
-        //        //string teamAHash, teamBHash = null;
-
-        //        var match = GetActiveMatch();
-
-        //        //var teamHashes = e.Round.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToList();
-
-        //        var teamAHash = match.TeamHashes.First();
-        //        var teamBHash = match.TeamHashes.Last();
-
-        //        //var teamAHash = string.Compare(e.Round.WinningTeamHash, e.Round.LosingTeamHash, StringComparison.Ordinal) <= 0 ? e.Round.WinningTeamHash : e.Round.LosingTeamHash;
-        //        //var teamBHash = string.Compare(e.Round.WinningTeamHash, e.Round.LosingTeamHash, StringComparison.Ordinal) <= 0 ? e.Round.LosingTeamHash : e.Round.WinningTeamHash;
-
-        //        var teamAWins = match.Rounds.Count(r => r.WinningTeamHash == teamAHash && r.LosingTeamHash == teamBHash);
-        //        var teamBWins = match.Rounds.Count(r => r.WinningTeamHash == teamBHash && r.LosingTeamHash == teamAHash);
-
-        //        var teamAIndicator = teamAHash == e.Round.WinningTeamHash ? "+" : string.Empty;
-        //        var teamBIndicator = teamBHash == e.Round.WinningTeamHash ? "+" : string.Empty;
-
-        //        var teamAPlayers = e.Round.Players.Where(p => p.TeamHash == teamAHash);
-        //        var teamBPlayers = e.Round.Players.Where(p => p.TeamHash == teamBHash);
-
-        //        var totalRounds = match.Rounds.Count(r => r.Players.Any(p => p.TeamHash == teamAHash) && r.Players.Any(p => p.TeamHash == teamBHash));
-
-        //        var tvKillerHash = e.Round.Players.FirstOrDefault(p => p.KillerWeapon?.ToLower().EndsWith("tv") ?? false)?.KillerHash;
-        //        var tvAttacker = e.Round.Players.FirstOrDefault(p => p.Player.Hash == tvKillerHash);
-        //        var killTvPath = e.Round.Players.FirstOrDefault(p => p.TeamHash == e.Round.WinningTeamHash && p.ProjectilePaths.Any())?.LastProjectilePath;
-        //        var (killTvDistance, killTvAngle) = tvAttacker != null ? CalculateTvStats(killTvPath) : (0d, 0d);
-
-        //        var victimPlayer = e.Round.Players.FirstOrDefault(p => p.TeamHash == e.Round.LosingTeamHash);
-        //        var hydraKillerHash = e.Round.Players.FirstOrDefault(p => p.KillerWeapon?.ToLower().EndsWith("launcher") ?? false)?.KillerHash;
-        //        var hydraAttacker = e.Round.Players.FirstOrDefault(p => p.Player.Hash == hydraKillerHash);
-        //        var killHydraDistance = 0d;
-        //        if (victimPlayer != null && hydraAttacker != null)
-        //        {
-        //            //killHydraDistance = hydraAttacker.KillPosition.Distance(victimPlayer.DeathPosition);
-        //            killHydraDistance = victimPlayer.KillerPosition.Distance(victimPlayer.DeathPosition);
-        //        }
-
-        //        var mgKillerHash = e.Round.Players.FirstOrDefault(p => p.KillerWeapon?.ToLower().EndsWith("gun") ?? false)?.KillerHash;
-        //        var mgAttacker = e.Round.Players.FirstOrDefault(p => p.Player.Hash == mgKillerHash);
-        //        var killMgDistance = 0d;
-        //        if (victimPlayer != null && mgAttacker != null)
-        //        {
-        //            killMgDistance = victimPlayer.KillerPosition.Distance(victimPlayer.DeathPosition);
-        //        }
-
-        //        var unknownKillVictim = tvAttacker == null && hydraAttacker == null && mgAttacker == null
-        //            ? e.Round.Players.Where(p => p.TeamHash == e.Round.LosingTeamHash).FirstOrDefault(p => p.KillerWeapon != null)
-        //            : null;
-        //        //var unknownAttacker = tvAttacker == null && hydraAttacker == null && mgAttacker == null
-        //        //    ? e.Round.Players.Where(p => p.TeamHash == e.Round.LosingTeamHash).FirstOrDefault(p => p.KillWeapon != null)
-        //        //    : null;
-
-        //        var isCrash = e.Round.WinningTeamId != -1 && e.Round.Players.Where(p => p.TeamHash == e.Round.LosingTeamHash).All(p => p.KillerWeapon == null);
-
-        //        //var path1 = e.Round.Players.FirstOrDefault(p => p.TeamId == 2)?.MovementPath;
-        //        //var path2 = e.Round.Players.FirstOrDefault(p => p.TeamId == 1)?.MovementPath;
-        //        //if (path1 != null && path1.Any() && path2 != null && path2.Any())
-        //        //{
-        //        //    var roundMap = MapStatsRenderer.GetMapMovementPathImage(match.Map, path1, path2);
-        //        //}
-
-        //        var sb = new StringBuilder();
-
-        //        if (e.Round.WinningTeamId == -1)
-        //        {
-        //            sb.Append($"```md\nRound {totalRounds} ended in a CLASSIC DRAW in {(int)timeDiff.TotalSeconds} s\n\n");
-        //        }
-        //        else
-        //        {
-        //            sb.Append($"```md\nRound {totalRounds} won by {winningTeam?.Name ?? "?"} in {(int)timeDiff.TotalSeconds} s\n\n");
-        //            sb.Append(killTvDistance > 0 ? $"TV: est. {killTvDistance:###}m {killTvAngle:###}°\n\n" : string.Empty);
-        //            sb.Append(killHydraDistance > 0 ? $"Hydra: est. {killHydraDistance:###}m\n\n" : string.Empty);
-        //            sb.Append(killMgDistance > 0 ? $"MG: est. {killMgDistance:###}m\n\n" : string.Empty);
-        //            sb.Append(unknownKillVictim != null ? $"Unknown weapon: {unknownKillVictim?.KillerWeapon}\n\n" : string.Empty);
-        //            sb.Append(isCrash ? "Crashed\n\n" : string.Empty);
-        //        }
-
-        //        sb.Append($"<{string.Join("> <", teamAPlayers.Select(p => p.Player.ShortName))}> {teamAWins}{teamAIndicator} vs ");
-        //        sb.Append($"{teamBWins}{teamBIndicator} <{string.Join("> <", teamBPlayers.Select(p => p.Player.ShortName))}>```");
-
-        //        await SendDiscordMessageAsync(sb.ToString());
-
-        //        if (e.Round.WinningTeamId == -1)
-        //        {
-        //            _gameServer.GameWriter.SendText($"Round {match.Rounds.Count} ended in a §C1001CLASSIC DRAW§C1001 in {(int)timeDiff.TotalSeconds} s");
-        //        }
-        //        else
-        //        {
-        //            _gameServer.GameWriter.SendText($"Round {match.Rounds.Count} won by {winningTeam.Name} in {(int)timeDiff.TotalSeconds} s");
-        //        }
-
-        //        // TODO: remove after testing
-        //        //await GetMatchStatisticsAsync(match);
-
-        //        //_gameServer.GameWriter.SendText($"Round {_roundCounter} ended in {(int)timeDiff.TotalSeconds} s ({winningTeam.Name} +1)");
-
-        //        //var players = e.Round.Players.Where(p => p.TeamId == e.Round.WinningTeamId && p.IsAlive).Select(p => p.Player).ToArray();
-        //        //await BlurAsync(2000, players);
-        //        //await Task.Delay(2000);
-        //        //foreach (var player in players)
-        //        //    _gameServer.GameWriter.SendHealth(player, 1);
-
-        //        if (enableEndOfRoundTeleport)
-        //        {
-        //            _ = Task.Run(async () =>
-        //            {
-        //                try
-        //                {
-        //                    var winningPlayers = e.Round.Players.Where(p => p.TeamHash == e.Round.WinningTeamHash && p.IsAlive).ToList();
-        //                    if (winningPlayers.Any(p => _autopadPlayerHashes.ContainsKey(p.Player.Hash)))
-        //                    {
-        //                        await Task.Delay(2000);
-        //                        await FreezeAtPadAsync(0, 0, winningPlayers.First().Player);
-        //                    }
-        //                }
-        //                catch (Exception ex)
-        //                {
-        //                    Log.Error(ex, "Error at endOfRoundTeleport");
-        //                }
-        //            });
-        //        }
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        Log.Error(ex, "Error at end of round event");
-        //    }
-
-        //    _ = Task.Run(async () =>
-        //    {
-        //        try
-        //        {
-        //            Log.Information("Saving round {RoundId} on match {MatchId}", e.Round.Id, e.Round.MatchId);
-
-        //            await _polichRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
-        //                await _matchRepository.InsertRoundAsync(ToRoundEntity(e.Round))
-        //            );
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            Log.Error(ex, "Failed to save round {RoundId} on match {MatchId}", e.Round.Id, e.Round.MatchId);
-        //        }
-        //    });
-        //}
-
+        
         private (double distance, double angle) CalculateTvStats(IList<RoundPosition> killTvPath, bool debug = false)
         {
             double killTvDistance = 0d, killTvAngle = 0d;
@@ -1002,7 +427,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             }
 
             var firstSample = killTvPath.First();
-            //var (previousPosition, previousRotation) = killTvPath.First();
             var previousPosition = firstSample.Position;
             var previousRotation = firstSample.Rotation;
             foreach (var sample in killTvPath)
@@ -1058,7 +482,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             if (round.Players.Any(p => p.TeamHash == roundVictim.TeamHash && p.IsAlive))
                 return ValueTask.CompletedTask;
 
-            // TODO: lock gonna work?
             lock (round)
             {
                 if (round.IsPendingCompletion)
@@ -1066,42 +489,37 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
                 round.IsPendingCompletion = true;
 
-                _ = Task.Run(async () =>
+                RunBackgroundTask("Handle 2v2 round completion", async () =>
                 {
-                    try
+                    // Wait 2 seconds and see if it's a draw
+                    await Task.Delay(2000);
+
+                    // Check if all players are dead or outside the heli (could be "down" but not yet dead)
+                    var allPlayersDead = round.Players.All(p => !p.IsAlive || p.Player.Vehicle is null);
+                    var team1DeathPosition = round.Players.First(p => p.TeamHash == match.TeamHashes[0]).DeathPosition;
+                    var team2DeathPosition = round.Players.First(p => p.TeamHash == match.TeamHashes[1]).DeathPosition;
+                    var isHeliRam = allPlayersDead && team1DeathPosition.Distance(team2DeathPosition) < 10;
+                    var allKilledByTv = round.Players.All(p => p.KillerWeapon?.ToLower().EndsWith("tv") ?? false);
+                    var anyPlayersBailed = round.Players.Any(p => p.Player.Vehicle is null);
+
+                    if (allPlayersDead && (allKilledByTv || isHeliRam || anyPlayersBailed))
                     {
-                        // Wait 2 seconds and see if it's a draw
-                        await Task.Delay(2000);
-
-                        var allPlayersDead = round.Players.All(p => !p.IsAlive);
-                        var team1DeathPosition = round.Players.First(p => p.TeamHash == match.TeamHashes[0]).DeathPosition;
-                        var team2DeathPosition = round.Players.First(p => p.TeamHash == match.TeamHashes[1]).DeathPosition;
-                        var isHeliRam = allPlayersDead && team1DeathPosition.Distance(team2DeathPosition) < 10;
-                        var allKilledByTv = round.Players.All(p => p.KillerWeapon?.ToLower().EndsWith("tv") ?? false);
-
-                        if (allPlayersDead && (allKilledByTv || isHeliRam))
-                        {
-                            // Classic draw
-                            round.WinningTeamId = -1;
-                        }
-                        else
-                        {
-                            // One winner
-                            round.WinningTeamId = roundVictim.TeamId == 1 ? 2 : 1;
-                            //round.LosingTeamId = roundVictim.TeamId;
-                            round.WinningTeamHash = round.Players.First(p => p.TeamHash != roundVictim.TeamHash).TeamHash;
-                            round.LosingTeamHash = round.Players.First(p => p.TeamHash == roundVictim.TeamHash).TeamHash;
-                        }
-
-                        round.RoundEnd = DateTime.UtcNow;
-
-                        //await _roundEndEvent.InvokeAsync(new RoundEndEvent { Round = round });
-                        await Mediator.PublishAsync(new RoundEndEvent(round, DateTimeOffset.UtcNow));
+                        // Classic draw
+                        round.WinningTeamId = -1;
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        Log.Error(ex, "Error at 2v2 completion task");
+                        // One winner
+                        round.WinningTeamId = roundVictim.TeamId == 1 ? 2 : 1;
+                        //round.LosingTeamId = roundVictim.TeamId;
+                        round.WinningTeamHash = round.Players.First(p => p.TeamHash != roundVictim.TeamHash).TeamHash;
+                        round.LosingTeamHash = round.Players.First(p => p.TeamHash == roundVictim.TeamHash).TeamHash;
                     }
+
+                    round.RoundEnd = DateTime.UtcNow;
+
+                    //await _roundEndEvent.InvokeAsync(new RoundEndEvent { Round = round });
+                    await Mediator.PublishAsync(new RoundEndEvent(round, DateTimeOffset.UtcNow));
                 });
             }
 
@@ -1113,11 +531,18 @@ namespace BF2WebAdmin.Server.Modules.BF2
             return string.Compare(p1.Hash, p2.Hash, StringComparison.Ordinal) <= 0 ? p1.Hash + p2.Hash : p2.Hash + p1.Hash;
         }
 
-        #region Commands
-
         public void Handle(SwitchCommand command)
         {
             var player = _gameServer.GetPlayer(command.Name);
+            if (player == null)
+                return;
+
+            SwitchPlayer(player);
+        }
+
+        public void Handle(SwitchIdCommand command)
+        {
+            var player = _gameServer.GetPlayer(command.PlayerId);
             if (player == null)
                 return;
 
@@ -1139,19 +564,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
             _gameServer.GameWriter.SendText($"Switching in {command.Rounds} rounds");
             _switchRounds = command.Rounds;
-            //RoundEnded += SwitchCheckAsync;
         }
-
-        //private Task SwitchCheckAsync(RoundEndEvent e)
-        //{
-        //    if (++_switchCounter < _switchRounds)
-        //        return Task.CompletedTask;
-
-        //    //RoundEnded -= SwitchCheckAsync;
-        //    SwitchAll();
-
-        //    return Task.CompletedTask;
-        //}
 
         private void SwitchAll()
         {
@@ -1201,12 +614,11 @@ namespace BF2WebAdmin.Server.Modules.BF2
             script = script.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
 
             _gameServer.GameWriter.SendRcon(script);
-            //_gameServer.PlayerVehicle += RemoveNoClipAsync;
         }
 
-        private ValueTask RemoveNoClipAsync(Player player, Vehicle vehicle)
+        private ValueTask RemoveNoClipAsync(Player? player, Vehicle? vehicle)
         {
-            if (vehicle != null || player.PreviousVehicle.HasCollision && player.PreviousVehicle.Players.Any())
+            if (vehicle is not null || player is null || player.PreviousVehicle.HasCollision && player.PreviousVehicle.Players.Any())
                 return ValueTask.CompletedTask;
 
             var objectId = player.PreviousVehicle.RootVehicleId;
@@ -1220,7 +632,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             var script = RconScript.NoclipOff.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
 
             _gameServer.GameWriter.SendRcon(script);
-            //_gameServer.PlayerVehicle -= RemoveNoClipAsync;
 
             return ValueTask.CompletedTask;
         }
@@ -1232,23 +643,10 @@ namespace BF2WebAdmin.Server.Modules.BF2
             if (_stalked == null)
                 return;
 
-            //_gameServer.PlayerPosition += StalkPlayerAsync;
         }
-
-        //private Task StalkPlayerAsync(Player updatedPlayer, Position position, Rotation rotation, int ping)
-        //{
-        //    if (updatedPlayer.Index != _stalked.Index)
-        //        return Task.CompletedTask;
-
-        //    var newPosition = new Position(position.X, position.Height + 10, position.Y);
-        //    _gameServer.GameWriter.SendTeleport(_stalker, newPosition);
-
-        //    return Task.CompletedTask;
-        //}
 
         public void Handle(StopCommand command)
         {
-            //_gameServer.PlayerPosition -= StalkPlayerAsync;
             _stalker = null;
             _stalked = null;
             StopRecording();
@@ -1300,6 +698,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
             //        continue;
 
             //    // TODO: to script file
+            //    // Not very stable if I remember correctly
             //    var objectId = player.SubVehicle.RootVehicleId;
             //    _gameServer.GameWriter.SendRcon(
             //        $"object.active id{objectId}",
@@ -1338,12 +737,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             }
 
             return ValueTask.CompletedTask;
-            //RoundEnded += async e =>
-            //{
-            //    await Task.Delay(2000);
-            //    var winner = e.Round.Players.First(p => p.TeamId == e.Round.WinningTeamId);
-            //    await FreezeAtPadAsync(0, winner.Player);
-            //};
         }
 
         public ValueTask HandleAsync(AutoPadAllCommand command)
@@ -1373,29 +766,13 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
         private void StartAntiNasa()
         {
-            //if (_antiNasaActive)
-            //    _gameServer.PlayerPosition -= OnAntiNasaPlayerPositionAsync;
-
             _antiNasaActive = true;
-            //_gameServer.PlayerPosition += OnAntiNasaPlayerPositionAsync;
             _gameServer.GameWriter.SendText($"Anti NASA active ({_antiNasaAltitude - AltitudeOffset} m)");
         }
-
-        //private Task OnAntiNasaPlayerPositionAsync(Player player, Position position, Rotation rotation, int ping)
-        //{
-        //    if (position.Height < _antiNasaAltitude)
-        //        return Task.CompletedTask;
-
-        //    var newPosition = new Position(position.X, _antiNasaAltitude, position.Y);
-        //    _gameServer.GameWriter.SendTeleport(player, newPosition);
-
-        //    return Task.CompletedTask;
-        //}
 
         private void StopAntiNasa()
         {
             _antiNasaActive = false;
-            //_gameServer.PlayerPosition -= OnAntiNasaPlayerPositionAsync;
             _gameServer.GameWriter.SendText("Anti NASA inactive");
         }
 
@@ -1409,6 +786,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 {
                     _gameServer.GameWriter.SendGameEvent(player, 13, 1);
                 }
+
                 await Task.Delay(DefaultDelay);
             }
         }
@@ -1445,24 +823,14 @@ namespace BF2WebAdmin.Server.Modules.BF2
             _playerRecordingPositions = new List<(long, Position, Rotation)>(1000);
             _playerRecordingTarget = command.Message.Player;
             _playerRecordingWatch = Stopwatch.StartNew();
-            //_gameServer.PlayerPosition += RecordPlayerAsync;
             _gameServer.GameWriter.SendText("Recording started");
         }
 
         private void StopRecording()
         {
             _playerRecordingWatch?.Stop();
-            //_gameServer.PlayerPosition -= RecordPlayerAsync;
             _gameServer.GameWriter.SendText("Recording stopped");
         }
-
-        //private Task RecordPlayerAsync(Player player, Position position, Rotation rotation, int ping)
-        //{
-        //    Log.Information("Recorded player {Position} {Rotation}", position, rotation);
-        //    _playerRecordingPositions.Add((_playerRecordingWatch.ElapsedMilliseconds, position, rotation));
-
-        //    return Task.CompletedTask;
-        //}
 
         public async ValueTask HandleAsync(PlaybackCommand command)
         {
@@ -1509,6 +877,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
         private void StartPlayback()
         {
+            // TODO: get new timestamps from events
             //var previousTime = 0L;
             var sw = Stopwatch.StartNew();
             foreach (var snapshot in _playerRecordingPositions)
@@ -1546,7 +915,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             {
                 _gameServer.GameWriter.SendRcon("ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv");
                 var value = await _gameServer.GameWriter.GetRconResponseAsync(
-                    //"ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv\n" +
                     defaultSetting.Template.Split(' ').FirstOrDefault()
                 );
                 result.Add((defaultSetting.Name, value, defaultSetting.DefaultValue));
@@ -1638,8 +1006,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
             );
         }
 
-
-        private readonly ConcurrentDictionary<string, ProjectilePath> _tvLogPlayers = new ConcurrentDictionary<string, ProjectilePath>();
+        private readonly ConcurrentDictionary<string, ProjectilePath> _tvLogPlayers = new();
 
         public void Handle(ToggleTvLogCommand command)
         {
@@ -1740,8 +1107,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             return result;
         }
 
-        #endregion
-
         public async ValueTask HandleAsync(MapChangedEvent e)
         {
             if (_roundsActive)
@@ -1750,7 +1115,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 if (match != null && match.Map != e.Map.Name)
                 {
                     match.MatchEnd = match.Rounds.LastOrDefault()?.RoundEnd ?? DateTime.UtcNow;
-                    //await _matchEndEvent.InvokeAsync(new MatchEndEvent { Match = match });
                     await Mediator.PublishAsync(new MatchEndEvent(match, DateTimeOffset.UtcNow));
                 }
             }
@@ -1778,9 +1142,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             }
 
             // TODO: fix 2 players ready on 1 team then switching
-            //var readyPattern = @"^(j?([rdy]+|[go0]+))";
-            //const string readyPattern = @"^j?([1234ready]{1,5}|[go0]{1,3})[A-z0-9\?\!\.]{0,4}$";
-            //const string readyPattern = @"^j?(?!gg)(([ready]{1,8}|[go]{1,5})[A-z0-9\?\!\.]{0,2})$";
             const string readyPattern = @"^j?[^0-9A-Za-z]*(?!gg)(([ready]{1,8}|[go]{1,5})[A-z0-9\?\!\.]{0,2})[^0-9A-Za-z]*$";
             const string readyPatternWithOtherText = @"(^(j?rd[y]?|j?g[o]?)[ ]+)|[ ]+(rd[y]?|g[o]?)$";
 
@@ -1789,15 +1150,21 @@ namespace BF2WebAdmin.Server.Modules.BF2
             if ((!isReadyMatch && !isReadyWithOtherMatch) || e.Message.Text == "yes")
                 return;
 
-            var teamPlayers = e.Message.Player.Vehicle?.Players;
-            if ((teamPlayers?.Count ?? 0) < 2)
+            var teamPlayers = e.Message.Player.Vehicle?.Players ?? Array.Empty<Player>();
+            if ((teamPlayers.Count) < 2)
                 return;
 
             if (teamPlayers!.Any(p => p.Team.Id != teamPlayers[0].Team.Id))
             {
-                _gameServer.GameWriter.SendText($"Team mismatch for {string.Join(" & ", teamPlayers.Select(p => $"{p.ShortName}"))} - switch team to fix match");
-                await SendDiscordMessageAsync($"2v2 team ID mismatch for {string.Join(", ", teamPlayers.Select(p => $"{p.DisplayName}={p.Team.Name}"))}");
-                Log.Warning("2v2 team ID mismatch for {PlayerTeamNames}", string.Join(", ", teamPlayers.Select(p => $"{p.DisplayName}={p.Team.Name}")));
+                var isFixed = await _gameServer.FixTeamMismatchAsync(teamPlayers);
+                if (!isFixed)
+                {
+                    // TODO: figure ut why this is not 100% fixed
+                    _gameServer.GameWriter.SendText($"Team mismatch for {string.Join(" & ", teamPlayers.Select(p => $"{p.ShortName}"))} - switch team to fix match");
+                    await SendDiscordMessageAsync($"2v2 team ID mismatch for {string.Join(", ", teamPlayers.Select(p => $"{p.DisplayName}={p.Team.Name}"))}");
+                    Log.Warning("2v2 team ID mismatch for {PlayerTeamNames}", string.Join(", ", teamPlayers.Select(p => $"{p.DisplayName}={p.Team.Name}")));
+                }
+
                 return;
             }
 
@@ -1808,8 +1175,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             }
 
             var newReady = true;
-            //var match = GetActiveMatch();
-            //var round = match?.Rounds.FirstOrDefault(r => !r.IsFinished);
             if (_pendingRound == null)
             {
                 _pendingRound = new Round
@@ -1818,7 +1183,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
                     ReadyTime = DateTime.UtcNow,
                     PositionTrackerInterval = _gameServer.GameWriter.CurrentTrackerInterval
                 };
-                //_rounds.Add(round);
             }
 
             var teamHash = GetTeamHash(teamPlayers[0], teamPlayers[1]);
@@ -1860,7 +1224,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
                         if (previousMatch != null)
                         {
                             previousMatch.MatchEnd = previousMatch.Rounds.LastOrDefault()?.RoundEnd ?? DateTime.UtcNow;
-                            //await _matchEndEvent.InvokeAsync(new MatchEndEvent { Match = previousMatch });
                             await Mediator.PublishAsync(new MatchEndEvent(previousMatch, DateTimeOffset.UtcNow));
                         }
 
@@ -1879,7 +1242,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
                         match.Rounds.Add(_pendingRound);
                         _pendingRound.MatchId = match.Id;
 
-                        //await _matchStartEvent.InvokeAsync(new MatchStartEvent { Match = match });
                         await Mediator.PublishAsync(new MatchStartEvent(match, DateTimeOffset.UtcNow));
                     }
                     else
@@ -1889,7 +1251,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
                     }
                 }
 
-                //await _roundStartEvent.InvokeAsync(new RoundStartEvent { Round = _pendingRound });
                 await Mediator.PublishAsync(new RoundStartEvent(_pendingRound, DateTimeOffset.UtcNow));
 
                 _pendingRound = null;
@@ -1897,7 +1258,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             else if (newReady)
             {
                 await SendDiscordMessageAsync($"{e.Message.Player.Team?.Name} READY");
-                //_gameServer.GameWriter.SendText($"{message.Player.Team.Name} READY");
             }
         }
 
@@ -1936,12 +1296,10 @@ namespace BF2WebAdmin.Server.Modules.BF2
             var match = GetActiveMatch();
             if (match != null)
             {
-                var onlinePlayersCount = match.Rounds.FirstOrDefault()?.Players
-                    .Count(p => _gameServer.Players.Any(gp => gp.Hash == p.Player.Hash));
+                var onlinePlayersCount = match.Rounds.FirstOrDefault()?.Players.Count(p => _gameServer.Players.Any(gp => gp.Hash == p.Player.Hash));
                 if (onlinePlayersCount <= 2)
                 {
                     match.MatchEnd = match.Rounds.LastOrDefault()?.RoundEnd ?? DateTime.UtcNow;
-                    //await _matchEndEvent.InvokeAsync(new MatchEndEvent { Match = match });
                     await Mediator.PublishAsync(new MatchEndEvent(match, DateTimeOffset.UtcNow));
                 }
             }
@@ -2026,19 +1384,12 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 {
                     path.Projectile = e.Projectile;
                     path.Path.Clear();
-                    _ = Task.Run(async () =>
+                    RunBackgroundTask("Send projectile message", async () =>
                     {
-                        try
-                        {
-                            // TODO: get max X and Y angles per s or ms and see what you can get max as default
-                            await Task.Delay(4000);
-                            var (distance, angle) = CalculateTvStats(path.Path, true);
-                            _gameServer.GameWriter.SendText($"{e.Projectile.Owner.ShortName} TV: est. {distance:###} m {angle:###} degrees");
-                        }
-                        catch (Exception e)
-                        {
-                            Log.Error("Projectile message failed");
-                        }
+                        // TODO: get max X and Y angles per s or ms and see what you can get max as default
+                        await Task.Delay(4000);
+                        var (distance, angle) = CalculateTvStats(path.Path, true);
+                        _gameServer.GameWriter.SendText($"{e.Projectile.Owner.ShortName} TV: est. {distance:###} m {angle:###} degrees");
                     });
                 }
 
@@ -2068,7 +1419,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 return ValueTask.CompletedTask;
 
             // TODO: check if player is the last in the vehicle
-
             return RemoveNoClipAsync(e.Player, e.Vehicle);
         }
 
@@ -2079,7 +1429,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
             Log.Information("Saving new match {MatchId}", e.Match.Id);
 
-            await _polichRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
+            await _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
                 await _matchRepository.InsertMatchAsync(ToMatchEntity(e.Match))
             );
             await SendDiscordMessageAsync("New 2v2 match started");
@@ -2093,7 +1443,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
             Log.Information("Saving match end results for {MatchId}", e.Match.Id);
 
-            await _polichRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
+            await _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
                 await _matchRepository.UpdateMatchAsync(ToMatchEntity(e.Match))
             );
 
@@ -2115,10 +1465,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
             if (!_roundsActive)
                 return;
 
-            //_gameServer.GameWriter.SendText($"Round {_roundCounter} started ({e.Round.Players.Count})");
             await SendDiscordMessageAsync($"GO");
-            //_gameServer.GameWriter.SendText("§3§c1001GO");
-            //return Task.CompletedTask;
         }
 
         public async ValueTask HandleAsync(RoundEndEvent e)
@@ -2128,34 +1475,13 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
             try
             {
-                // TODO: combine discord messages to avoid rate limiting
                 var winningTeam = _gameServer.Teams.FirstOrDefault(t => t.Id == e.Round.WinningTeamId);
                 var timeDiff = e.Round.RoundEnd!.Value - e.Round.RoundStart!.Value;
 
-                //var team1Id = _gameServer.Teams.Min(t => t.Id);
-                //var team2Id = _gameServer.Teams.Max(t => t.Id);
-                //var team1Players = e.Round.Players.Where(p => p.TeamId == team1Id).ToList();
-                //var team2Players = e.Round.Players.Where(p => p.TeamId == team2Id).ToList();
-                //var teamRounds = _rounds.Where(r =>
-                //{
-                //    var allPlayersMatch = r.Players.All(p => e.Round.Players.Any(rp => rp.Player.Hash == p.Player.Hash));
-                //    var playerTeamsMatch = team1Players[0].Player.Hash;
-
-                //    return allPlayersMatch;
-                //});
-                //return string.Compare(p1.Hash, p2.Hash, StringComparison.Ordinal) <= 0 ? p1.Hash + p2.Hash : p2.Hash + p1.Hash;
-
-                //string teamAHash, teamBHash = null;
-
                 var match = GetActiveMatch();
-
-                //var teamHashes = e.Round.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToList();
 
                 var teamAHash = match.TeamHashes.First();
                 var teamBHash = match.TeamHashes.Last();
-
-                //var teamAHash = string.Compare(e.Round.WinningTeamHash, e.Round.LosingTeamHash, StringComparison.Ordinal) <= 0 ? e.Round.WinningTeamHash : e.Round.LosingTeamHash;
-                //var teamBHash = string.Compare(e.Round.WinningTeamHash, e.Round.LosingTeamHash, StringComparison.Ordinal) <= 0 ? e.Round.LosingTeamHash : e.Round.WinningTeamHash;
 
                 var teamAWins = match.Rounds.Count(r => r.WinningTeamHash == teamAHash && r.LosingTeamHash == teamBHash);
                 var teamBWins = match.Rounds.Count(r => r.WinningTeamHash == teamBHash && r.LosingTeamHash == teamAHash);
@@ -2179,7 +1505,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 var killHydraDistance = 0d;
                 if (victimPlayer != null && hydraAttacker != null)
                 {
-                    //killHydraDistance = hydraAttacker.KillPosition.Distance(victimPlayer.DeathPosition);
                     killHydraDistance = victimPlayer.KillerPosition.Distance(victimPlayer.DeathPosition);
                 }
 
@@ -2194,18 +1519,8 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 var unknownKillVictim = tvAttacker == null && hydraAttacker == null && mgAttacker == null
                     ? e.Round.Players.Where(p => p.TeamHash == e.Round.LosingTeamHash).FirstOrDefault(p => p.KillerWeapon != null)
                     : null;
-                //var unknownAttacker = tvAttacker == null && hydraAttacker == null && mgAttacker == null
-                //    ? e.Round.Players.Where(p => p.TeamHash == e.Round.LosingTeamHash).FirstOrDefault(p => p.KillWeapon != null)
-                //    : null;
 
                 var isCrash = e.Round.WinningTeamId != -1 && e.Round.Players.Where(p => p.TeamHash == e.Round.LosingTeamHash).All(p => p.KillerWeapon == null);
-
-                //var path1 = e.Round.Players.FirstOrDefault(p => p.TeamId == 2)?.MovementPath;
-                //var path2 = e.Round.Players.FirstOrDefault(p => p.TeamId == 1)?.MovementPath;
-                //if (path1 != null && path1.Any() && path2 != null && path2.Any())
-                //{
-                //    var roundMap = MapStatsRenderer.GetMapMovementPathImage(match.Map, path1, path2);
-                //}
 
                 var sb = new StringBuilder();
 
@@ -2237,33 +1552,15 @@ namespace BF2WebAdmin.Server.Modules.BF2
                     _gameServer.GameWriter.SendText($"Round {match.Rounds.Count} won by {winningTeam.Name} in {(int)timeDiff.TotalSeconds} s");
                 }
 
-                // TODO: remove after testing
-                //await GetMatchStatisticsAsync(match);
-
-                //_gameServer.GameWriter.SendText($"Round {_roundCounter} ended in {(int)timeDiff.TotalSeconds} s ({winningTeam.Name} +1)");
-
-                //var players = e.Round.Players.Where(p => p.TeamId == e.Round.WinningTeamId && p.IsAlive).Select(p => p.Player).ToArray();
-                //await BlurAsync(2000, players);
-                //await Task.Delay(2000);
-                //foreach (var player in players)
-                //    _gameServer.GameWriter.SendHealth(player, 1);
-
                 if (enableEndOfRoundTeleport)
                 {
-                    _ = Task.Run(async () =>
+                    RunBackgroundTask("Handle end of round teleport", async () =>
                     {
-                        try
+                        var winningPlayers = e.Round.Players.Where(p => p.TeamHash == e.Round.WinningTeamHash && p.IsAlive).ToList();
+                        if (winningPlayers.Any(p => _autopadPlayerHashes.ContainsKey(p.Player.Hash)))
                         {
-                            var winningPlayers = e.Round.Players.Where(p => p.TeamHash == e.Round.WinningTeamHash && p.IsAlive).ToList();
-                            if (winningPlayers.Any(p => _autopadPlayerHashes.ContainsKey(p.Player.Hash)))
-                            {
-                                await Task.Delay(2000);
-                                await FreezeAtPadAsync(0, 0, winningPlayers.First().Player);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Log.Error(ex, "Error at endOfRoundTeleport");
+                            await Task.Delay(2000);
+                            await FreezeAtPadAsync(0, 0, winningPlayers.First().Player);
                         }
                     });
                 }
@@ -2273,27 +1570,20 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 Log.Error(ex, "Error at end of round event");
             }
 
-            _ = Task.Run(async () =>
+            RunBackgroundTask("Save match round", async () =>
             {
-                try
-                {
-                    Log.Information("Saving round {RoundId} on match {MatchId}", e.Round.Id, e.Round.MatchId);
+                Log.Information("Saving round {RoundId} on match {MatchId}", e.Round.Id, e.Round.MatchId);
 
-                    await _polichRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
-                        await _matchRepository.InsertRoundAsync(ToRoundEntity(e.Round))
-                    );
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "Failed to save round {RoundId} on match {MatchId}", e.Round.Id, e.Round.MatchId);
-                }
+                await _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
+                    await _matchRepository.InsertRoundAsync(ToRoundEntity(e.Round))
+                );
             });
 
             // Switch command
-            if (_switchRounds > 0 && ++_switchCounter >= _switchRounds)
+            var shouldSwitchTeams = _switchRounds > 0 && ++_switchCounter >= _switchRounds;
+            if (shouldSwitchTeams)
             {
                 _switchRounds = 0;
-                //RoundEnded -= SwitchCheckAsync;
                 SwitchAll();
             }
         }
@@ -2337,7 +1627,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
     public class Round
     {
-        public IList<RoundPlayer> Players { get; set; }
+        public IList<RoundPlayer> Players { get; set; } = new List<RoundPlayer>();
         public bool IsStarted => RoundStart != null;
         public bool IsFinished => RoundEnd != null;
         public bool IsActive => IsStarted && !IsFinished;
@@ -2355,11 +1645,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
         //public bool IsDraw { get; set; }
         public DateTime? RoundStart { get; set; }
         public DateTime? RoundEnd { get; set; }
-
-        public Round()
-        {
-            Players = new List<RoundPlayer>();
-        }
     }
 
     public class RoundPlayer
@@ -2370,8 +1655,8 @@ namespace BF2WebAdmin.Server.Modules.BF2
         public bool IsAlive { get; set; }
         public bool IsReady { get; set; }
         public IList<RoundPosition> LastProjectilePath => ProjectilePaths.LastOrDefault();
-        public IList<RoundPosition> MovementPath { get; set; }
-        public IList<IList<RoundPosition>> ProjectilePaths { get; set; }
+        public IList<RoundPosition> MovementPath { get; set; } = new List<RoundPosition>();
+        public IList<IList<RoundPosition>> ProjectilePaths { get; set; } = new List<IList<RoundPosition>>();
         public int LastProjectileId { get; set; }
 
         // Entity properties
@@ -2401,8 +1686,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             IsReady = false;
             TeamHash = teamHash;
             SubVehicle = player.SubVehicleTemplate;
-            MovementPath = new List<RoundPosition>();
-            ProjectilePaths = new List<IList<RoundPosition>>();
         }
 
         public override string ToString() => Player?.Name ?? PlayerName;
@@ -2418,56 +1701,29 @@ namespace BF2WebAdmin.Server.Modules.BF2
         public override string ToString() => $"{Timestamp}|{Position}|{Rotation}|{Ping}";
     }
 
-    //public class MatchStartEvent
-    //{
-    //    public Match Match { get; set; }
-    //}
-
-    //public class MatchEndEvent
-    //{
-    //    public Match Match { get; set; }
-    //}
-
-    //public class RoundStartEvent
-    //{
-    //    public Round Round { get; set; }
-    //}
-
-    //public class RoundEndEvent
-    //{
-    //    public Round Round { get; set; }
-    //}
-
-    public class DiscordClient : IDisposable
+    public class TeamStats
     {
-        private ulong _webhookId;
-        private string _webhookToken;
-        private Discord.Webhook.DiscordWebhookClient _webhookClient;
-        private Discord.WebSocket.DiscordSocketClient _websocketClient;
+        public string TeamHash { get; set; }
+        public int Wins { get; set; }
+    }
 
-        public DiscordClient(ulong webhookId, string webhookToken)
-        {
-            _webhookId = webhookId;
-            _webhookToken = webhookToken;
-            _webhookClient = new Discord.Webhook.DiscordWebhookClient(_webhookId, _webhookToken);
-            _websocketClient = new Discord.WebSocket.DiscordSocketClient();
-        }
-
-        //public async Task StartAsync()
-        //{
-        //    await _websocketClient.LoginAsync(Discord.TokenType.Bot, "bot token");
-        //    await _websocketClient.StartAsync();
-        //    await Task.Delay(-1);
-        //}
-
-        public async Task SendMessageAsync(string text)
-        {
-            await _webhookClient.SendMessageAsync(text);
-        }
-
-        public void Dispose()
-        {
-            _websocketClient?.Dispose();
-        }
+    public class PlayerStats
+    {
+        public string PlayerHash { get; set; }
+        public int PilotCount { get; set; }
+        public int GunnerCount { get; set; }
+        public int TeamUsCount { get; set; }
+        public int TeamChCount { get; set; }
+        public int Ah1zCount { get; set; }
+        public int Z10Count { get; set; }
+        public int TvWinCount { get; set; }
+        public int HydraWinCount { get; set; }
+        public int MgWinCount { get; set; }
+        public int EnemyCrashWinCount { get; set; }
+        public int RdyStartCount { get; set; }
+        public int GoStartCount { get; set; }
+        public double TotalDistanceFromPad { get; set; }
+        public double TotalAverageAltitude { get; set; }
+        public double TotalAverageSpeed { get; set; }
     }
 }

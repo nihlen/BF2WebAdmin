@@ -250,3 +250,6 @@ Logs/
 
 # GeoIPLite 
 *.mmdb
+
+# Nuget config with credentials
+nuget.config

@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
@@ -15,8 +14,6 @@ namespace BF2WebAdmin.Server
 {
     public class GameWriter : IGameWriter
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<GameWriter>();
-
         private readonly BinaryWriter _writer;
         private readonly Channel<string> _gameMessageChannel;
         private readonly bool _logSend;
@@ -61,25 +58,6 @@ namespace BF2WebAdmin.Server
                 throw new IOException($"Cannot write to {_writer}");
 
             _gameMessageChannel.Writer.TryWrite(message);
-
-            // TODO: Batch send?
-            //try
-            //{
-            //    if (_logSend)
-            //    {
-            //        Logger.LogDebug($"send: {message}");
-            //    }
-            //    //var bytes = Encoding.UTF8.GetBytes(message + "\n");
-            //    var bytes = _encoding.GetBytes(message + "\n");
-            //    lock (_writer)
-            //    {
-            //        _writer.Write(bytes);
-            //    }
-            //}
-            //catch (Exception ex)
-            //{
-            //    Logger.LogError(ex, "Write error for server");
-            //}
         }
 
         private async Task SendAllMessagesAsync()

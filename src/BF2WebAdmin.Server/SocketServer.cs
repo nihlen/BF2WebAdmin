@@ -9,6 +9,7 @@ using BF2WebAdmin.Common;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Extensions;
+using BF2WebAdmin.Shared;
 using Polly;
 using Serilog;
 
@@ -17,31 +18,33 @@ namespace BF2WebAdmin.Server
     public interface ISocketServer
     {
         IPAddress GetIpAddress();
+        IGameServer? GetGameServer(string serverId);
         Task ListenAsync();
         Task RetryConnectionAsync(IPAddress ipAddress, int port, ServerInfo serverInfo);
     }
 
     public class SocketServer : ISocketServer
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<SocketServer>();
-
         private static ReadOnlySpan<byte> NewLine => new[] { (byte)'\n' };
 
         private readonly IPAddress _ipAddress;
         private readonly int _port;
         private readonly IEnumerable<ServerInfo> _serverInfo;
+        private readonly IServiceProvider _globalServices;
         private readonly bool _logSend;
         private readonly bool _logRecv;
         private readonly ConcurrentDictionary<IPEndPoint, TcpClient> _connections;
         private readonly ConcurrentDictionary<string, IGameServer> _servers;
 
         public IPAddress GetIpAddress() => _ipAddress;
+        public IGameServer? GetGameServer(string serverId) => _servers.TryGetValue(serverId, out var server) ? server : null;
 
-        public SocketServer(IPAddress ipAddress, int port, IEnumerable<ServerInfo> serverInfo, bool logSend, bool logRecv)
+        public SocketServer(IPAddress ipAddress, int port, IEnumerable<ServerInfo> serverInfo, IServiceProvider globalServices, bool logSend, bool logRecv)
         {
             _ipAddress = ipAddress;
             _port = port;
             _serverInfo = serverInfo;
+            _globalServices = globalServices;
             _logSend = logSend;
             _logRecv = logRecv;
             _connections = new ConcurrentDictionary<IPEndPoint, TcpClient>();
@@ -177,7 +180,7 @@ namespace BF2WebAdmin.Server
                 }
 
                 if (gameServer != null)
-                    await gameServer.UpdateSocketStateAsync(SocketState.Disconnected);
+                    await gameServer.UpdateSocketStateAsync(SocketState.Disconnected, DateTimeOffset.UtcNow);
             }
             catch (Exception ex)
             {
@@ -239,7 +242,7 @@ namespace BF2WebAdmin.Server
 
         //                if (result.IsCompleted)
         //                    break;
-                        
+
         //                //// TODO: use pipe
         //                ////var message = await reader.ReadLineAsync();
         //                //if (message == null)
@@ -423,12 +426,14 @@ namespace BF2WebAdmin.Server
             {
                 Log.Warning($"Unexpected server event {eventType} - expected serverInfo");
                 return default;
-                //return (null, null);
             }
 
             var gamePort = int.Parse(parts[3]);
             var key = $"{ipEndPoint.Address}:{gamePort}";
             var serverInfo = _serverInfo.FirstOrDefault(i => i.IpAddress == ipEndPoint.Address.ToString() && i.GamePort == gamePort);
+            if (serverInfo == null)
+                throw new Exception($"Server info not found in settings: {ipEndPoint.Address}:{gamePort}");
+
             var gameServer = await GetGameServerAsync(ipEndPoint, gameWriter, key, serverInfo);
             var gameReader = new GameReader(gameServer);
             return (gameServer, gameReader);
@@ -436,22 +441,19 @@ namespace BF2WebAdmin.Server
 
         private async Task<IGameServer> GetGameServerAsync(IPEndPoint ipEndPoint, IGameWriter gameWriter, string key, ServerInfo serverInfo)
         {
-            //var key = $"{ipEndPoint.Address}:{ipEndPoint.Port}";
             if (_servers.ContainsKey(key))
             {
                 var reusedServer = _servers[key];
                 Log.Information("Reused existing GameServer instance {ServerId}", reusedServer.Id);
-                await reusedServer.SetReconnectedAsync(gameWriter);
+                await reusedServer.SetReconnectedAsync(gameWriter, DateTimeOffset.UtcNow);
                 return reusedServer;
             }
 
             Log.Information("Created new GameServer instance {ServerKey}", key);
-            var newServer = await GameServer.CreateAsync(ipEndPoint.Address, gameWriter, serverInfo);
+            var newServer = await GameServer.CreateAsync(ipEndPoint.Address, gameWriter, serverInfo, _globalServices);
             _servers.TryAdd(key, newServer);
             return newServer;
         }
-
-        private IEnumerable<IGameServer> GameServerList => _servers.Values;
 
         public Task RetryConnectionAsync(IPAddress ipAddress, int port, ServerInfo serverInfo)
         {
@@ -469,7 +471,7 @@ namespace BF2WebAdmin.Server
                 {
                     // Check if server has already connected
                     var gameServerIp = await serverInfo.IpAddress.GetIpAddressAsync();
-                    var matchingServer = GameServerList.FirstOrDefault(s => s.IpAddress.Equals(gameServerIp) && s.GamePort == serverInfo.GamePort);
+                    var matchingServer = _servers.Values.FirstOrDefault(s => s.IpAddress.Equals(gameServerIp) && s.GamePort == serverInfo.GamePort);
                     if (matchingServer != null && matchingServer.SocketState == SocketState.Connected)
                     {
                         Log.Information("Server {ServerId} is already connected. Aborting connection retries.", matchingServer.Id);

@@ -9,8 +9,6 @@ namespace BF2WebAdmin.Server
 {
     public class ModuleResolver : IModuleResolver
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<ModManager>();
-
         private static readonly Assembly CurrentAssembly = Assembly.GetEntryAssembly();
 
         private static readonly StringBuilder CommandDocumentation;

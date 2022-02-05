@@ -5,7 +5,6 @@ namespace BF2WebAdmin.Common.Entities.Game
     public class Message
     {
         public Player Player { get; set; }
-        public DateTime Time { get; set; }
         public MessageType Type { get; set; }
         public string Channel { get; set; }
         public string Flags { get; set; }

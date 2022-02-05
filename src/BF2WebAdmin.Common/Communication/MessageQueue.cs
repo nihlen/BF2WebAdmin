@@ -16,8 +16,6 @@ namespace BF2WebAdmin.Common.Communication
     /// <typeparam name="TSend">The type of message that is sent from the local connection (ClientMessage)</typeparam>
     public class MessageQueue<TSend, TReceive> : IMessageQueue<TSend, TReceive>, IDisposable
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<MessageQueue<TSend, TReceive>>();
-
         private const int MaxQueueCapacity = 100;
 
         private readonly IMessageSerializer _serializer;

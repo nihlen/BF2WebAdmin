@@ -9,4 +9,10 @@ namespace BF2WebAdmin.Server.Commands
     {
         public string Name { get; set; }
     }
+
+    [Command("killid <PlayerId>", Auth.Admin)]
+    public class KillIdCommand : BaseCommand
+    {
+        public int PlayerId { get; set; }
+    }
 }

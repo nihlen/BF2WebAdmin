@@ -1,6 +1,7 @@
 ﻿using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
+using BF2WebAdmin.Shared;
 
 namespace BF2WebAdmin.Server;
 
@@ -9,7 +10,7 @@ public record ServerUpdateEvent(string Name, int GamePort, int QueryPort, int Ma
 public record SocketStateChangedEvent(SocketState SocketState, DateTimeOffset TimeStamp) : IEvent;
 public record GameStateChangedEvent(GameState GameState, DateTimeOffset TimeStamp) : IEvent;
 public record MapsChangedEvent(IEnumerable<Map> Maps, DateTimeOffset TimeStamp) : IEvent;
-public record MapChangedEvent(Map Map, DateTimeOffset TimeStamp) : IEvent;
+public record MapChangedEvent(Map Map, IEnumerable<Team> Teams, DateTimeOffset TimeStamp) : IEvent;
 public record PlayerJoinEvent(Player Player, DateTimeOffset TimeStamp) : IEvent;
 public record PlayerPositionEvent(Player Player, Position Position, Rotation Rotation, int Ping, DateTimeOffset TimeStamp) : IEvent;
 public record PlayerSpawnEvent(Player Player, Position Position, Rotation Rotation, DateTimeOffset TimeStamp) : IEvent;
@@ -28,24 +29,6 @@ public record MatchEndEvent(Modules.BF2.Match Match, DateTimeOffset TimeStamp) :
 public record RoundStartEvent(Modules.BF2.Round Round, DateTimeOffset TimeStamp) : IEvent;
 public record RoundEndEvent(Modules.BF2.Round Round, DateTimeOffset TimeStamp) : IEvent;
 
-
-/*
-
-             _gameServer.ServerUpdate += (name, gamePort, queryPort, maxPlayers) =>
-            _gameServer.PlayerPosition += (player, position, rotation, ping) =>
-            _gameServer.ChatMessage += message =>
-            _gameServer.PlayerJoin += player =>
-            _gameServer.PlayerLeft += player =>
-            _gameServer.PlayerKill += (attacker, attackerPosition, victim, victimPosition, weapon) =>
-            _gameServer.PlayerDeath += (player, position, isSuicide) =>
-            _gameServer.PlayerSpawn += (player, position, rotation) =>
-            _gameServer.PlayerTeam += (player, team) =>
-            _gameServer.PlayerScore += (player, teamScore, kills, deaths, totalScore) =>
-            _gameServer.PlayerVehicle += (player, vehicle) =>
-            _gameServer.GameStateChanged += state =>
-            _gameServer.ProjectilePosition += (projectile, position, rotation) =>
-            _gameServer.MapChanged += map =>
-
-
- */
-
+// RabbitMQ events
+public record GameStreamStartedEvent(Guid? MatchId, string StreamUrl, string BotName, DateTimeOffset TimeStamp) : IEvent;
+public record GameStreamStoppedEvent(Guid? MatchId, DateTimeOffset TimeStamp) : IEvent;

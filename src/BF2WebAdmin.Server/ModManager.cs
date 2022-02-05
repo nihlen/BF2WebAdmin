@@ -10,8 +10,11 @@ using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Configuration.Models;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
+using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Logging;
 using BF2WebAdmin.Server.Modules.BF2;
+using BF2WebAdmin.Server.Services;
+using Microsoft.AspNetCore.SignalR;
 using Polly;
 using Polly.Registry;
 using Serilog;
@@ -21,15 +24,13 @@ namespace BF2WebAdmin.Server
     // TODO: Move commands into new module folders? (like Features/)
     public class ModManager : IModManager
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<ModManager>();
-
         private static readonly IReadOnlyPolicyRegistry<string> PolicyRegistry;
 
         private const string CommandPrefix = ".";
 
         private readonly IModuleResolver _moduleResolver;
-        //private readonly IMediator _mediator;
         private readonly IGameServer _gameServer;
+        private readonly IServiceProvider _globalServices;
 
         private IConfiguration Configuration { get; set; }
         private IServiceProvider _services;
@@ -94,20 +95,20 @@ namespace BF2WebAdmin.Server
             };
         }
 
-        private ModManager(IGameServer gameServer)
+        private ModManager(IGameServer gameServer, IServiceProvider globalServices)
         {
             _gameServer = gameServer;
+            _globalServices = globalServices;
             _moduleResolver = new ModuleResolver();
             Mediator = new Mediator(_moduleResolver);
-            //gameServer.ChatMessage += async message => await HandleChatMessageAsync(message);
 
             BuildConfiguration();
             ConfigureDependencies();
         }
 
-        public static async Task<ModManager> CreateAsync(IGameServer gameServer)
+        public static async Task<ModManager> CreateAsync(IGameServer gameServer, IServiceProvider globalServices)
         {
-            var modManager = new ModManager(gameServer);
+            var modManager = new ModManager(gameServer, globalServices);
 
             await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(() => Task.WhenAll(
                 modManager.GetServerSettingsAsync(),
@@ -123,10 +124,10 @@ namespace BF2WebAdmin.Server
             return (T)_moduleResolver.Modules[typeof(T)];
         }
 
-        //public T GetModule<T>(IGameServer gameServer) where T : IModule
-        //{
-        //    return (T)_moduleResolver.Modules[typeof(T)];
-        //}
+        public T GetGlobalService<T>() where T : notnull
+        {
+            return _globalServices.GetRequiredService<T>();
+        }
 
         private void BuildConfiguration()
         {
@@ -171,6 +172,10 @@ namespace BF2WebAdmin.Server
             serviceCollection.AddSingleton<IReadOnlyPolicyRegistry<string>>(PolicyRegistry);
             serviceCollection.AddSingleton<IChatLogger, DiscordChatLogger>();
             serviceCollection.AddSingleton<IMediator>(c => Mediator);
+            serviceCollection.AddSingleton<IHubContext<ServerHub, IServerHubClient>>(sp => _globalServices.GetRequiredService<IHubContext<ServerHub, IServerHubClient>>());
+            serviceCollection.AddSingleton<MassTransit.IBus>(sp => _globalServices.GetRequiredService<MassTransit.IBus>());
+            serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RabbitMqGameStreamService>());
+            //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RedisGameStreamService>());
 
             // Modules
             foreach (var moduleType in _moduleResolver.ModuleTypes)
@@ -220,6 +225,7 @@ namespace BF2WebAdmin.Server
                 authPlayers.Add(new ServerPlayerAuth { AuthLevel = (int)Auth.God, PlayerHash = DiscordModule.DiscordBotHashGod, ServerGroup = group });
                 authPlayers.Add(new ServerPlayerAuth { AuthLevel = (int)Auth.SuperAdmin, PlayerHash = DiscordModule.DiscordBotHashSuperAdmin, ServerGroup = group });
                 authPlayers.Add(new ServerPlayerAuth { AuthLevel = (int)Auth.Admin, PlayerHash = DiscordModule.DiscordBotHashAdmin, ServerGroup = group });
+                authPlayers.Add(new ServerPlayerAuth { AuthLevel = (int)Auth.God, PlayerHash = WebModule.WebAdminHashGod, ServerGroup = group });
             }
 
             AuthPlayers = authPlayers.ToLookup(p => p.PlayerHash);
@@ -283,24 +289,6 @@ namespace BF2WebAdmin.Server
                         Log.Warning("{CommandName} is not a {BaseCommand}", commandType.Name, nameof(BaseCommand));
 
                     await Mediator.HandleAsync(command);
-                    
-                    //if (!_moduleResolver.CommandHandlers.ContainsKey(commandType))
-                    //    throw new Exception($"No command handler registered for {commandType.Name}");
-
-                    ////var commandTasks = new List<Task>();
-
-                    //// TODO: properly hand async commands - always return Func<Task> and await Task.WhenAll?
-                    //foreach (var handler in _moduleResolver.CommandHandlers[commandType])
-                    //{
-                    //    // Errors are handled in the command handler wrapper
-                    //    _ = Task.Run(async () => await handler(command));
-                    //    //commandTasks.Add(Task.Run(async () => await handler(command)));
-                    //    //commandTasks.Add(handler(command));
-                    //    handledCount++;
-                    //}
-
-                    //// TODO: necessary to await this? we don't want to block other events, and don't care about the result
-                    ////await Task.WhenAll(commandTasks);
                 }
                 catch (CommandArgumentCountException ex)
                 {

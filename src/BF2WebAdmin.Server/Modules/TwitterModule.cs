@@ -13,8 +13,6 @@ namespace BF2WebAdmin.Server.Modules
         IHandleCommandAsync<TwitterFollowCommand>,
         IHandleCommand<TwitterUnfollowCommand>
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<ModManager>();
-
         private readonly IGameServer _gameServer;
 
         private readonly ITwitterCredentials _credentials;

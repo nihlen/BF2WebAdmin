@@ -7,8 +7,6 @@ namespace BF2WebAdmin.Common.Communication
 {
     public class JsonSerializer : IMessageSerializer
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<JsonSerializer>();
-
         private static readonly JsonSerializerSettings SerializerSettings = new JsonSerializerSettings
         {
             //ContractResolver = new CamelCasePropertyNamesContractResolver(),

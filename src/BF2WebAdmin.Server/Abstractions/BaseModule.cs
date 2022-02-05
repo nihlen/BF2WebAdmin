@@ -1,6 +1,8 @@
-﻿using BF2WebAdmin.Common.Entities.Game;
+﻿using System.Text.RegularExpressions;
+using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
+using Serilog;
 
 namespace BF2WebAdmin.Server.Abstractions
 {
@@ -33,6 +35,52 @@ namespace BF2WebAdmin.Server.Abstractions
         protected virtual void KillPlayer(Player player)
         {
             GameServer.GameWriter.SendHealth(player, 1);
+        }
+
+        protected static string GetRconCommand(string text)
+        {
+            if (text.StartsWith("!m ")) return "map" + text[2..];
+            if (text.StartsWith("!map ")) return "map" + text[4..];
+            if (text.StartsWith("!w ")) return "iga warn" + text[2..];
+            if (text.StartsWith("!warn ")) return "iga warn" + text[2..];
+            if (text.StartsWith("!k ")) return "iga kick" + text[2..];
+            if (text.StartsWith("!kick ")) return "iga kick" + text[2..];
+            if (text.StartsWith("!b ")) return "iga ban" + text[2..];
+            if (text.StartsWith("!ban ")) return "iga ban" + text[2..];
+            return text.TrimStart('!');
+        }
+
+        protected static string GetObfuscatedResponse(string text)
+        {
+            var result = Regex.Replace(
+                text,
+                @"((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)",
+                "[IP REMOVED]",
+                RegexOptions.Compiled
+            );
+
+            return result.Length > 1 ? result : "Empty response";
+        }
+
+        protected async Task<string> SendRconCommandAsync(string command)
+        {
+            var rcon = new RconClient(GameServer.IpAddress, GameServer.ServerInfo.RconPort, GameServer.ServerInfo.RconPassword);
+            return await rcon.SendAsync(command);
+        }
+
+        protected void RunBackgroundTask(string description, Func<Task> func)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await func();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to complete background task: {Description}", description);
+                }
+            });
         }
     }
 }

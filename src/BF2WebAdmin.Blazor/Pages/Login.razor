@@ -1,0 +1,51 @@
+﻿@page "/login"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using System.ComponentModel.DataAnnotations
+@attribute [AllowAnonymous]
+
+<EditForm Model="@_model" OnValidSubmit="OnValidSubmit">
+    <DataAnnotationsValidator />
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudCard>
+                <MudCardContent>
+                    <MudTextField Label="Username" @bind-Value="_model.Username" For="@(() => _model.Username)" />
+                    <MudTextField Label="Password" Class="mt-3" @bind-Value="_model.Password" For="@(() => _model.Password)" InputType="InputType.Password" />
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="ml-auto">Login</MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</EditForm>
+
+@code {
+    private LoginForm _model = new();
+    private bool _success;
+
+    public class LoginForm
+    {
+        [Required]
+        public string Username { get; set; }
+
+        [Required]
+        public string Password { get; set; }
+    }
+
+    private async void OnValidSubmit(EditContext context)
+    {
+        var success = await _adminService.LoginAsync(_model.Username, _model.Password);
+
+        if (success)
+        {
+            await _adminService.ConnectAsync();
+            _navigationManager.NavigateTo("/");
+        }
+        else
+        {
+            _snackbar.Add("Login failed", Severity.Error);
+        }
+    }
+}

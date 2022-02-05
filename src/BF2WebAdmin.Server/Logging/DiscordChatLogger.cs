@@ -1,5 +1,4 @@
 ﻿using BF2WebAdmin.Server.Configuration.Models;
-using BF2WebAdmin.Server.Modules.BF2;
 using Microsoft.Extensions.Options;
 using Serilog;
 
@@ -48,6 +47,32 @@ namespace BF2WebAdmin.Server.Logging
             public DiscordClient Client { get; set; }
             public string ServerGroupFilter { get; set; }
             public string MessageTypeFilter { get; set; }
+        }
+
+        private class DiscordClient : IDisposable
+        {
+            private ulong _webhookId;
+            private string _webhookToken;
+            private Discord.Webhook.DiscordWebhookClient _webhookClient;
+            private Discord.WebSocket.DiscordSocketClient _websocketClient;
+
+            public DiscordClient(ulong webhookId, string webhookToken)
+            {
+                _webhookId = webhookId;
+                _webhookToken = webhookToken;
+                _webhookClient = new Discord.Webhook.DiscordWebhookClient(_webhookId, _webhookToken);
+                _websocketClient = new Discord.WebSocket.DiscordSocketClient();
+            }
+
+            public async Task SendMessageAsync(string text)
+            {
+                await _webhookClient.SendMessageAsync(text);
+            }
+
+            public void Dispose()
+            {
+                _websocketClient?.Dispose();
+            }
         }
     }
 }

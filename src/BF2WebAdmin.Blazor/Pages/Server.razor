@@ -1,0 +1,467 @@
+﻿@page "/server/{serverId}"
+@using BF2WebAdmin.Shared.Communication.DTOs
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.SignalR.Client
+@using System.Collections.Concurrent
+@using BF2WebAdmin.Shared
+@using BF2WebAdmin.Shared.Communication.Events
+@implements IAsyncDisposable
+
+<PageTitle>BF2 Web Admin - @_serverName</PageTitle>
+
+@if (_socketState == SocketState.Disconnected)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mb-8">Server is offline</MudAlert>
+}
+
+<MudText Typo="Typo.h3" Class="mb-8">@_serverName</MudText>
+
+<div class="mb-8">
+    <MudChip Icon="@(_socketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
+             IconColor="@(_socketState == SocketState.Connected ? Color.Success : Color.Error)">
+        @_socketState
+    </MudChip>
+    <MudChip>@_gameState</MudChip>
+    <MudChip>@_ipAddress:@_gamePort (@_queryPort)</MudChip>
+    <MudChip>@_map</MudChip>
+    <MudChip>@_currentPlayers / @_maxPlayers players</MudChip>
+</div>
+
+<MudButtonGroup Variant="Variant.Filled" Class="mb-8">
+    <MudButton OnClick="@(() => SendCustomCommand(".crash"))" StartIcon="@Icons.Material.Filled.Refresh" IconColor="Color.Error">Restart server</MudButton>
+    <MudButton OnClick="@(() => SendRconCommand("exec admin.restartMap"))" StartIcon="@Icons.Material.Filled.RestartAlt" IconColor="Color.Success">Restart map</MudButton>
+    <MudButton OnClick="@(() => SendRconCommand("exec gameLogic.togglePause"))" StartIcon="@Icons.Material.Filled.Pause" IconColor="Color.Warning">Toggle pause</MudButton>
+</MudButtonGroup>
+
+<MudGrid Class="mb-8">
+
+    @foreach (var team in _teams)
+    {
+        <MudItem xs="12" sm="6">
+            <MudTable Items="_players.Values.Where(p => p.Team == team.Id).OrderByDescending(p => p.Score.Total)">
+                <HeaderContent>
+                    <MudTh>@team.Name</MudTh>
+                    <MudTh>Name</MudTh>
+                    <MudTh Style="text-align:center">S</MudTh>
+                    <MudTh Style="text-align:center">K</MudTh>
+                    <MudTh Style="text-align:center">D</MudTh>
+                    <MudTh Style="text-align:center">P</MudTh>
+                    <MudTh Style="width:1px"></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="">@context.Index</MudTd>
+                    <MudTd DataLabel="Name">
+                        <span class="@($"fi fi-{context.Country?.ToLower()} mr-2")" title="@context.Country"></span>
+                        <span style="color: @(context.IsAlive ? "#ffffffb2" : "#ffffff40")">@context.Name</span>
+                    </MudTd>
+                    <MudTd DataLabel="S" Style="text-align:center">@context.Score.Total</MudTd>
+                    <MudTd DataLabel="K" Style="text-align:center">@context.Score.Kills</MudTd>
+                    <MudTd DataLabel="D" Style="text-align:center">@context.Score.Deaths</MudTd>
+                    <MudTd DataLabel="P" Style="text-align:center">@context.Score.Ping</MudTd>
+                    <MudTd DataLabel="">
+                        <MudMenu Label="" Icon="@Icons.Material.Filled.MoreVert" Dense="true">
+                            <MudMenuItem OnClick="@(() => SendCustomCommand($".switchid {context.Index}"))">Switch team</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => SendCustomCommand($".killid {context.Index}"))">Kill player</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => ShowInputDialogAsync("Warn player", "Reason", "Player will be warned", (reason) => SendRconCommand($"iga warn {context.Index} {reason}")))">Warn player</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => ShowInputDialogAsync("Kick player", "Reason", "Player will be kicked", (reason) => SendRconCommand($"iga kick {context.Index} {reason}")))">Kick player</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => ShowInputDialogAsync("Ban player", "Reason", "Player will be banned", (reason) => SendRconCommand($"iga ban {context.Index} {reason}")))">Ban player</MudMenuItem>
+                        </MudMenu>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudItem>
+    }
+
+</MudGrid>
+
+@*<BECanvas Width="300" Height="400" @ref="_canvasReference"></BECanvas>*@
+
+<MudPaper>
+
+    <MudTabs Outlined="true" ActivePanelIndexChanged="ActiveTabIndexChanged">
+
+        <MudTabPanel Text="Chat" Icon="@Icons.Material.Filled.Chat">
+            <ul id="chatlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
+                @foreach (var chat in _chatLog)
+                {
+                    var playerName = _players.TryGetValue(chat.Message.PlayerId, out var player) ? player.Name : "?";
+                    <li>@chat.Timestamp.ToShortDateTime() &lt;@(chat.Message.Channel)&gt; @playerName: @chat.Message.Text</li>
+                }
+            </ul>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Events" Icon="@Icons.Material.Filled.Bolt">
+            <ul id="eventlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
+                @foreach (var gameEvent in _eventLog)
+                {
+                    <li>@gameEvent.Timestamp.ToShortDateTime() @gameEvent.Message</li>
+                }
+            </ul>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Requests" Icon="@Icons.Material.Filled.DoubleArrow">
+            <ul id="requestlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
+                @foreach (var request in _requestResponses)
+                {
+                    <li class="mb-4">
+                        <div>Request:</div>
+                        <pre>@request.Request</pre>
+                        <div>Response:</div>
+                        <pre>@request.Response</pre>
+                    </li>
+                }
+            </ul>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Maps" Icon="@Icons.Material.Filled.Map">
+            <div class="px-4 py-4">
+                <MudList Clickable="true" SelectedValue="_maps?.FirstOrDefault(m => m.Name == _map)?.Index" Width="300px">
+                    @foreach (var map in _maps)
+                    {
+                        <MudListItem Value="@map.Index"
+                                 Text="@(map.Index + " " + map.Name + " " + map.Size)"
+                                 Icon="@Icons.Material.Filled.Map"
+                                 OnClick="@(() => SendRconCommand($"map {map.Name} gpm_cq 16"))" />
+                    }
+                </MudList>
+            </div>
+        </MudTabPanel>
+
+    </MudTabs>
+
+    <MudTextField @bind-Value="TextValue"
+                  Immediate="true"
+                  Placeholder="Enter message"
+                  DisableUnderLine="true"
+                  Variant="Variant.Outlined"
+                  Margin="Margin.Dense"
+                  OnKeyPress="OnKeyPress" />
+
+</MudPaper>
+
+@code {
+    // TODO: split into separate file
+    [Parameter]
+    public string? ServerId { get; set; }
+
+    public string TextValue { get; set; }
+    public int ActiveTabIndex { get; set; }
+
+    private bool _snapshotReceived = false;
+    private bool _activeTabIndexChanged = false;
+
+    private List<IDisposable> _listeners = new();
+
+    private string? _serverName;
+    private string? _map;
+    private int? _gamePort;
+    private int? _queryPort;
+    private int? _currentPlayers;
+    private int? _maxPlayers;
+    private string? _ipAddress;
+    private GameState? _gameState;
+    private SocketState? _socketState;
+    private readonly List<ChatLogDto> _chatLog = new();
+    private readonly List<EventLogDto> _eventLog = new();
+    private readonly List<RequestResponseEvent> _requestResponses = new();
+    private readonly List<TeamDto> _teams = new();
+    private readonly List<MapDto> _maps = new();
+    private readonly ConcurrentDictionary<int, PlayerDto> _players = new();
+
+    //private Canvas2DContext _context;
+    //protected BECanvasComponent _canvasReference;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+
+        if (ServerId is null)
+            return;
+
+        await AddListenersAsync(null);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (ServerId is null)
+            return;
+
+        //await AddListenersAsync(null);
+    }
+
+    private async Task AddListenersAsync(string? text)
+    {
+        // Clean up old listeners first
+        await RemoveListenersAsync(null);
+
+        _adminService.HubConnection.Reconnected += AddListenersAsync;
+        _adminService.HubConnection.Reconnecting += RemoveListenersAsync;
+        _adminService.HubConnection.Closed += RemoveListenersAsync;
+
+        await _adminService.SelectServerAsync(ServerId);
+
+        _listeners = new List<IDisposable>
+        {
+            _adminService.HubConnection.On<ChatEvent>(nameof(ChatEvent), async e =>
+            {
+                _chatLog.Add(new ChatLogDto { Message = e.Message, Timestamp = e.TimeStamp });
+                StateHasChanged();
+            }),
+            _adminService.HubConnection.On<GameStateEvent>(nameof(GameStateEvent), e =>
+            {
+                _gameState = e.State;
+                _eventLog.Add(new EventLogDto { Message = $"{nameof(GameStateEvent)} {e.State}", Timestamp = e.TimeStamp });
+                StateHasChanged();
+            }),
+            _adminService.HubConnection.On<MapChangeEvent>(nameof(MapChangeEvent), e =>
+            {
+                _map = e.Map;
+                _eventLog.Add(new EventLogDto { Message = $"{nameof(MapChangeEvent)} {e.Map}", Timestamp = e.TimeStamp });
+                StateHasChanged();
+            }),
+            _adminService.HubConnection.On<PlayerDeathEvent>(nameof(PlayerDeathEvent), e =>
+            {
+                if (_players.TryGetValue(e.PlayerId, out var player))
+                {
+                    player.IsAlive = false;
+                    _eventLog.Add(new EventLogDto { Message = $"{nameof(PlayerDeathEvent)} {e.PlayerId} {e.Position}", Timestamp = e.TimeStamp });
+                    StateHasChanged();
+                }
+            }),
+            _adminService.HubConnection.On<PlayerJoinEvent>(nameof(PlayerJoinEvent), e =>
+            {
+                if (_players.TryAdd(e.Player.Index, e.Player))
+                {
+                    _eventLog.Add(new EventLogDto { Message = $"{nameof(PlayerJoinEvent)} {e.Player.Index} {e.Player.Name}", Timestamp = e.TimeStamp });
+                    StateHasChanged();
+                }
+            }),
+            _adminService.HubConnection.On<PlayerKillEvent>(nameof(PlayerKillEvent), e =>
+            {
+                _eventLog.Add(new EventLogDto { Message = $"{nameof(PlayerKillEvent)} {e.AttackerId} {e.VictimId} {e.Weapon}", Timestamp = e.TimeStamp });
+                StateHasChanged();
+            }),
+            _adminService.HubConnection.On<PlayerLeftEvent>(nameof(PlayerLeftEvent), e =>
+            {
+                if (_players.TryRemove(e.PlayerId, out _))
+                {
+                    _eventLog.Add(new EventLogDto { Message = $"{nameof(PlayerLeftEvent)} {e.PlayerId}", Timestamp = e.TimeStamp });
+                    StateHasChanged();
+                }
+            }),
+            _adminService.HubConnection.On<PlayerPositionEvent>(nameof(PlayerPositionEvent), async e =>
+            {
+                // TODO: map position updates?
+                if (_players.TryGetValue(e.PlayerId, out var player))
+                {
+                    player.Score.Ping = e.Ping;
+                    StateHasChanged();
+                }
+
+                //var component = _canvasReference?.As<BECanvasComponent>();
+                //if (component is null)
+                //    return;
+
+                //_context ??= await _canvasReference.CreateCanvas2DAsync();
+
+                //await _context.SetFillStyleAsync("green");
+
+                //await _context.FillRectAsync(10, 100, 100, 100);
+
+                //await _context.SetFontAsync("48px serif");
+                //await _context.StrokeTextAsync("Hello Blazor!!!", 10, 100);
+            }),
+            _adminService.HubConnection.On<PlayerScoreEvent>(nameof(PlayerScoreEvent), e =>
+            {
+                if (_players.TryGetValue(e.PlayerId, out var player))
+                {
+                    player.Score.Kills = e.Kills;
+                    player.Score.Deaths = e.Deaths;
+                    player.Score.Team = e.TeamScore;
+                    player.Score.Total = e.TotalScore;
+                    _eventLog.Add(new EventLogDto { Message = $"{nameof(PlayerScoreEvent)} {e.PlayerId}", Timestamp = e.TimeStamp });
+                    StateHasChanged();
+                }
+            }),
+            _adminService.HubConnection.On<PlayerSpawnEvent>(nameof(PlayerSpawnEvent), e =>
+            {
+                if (_players.TryGetValue(e.PlayerId, out var player))
+                {
+                    player.IsAlive = true;
+                    _eventLog.Add(new EventLogDto { Message = $"{nameof(PlayerSpawnEvent)} {e.PlayerId}", Timestamp = e.TimeStamp });
+                    StateHasChanged();
+                }
+            }),
+            _adminService.HubConnection.On<PlayerTeamEvent>(nameof(PlayerTeamEvent), e =>
+            {
+                if (_players.TryGetValue(e.PlayerId, out var player))
+                {
+                    player.Team = e.TeamId;
+                    _eventLog.Add(new EventLogDto { Message = $"{nameof(PlayerTeamEvent)} {e.PlayerId} {e.TeamId}", Timestamp = e.TimeStamp });
+                    StateHasChanged();
+                }
+            }),
+            _adminService.HubConnection.On<PlayerVehicleEvent>(nameof(PlayerVehicleEvent), e =>
+            {
+                // TODO: change map icon?
+                _eventLog.Add(new EventLogDto { Message = $"{nameof(PlayerVehicleEvent)} {e.PlayerId} {e.Vehicle?.RootVehicleTemplate}", Timestamp = e.TimeStamp });
+            }),
+            _adminService.HubConnection.On<ProjectilePositionEvent>(nameof(ProjectilePositionEvent), e =>
+            {
+                // TODO: map position updates?
+            }),
+            _adminService.HubConnection.On<ServerUpdateEvent>(nameof(ServerUpdateEvent), e =>
+            {
+                _serverName = e.Name;
+                _map = e.Map;
+                _gamePort = e.GamePort;
+                _queryPort = e.QueryPort;
+                _currentPlayers = e.Players;
+                _maxPlayers = e.MaxPlayers;
+                _ipAddress = e.IpAddress;
+                _gameState = e.GameState;
+                _socketState = e.SocketState;
+                StateHasChanged();
+            }),
+            _adminService.HubConnection.On<ServerSnapshotEvent>(nameof(ServerSnapshotEvent), e =>
+            {
+                _serverName = e.Server.Name;
+                _map = e.Server.Map;
+                _gamePort = e.Server.GamePort;
+                _queryPort = e.Server.QueryPort;
+                _currentPlayers = e.Server.Players;
+                _maxPlayers = e.Server.MaxPlayers;
+                _ipAddress = e.Server.IpAddress;
+                _gameState = e.Server.GameState;
+                _socketState = e.Server.SocketState;
+
+                _players.Clear();
+                foreach (var player in e.Players) _players.TryAdd(player.Index, player);
+
+                _teams.Clear();
+                _teams.AddRange(e.Teams);
+
+                _chatLog.Clear();
+                _chatLog.AddRange(e.ChatLog);
+
+                _eventLog.Clear();
+                _eventLog.AddRange(e.EventLog);
+
+                _maps.Clear();
+                _maps.AddRange(e.Maps);
+
+                _snapshotReceived = true;
+
+                StateHasChanged();
+            }),
+            _adminService.HubConnection.On<RequestResponseEvent>(nameof(RequestResponseEvent), async e =>
+            {
+                _requestResponses.Add(e);
+                StateHasChanged();
+                var scrolled = await _jsRuntime.InvokeAsync<bool>("ScrollToBottom", "requestlog", true);
+            })
+        };
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // TODO: don't run this for every PlayerPositionUpdate
+        var tabId = ActiveTabIndex switch
+        {
+            0 => "chatlog",
+            1 => "eventlog",
+            2 => "requestlog",
+            _ => null,
+        };
+
+        if (tabId is null)
+            return;
+
+        var force = firstRender;
+        if (_activeTabIndexChanged || _snapshotReceived)
+        {
+            force = true;
+            _activeTabIndexChanged = false;
+            _snapshotReceived = false;
+        }
+
+        var scrolled = await _jsRuntime.InvokeAsync<bool>("ScrollToBottom", tabId, force);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await RemoveListenersAsync(null);
+    }
+
+    private async Task RemoveListenersAsync(Exception? exception)
+    {
+        await _adminService.DeselectServerAsync(ServerId);
+
+        _adminService.HubConnection.Reconnected -= AddListenersAsync;
+        _adminService.HubConnection.Reconnecting -= RemoveListenersAsync;
+        _adminService.HubConnection.Closed -= RemoveListenersAsync;
+
+        foreach (var listener in _listeners)
+        {
+            listener.Dispose();
+        }
+    }
+
+    private async void OnKeyPress(KeyboardEventArgs e)
+    {
+        var isEnter = e.Code is "Enter" or "NumpadEnter";
+        if (!isEnter)
+            return;
+
+        if (string.IsNullOrWhiteSpace(TextValue))
+            return;
+
+        var text = TextValue;
+        TextValue = string.Empty;
+        await _adminService.SendChatMessageAsync(text);
+    }
+
+    private async void ChangeMap(int index)
+    {
+        // TODO: fix map size always being 0 + add som feedback that it actually worked
+        var map = _maps.First(m => m.Index == index);
+        var cmd = $"map {map.Name} gpm_cq 16";
+        await _adminService.SendRconCommandAsync(cmd);
+        _snackbar.Add("Map is being changed", Severity.Success);
+    }
+
+    private async void SendRconCommand(string cmd)
+    {
+        await _adminService.SendRconCommandAsync(cmd);
+    }
+
+    private async void SendCustomCommand(string cmd)
+    {
+        await _adminService.SendCustomCommandAsync(cmd);
+    }
+
+    private async Task ShowInputDialogAsync(string text, string placeholder, string success, Action<string> callback)
+    {
+        var parameters = new DialogParameters
+            {
+                ["callback"] = callback,
+                ["text"] = text,
+                ["placeholder"] = placeholder,
+                ["success"] = success,
+            };
+
+        var dialog = _dialogService.Show<InputDialog>(text, parameters, new DialogOptions { });
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            callback?.Invoke(result.Data.ToString());
+        }
+    }
+
+    private void ActiveTabIndexChanged(int newTabId)
+    {
+        _activeTabIndexChanged = true;
+        ActiveTabIndex = newTabId;
+    }
+}

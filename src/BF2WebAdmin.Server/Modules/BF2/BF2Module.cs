@@ -8,6 +8,7 @@ using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Logging;
+using BF2WebAdmin.Shared;
 using Serilog;
 
 namespace BF2WebAdmin.Server.Modules.BF2
@@ -24,6 +25,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
         IHandleCommand<StopCommand>,
         IHandleCommand<RepairCommand>,
         IHandleCommand<KillCommand>,
+        IHandleCommand<KillIdCommand>,
         IHandleCommand<ScoreCommand>,
         IHandleCommand<ScoreResetCommand>,
         IHandleCommand<RepairAllCommand>,
@@ -46,7 +48,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
         IHandleCommandAsync<SetAuthCommand>,
         IHandleCommandAsync<GetAuthCommand>
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<BF2Module>();
         private readonly IGameServer _gameServer;
         private readonly ICountryResolver _countryResolver;
         private readonly IServerSettingsRepository _serverSettingsRepository;
@@ -78,111 +79,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
                 _gameServer.GameWriter.SendText(message);
             };
-            //_gameServer.MapChanged += async map =>
-            //{
-            //    if (_gameServer.ServerInfo == null)
-            //    {
-            //        Log.Warning("Couldn't update admins - ServerInfo missing");
-            //        return;
-            //    }
-
-            //    var rconClient = new RconClient(_gameServer.IpAddress, _gameServer.ServerInfo.RconPort, _gameServer.ServerInfo.RconPassword);
-
-            //    // Delete existing admins
-            //    var ingameAdminResponse = await rconClient.SendAsync("iga listAdmins");
-            //    var ingameAdmins = ingameAdminResponse.Split("\n").Where(l => l.Length > 40).Select(l => l.Substring(7, 32));
-            //    foreach (var ingameAdmin in ingameAdmins)
-            //    {
-            //        var removeAdminResponse = await rconClient.SendAsync($"iga delAdmin {ingameAdmin}");
-            //    }
-
-            //    // Add new admins from DB
-            //    var admins = _gameServer.ModManager.AuthPlayers.SelectMany(p => p.ToList());
-            //    foreach (var admin in admins)
-            //    {
-            //        var addAdminResponse = await rconClient.SendAsync($"iga addAdmin {admin.PlayerHash} all");
-            //    }
-            //};
-            //_gameServer.PlayerJoin += async player =>
-            //{
-            //    using (Profiler.Start("DEBUG PlayerJoin GetCountryResponse"))
-            //    {
-            //        _newPlayers.TryAdd(player.Index, true);
-            //        var countryResponse = _countryResolver.GetCountryResponse(player.IpAddress.ToString());
-            //        player.Country.Code = countryResponse?.Country?.IsoCode;
-            //        player.Country.Name = countryResponse?.Country?.Name;
-            //    }
-
-            //    // No new messages when the server is reconnecting
-            //    if (DateTime.UtcNow - _gameServer.StartTime > TimeSpan.FromMinutes(1))
-            //    {
-            //        using (Profiler.Start("DEBUG PlayerJoin Discord WebHook"))
-            //        {
-            //            await _chatLogger.SendAsync(
-            //                $"`{player.DisplayName} ({player.Country.Code}) joined {_gameServer.Name} ({_gameServer.Players.Count()}/{_gameServer.MaxPlayers})`",
-            //                _gameServer.ModManager.ServerSettings?.ServerGroup,
-            //                "player"
-            //            );
-            //        }
-
-            //        using (Profiler.Start("DEBUG PlayerJoin ServerGroupMessage"))
-            //        {
-            //            ServerGroupMessage?.Invoke(_gameServer.Id, $"{player.DisplayName} ({player.Country.Code}) joined {_gameServer.Name} ({_gameServer.Players.Count()}/{_gameServer.MaxPlayers})");
-            //        }
-            //    }
-            //};
-            //_gameServer.PlayerLeft += async player =>
-            //{
-            //    _newPlayers.Remove(player.Index);
-            //    await _chatLogger.SendAsync(
-            //        $"`{player.DisplayName} left {_gameServer.Name} ({_gameServer.Players.Count()}/{_gameServer.MaxPlayers})`",
-            //        _gameServer.ModManager.ServerSettings?.ServerGroup,
-            //        "player"
-            //    );
-            //};
-            //_gameServer.PlayerSpawn += (player, position, rotation) =>
-            //{
-            //    if (!_newPlayers.ContainsKey(player.Index))
-            //        return Task.CompletedTask;
-
-            //    // TODO: send join message to all servers in group ([netsky] krische joined NeTskY [DE] 2v2?)
-            //    _newPlayers.Remove(player.Index);
-
-            //    // No new messages when the server is reconnecting
-            //    if (DateTime.UtcNow - _gameServer.StartTime > TimeSpan.FromMinutes(1))
-            //    {
-            //        _gameServer.GameWriter.SendText($"{player.DisplayName} ({player.Country.Code}) joined");
-            //    }
-
-            //    return Task.CompletedTask;
-            //};
-            //_gameServer.SocketStateChanged += async state =>
-            //{
-            //    var icon = state == SocketState.Connected ? ":green_square:" : ":red_square:";
-            //    await _chatLogger.SendAsync($"{icon} `{_gameServer.Name} => {state} ({_gameServer.Id})`", _gameServer.ModManager.ServerSettings?.ServerGroup, "status");
-            //};
-
-            //if (_sendHeartbeat)
-            //{
-            //    _gameServer.SocketStateChanged += state =>
-            //    {
-            //        if (state == SocketState.Connected)
-            //        {
-            //            _heartbeatTimer = new Timer(o =>
-            //            {
-            //                Log.Debug("Heartbeat");
-            //                _gameServer.GameWriter.SendHeartbeat();
-            //            }, null, TimeSpan.Zero, TimeSpan.FromSeconds(25));
-            //        }
-            //        else
-            //        {
-            //            _heartbeatTimer?.Dispose();
-            //            _heartbeatTimer = null;
-            //        }
-
-            //        return Task.CompletedTask;
-            //    };
-            //}
         }
 
         public void Handle(TimeCommand command)
@@ -242,6 +138,15 @@ namespace BF2WebAdmin.Server.Modules.BF2
         public void Handle(KillCommand command)
         {
             var player = _gameServer.GetPlayer(command.Name);
+            if (player == null)
+                return;
+
+            _gameServer.GameWriter.SendHealth(player, 1);
+        }
+
+        public void Handle(KillIdCommand command)
+        {
+            var player = _gameServer.GetPlayer(command.PlayerId);
             if (player == null)
                 return;
 
@@ -320,9 +225,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
         {
             var player = command.Message.Player;
             _gameServer.GameWriter.SendText($"Position: {player.Position}, Rotation: {player.Rotation}");
-
-            // TODO: remove after testing 
-            //System.IO.File.AppendAllLines(@"C:\Users\Alex\Documents\Chopper Mayhem\Positions.txt", new[] { $"Position: {player.Position}, Rotation: {player.Rotation}" });
         }
 
         public void Handle(PingCommand command)
@@ -408,7 +310,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
             _gameServer.GameWriter.SendText($"OK");
             _gameServer.GameWriter.SendRcon(commands);
-
         }
 
         public async ValueTask HandleAsync(DanceCommand command)
@@ -561,8 +462,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 return;
             }
 
-            //var authLevels = await _serverSettingsRepository.GetPlayerAuthAsync(_gameServer.Id);
-            //var playerAuth = authLevels.FirstOrDefault(a => a.PlayerHash == player.Hash);
             var playerAuth = _gameServer.ModManager.AuthPlayers[player.Hash].FirstOrDefault();
             if (playerAuth != null)
             {
@@ -625,30 +524,21 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
         public async ValueTask HandleAsync(PlayerJoinEvent e)
         {
-            using (Profiler.Start("DEBUG PlayerJoin GetCountryResponse"))
-            {
-                _newPlayers.TryAdd(e.Player.Index, true);
-                var countryResponse = _countryResolver.GetCountryResponse(e.Player.IpAddress.ToString());
-                e.Player.Country.Code = countryResponse?.Country?.IsoCode;
-                e.Player.Country.Name = countryResponse?.Country?.Name;
-            }
+            _newPlayers.TryAdd(e.Player.Index, true);
+            var countryResponse = _countryResolver.GetCountryResponse(e.Player.IpAddress.ToString());
+            e.Player.Country.Code = countryResponse?.Country?.IsoCode;
+            e.Player.Country.Name = countryResponse?.Country?.Name;
 
             // No new messages when the server is reconnecting
             if (DateTime.UtcNow - _gameServer.StartTime > TimeSpan.FromMinutes(1))
             {
-                using (Profiler.Start("DEBUG PlayerJoin Discord WebHook"))
-                {
-                    await _chatLogger.SendAsync(
-                        $"`{e.Player.DisplayName} ({e.Player.Country.Code}) joined {_gameServer.Name} ({_gameServer.Players.Count()}/{_gameServer.MaxPlayers})`",
-                        _gameServer.ModManager.ServerSettings?.ServerGroup,
-                        "player"
-                    );
-                }
+                await _chatLogger.SendAsync(
+                    $"`{e.Player.DisplayName} ({e.Player.Country.Code}) joined {_gameServer.Name} ({_gameServer.Players.Count()}/{_gameServer.MaxPlayers})`",
+                    _gameServer.ModManager.ServerSettings?.ServerGroup,
+                    "player"
+                );
 
-                using (Profiler.Start("DEBUG PlayerJoin ServerGroupMessage"))
-                {
-                    ServerGroupMessage?.Invoke(_gameServer.Id, $"{e.Player.DisplayName} ({e.Player.Country.Code}) joined {_gameServer.Name} ({_gameServer.Players.Count()}/{_gameServer.MaxPlayers})");
-                }
+                ServerGroupMessage?.Invoke(_gameServer.Id, $"{e.Player.DisplayName} ({e.Player.Country.Code}) joined {_gameServer.Name} ({_gameServer.Players.Count()}/{_gameServer.MaxPlayers})");
             }
         }
 

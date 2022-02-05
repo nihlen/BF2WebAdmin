@@ -37,6 +37,12 @@ namespace BF2WebAdmin.Server.Commands.BF2
         public string Name { get; set; }
     }
 
+    [Command("switchid <PlayerId>", Auth.Admin)]
+    public class SwitchIdCommand : BaseCommand
+    {
+        public int PlayerId { get; set; }
+    }
+
     [Command("nasa <Value>", Auth.Admin)]
     public class NasaCommand : BaseCommand
     {

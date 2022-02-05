@@ -8,14 +8,12 @@ namespace BF2WebAdmin.Server
 {
     public class GameReader : IGameReader
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<GameReader>();
-
         private readonly IGameServer _gameServer;
         private readonly string _gameLogPath;
         private readonly DateTime _startTime;
-        private readonly Dictionary<string, Func<string[], ValueTask>> _eventHandlers;
+        private readonly Dictionary<string, Func<string[], DateTimeOffset, ValueTask>> _eventHandlers;
         private readonly Stopwatch _messageStopWatch;
-        private readonly Channel<string> _gameEventChannel;
+        private readonly Channel<(string, DateTimeOffset)> _gameEventChannel;
 
         public GameReader(IGameServer gameServer, string gameLogPath = null)
         {
@@ -25,7 +23,7 @@ namespace BF2WebAdmin.Server
             _gameServer = gameServer;
             _gameLogPath = gameLogPath;
             _messageStopWatch = new Stopwatch();
-            _gameEventChannel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
+            _gameEventChannel = Channel.CreateUnbounded<(string, DateTimeOffset)>(new UnboundedChannelOptions
             {
                 AllowSynchronousContinuations = true,
                 SingleReader = true,
@@ -40,18 +38,17 @@ namespace BF2WebAdmin.Server
 
         public void QueueMessage(string message)
         {
-            // TODO: tuple (string Message, DateTimeOffset TimeStamp) ?
-            _gameEventChannel.Writer.TryWrite(message);
+            _gameEventChannel.Writer.TryWrite((message, DateTimeOffset.UtcNow));
         }
 
         private async Task ParseAllMessagesAsync()
         {
             // Parse all messages written to the channel asynchronously
-            await foreach (var message in _gameEventChannel.Reader.ReadAllAsync())
+            await foreach (var (message, time) in _gameEventChannel.Reader.ReadAllAsync())
             {
                 try
                 {
-                    await ParseMessageAsync(message);
+                    await ParseMessageAsync(message, time);
                 }
                 catch (Exception ex)
                 {
@@ -60,7 +57,7 @@ namespace BF2WebAdmin.Server
             }
         }
 
-        private async Task ParseMessageAsync(string message)
+        private async Task ParseMessageAsync(string message, DateTimeOffset time)
         {
             var parts = message.Split('\t');
             var eventType = parts[0];
@@ -72,8 +69,8 @@ namespace BF2WebAdmin.Server
             else if (_eventHandlers.TryGetValue(eventType, out var eventHandler))
             {
                 _messageStopWatch.Restart();
-                await eventHandler(parts);
-                LogGameEvent(message);
+                await eventHandler(parts, time);
+                LogGameEvent(message, time);
 
                 _messageStopWatch.Stop();
                 var elapsedMs = _messageStopWatch.ElapsedMilliseconds;
@@ -91,60 +88,60 @@ namespace BF2WebAdmin.Server
             }
         }
 
-        private void LogGameEvent(string message)
+        private void LogGameEvent(string message, DateTimeOffset time)
         {
             if (_gameLogPath == null)
                 return;
 
-            var diff = (int)(DateTime.UtcNow - _startTime).TotalMilliseconds;
+            var diff = (int)(time - _startTime).TotalMilliseconds;
             var line = $"{diff} {message}\n";
             File.AppendAllText(_gameLogPath, line);
         }
 
-        private static Dictionary<string, Func<string[], ValueTask>> GetEventsHandlers(IEventHandler eh)
+        private static Dictionary<string, Func<string[], DateTimeOffset, ValueTask>> GetEventsHandlers(IEventHandler eh)
         {
-            return new Dictionary<string, Func<string[], ValueTask>>
+            return new Dictionary<string, Func<string[], DateTimeOffset, ValueTask>>
             {
                 // Server events
-                { "serverInfo", p => eh.OnServerInfoAsync(p[1], p[2], Int(p[3]), Int(p[4]), Int(p[5])) },
+                { "serverInfo", (p, t) => eh.OnServerInfoAsync(p[1], p[2], Int(p[3]), Int(p[4]), Int(p[5]), t) },
 
                 // Game status events
-                { "gameStatePreGame", p => eh.OnGameStatePreGameAsync() },
-                { "gameStatePlaying", p => eh.OnGameStatePlayingAsync(p[1], p[2], p[3], Int(p[4])) },
-                { "gameStateEndGame", p => eh.OnGameStateEndGameAsync(p[1], Int(p[2]), p[3], Int(p[4]), p[5]) },
-                { "gameStatePaused", p => eh.OnGameStatePausedAsync() },
-                { "gameStateRestart", p => eh.OnGameStateRestartAsync() },
-                { "gameStateNotConnected", p => eh.OnGameStateNotConnectedAsync() },
+                { "gameStatePreGame", (p, t) => eh.OnGameStatePreGameAsync(t) },
+                { "gameStatePlaying", (p, t) => eh.OnGameStatePlayingAsync(p[1], p[2], p[3], Int(p[4]), t) },
+                { "gameStateEndGame", (p, t) => eh.OnGameStateEndGameAsync(p[1], Int(p[2]), p[3], Int(p[4]), p[5], t) },
+                { "gameStatePaused", (p, t) => eh.OnGameStatePausedAsync(t) },
+                { "gameStateRestart", (p, t) => eh.OnGameStateRestartAsync(t) },
+                { "gameStateNotConnected", (p, t) => eh.OnGameStateNotConnectedAsync(t) },
 
                 // Game events
-                { "controlPointCapture", p => eh.OnControlPointCaptureAsync(Int(p[1]), p[2]) },
-                { "controlPointNeutralised", p => eh.OnControlPointNeutralisedAsync(p[1]) },
+                { "controlPointCapture", (p, t) => eh.OnControlPointCaptureAsync(Int(p[1]), p[2], t) },
+                { "controlPointNeutralised", (p, t) => eh.OnControlPointNeutralisedAsync(p[1], t) },
 
                 // Timer events
-                { "ticketStatus", p => eh.OnTicketStatusAsync(p[1], Int(p[2]), p[3], Int(p[4]), p[5]) },
-                { "playerPositionUpdate", p => eh.OnPlayerPositionUpdateAsync(Int(p[1]), Pos(p[2]), Rot(p[3]), Int(p[4])) },
-                { "projectilePositionUpdate", p => eh.OnProjectilePositionUpdateAsync(Int(p[1]), p[2], Pos(p[3]), Rot(p[4])) },
+                { "ticketStatus", (p, t) => eh.OnTicketStatusAsync(p[1], Int(p[2]), p[3], Int(p[4]), p[5], t) },
+                { "playerPositionUpdate", (p, t) => eh.OnPlayerPositionUpdateAsync(Int(p[1]), Pos(p[2]), Rot(p[3]), Int(p[4]), t) },
+                { "projectilePositionUpdate", (p, t) => eh.OnProjectilePositionUpdateAsync(Int(p[1]), p[2], Pos(p[3]), Rot(p[4]), t) },
 
                 // Player events
-                { "playerConnect", p => eh.OnPlayerConnectAsync(Int(p[1]), p[2], Int(p[3]), p[4], p[5], Int(p[6])) },
-                { "playerSpawn", p => eh.OnPlayerSpawnAsync(Int(p[1]), Pos(p[2]), Rot(p[3])) },
-                { "playerChangeTeam", p => eh.OnPlayerChangeTeamAsync(Int(p[1]), Int(p[2])) },
-                { "playerScore", p => eh.OnPlayerScoreAsync(Int(p[1]), Int(p[2]), Int(p[3]), Int(p[4]), Int(p[5])) },
-                { "playerRevived", p => eh.OnPlayerRevivedAsync(Int(p[1]), Int(p[2])) },
-                { "playerKilledSelf", p => eh.OnPlayerKilledSelfAsync(Int(p[1]), Pos(p[2])) },
-                { "playerTeamkilled", p => eh.OnPlayerTeamkilledAsync(Int(p[1]), Pos(p[2]), Int(p[3]), Pos(p[4])) },
-                { "playerKilled", p => eh.OnPlayerKilledAsync(Int(p[1]), Pos(p[2]), Int(p[3]), Pos(p[4]), p[5]) },
-                { "playerDeath", p => eh.OnPlayerDeathAsync(Int(p[1]), Pos(p[2])) },
-                { "playerDisconnect", p => eh.OnPlayerDisconnectAsync(Int(p[1])) },
+                { "playerConnect", (p, t) => eh.OnPlayerConnectAsync(Int(p[1]), p[2], Int(p[3]), p[4], p[5], Int(p[6]), t) },
+                { "playerSpawn", (p, t) => eh.OnPlayerSpawnAsync(Int(p[1]), Pos(p[2]), Rot(p[3]), t) },
+                { "playerChangeTeam", (p, t) => eh.OnPlayerChangeTeamAsync(Int(p[1]), Int(p[2]), t) },
+                { "playerScore", (p, t) => eh.OnPlayerScoreAsync(Int(p[1]), Int(p[2]), Int(p[3]), Int(p[4]), Int(p[5]), t) },
+                { "playerRevived", (p, t) => eh.OnPlayerRevivedAsync(Int(p[1]), Int(p[2]), t) },
+                { "playerKilledSelf", (p, t) => eh.OnPlayerKilledSelfAsync(Int(p[1]), Pos(p[2]), t) },
+                { "playerTeamkilled", (p, t) => eh.OnPlayerTeamkilledAsync(Int(p[1]), Pos(p[2]), Int(p[3]), Pos(p[4]), t) },
+                { "playerKilled", (p, t) => eh.OnPlayerKilledAsync(Int(p[1]), Pos(p[2]), Int(p[3]), Pos(p[4]), p[5], t) },
+                { "playerDeath", (p, t) => eh.OnPlayerDeathAsync(Int(p[1]), Pos(p[2]), t) },
+                { "playerDisconnect", (p, t) => eh.OnPlayerDisconnectAsync(Int(p[1]), t) },
 
                 // Vehicle events
-                { "enterVehicle", p => eh.OnEnterVehicleAsync(Int(p[1]), Int(p[2]), p[3], p[4]) },
-                { "exitVehicle", p => eh.OnExitVehicleAsync(Int(p[1]), Int(p[2]), p[3], p[4]) },
-                { "vehicleDestroyed", p => eh.OnVehicleDestroyedAsync(Int(p[1]), p[2]) },
+                { "enterVehicle", (p, t) => eh.OnEnterVehicleAsync(Int(p[1]), Int(p[2]), p[3], p[4], t) },
+                { "exitVehicle", (p, t) => eh.OnExitVehicleAsync(Int(p[1]), Int(p[2]), p[3], p[4], t) },
+                { "vehicleDestroyed", (p, t) => eh.OnVehicleDestroyedAsync(Int(p[1]), p[2], t) },
 
                 // Chat events
-                { "chatServer", p => eh.OnChatServerAsync(p[1], p[2], p[3]) },
-                { "chatPlayer", p => eh.OnChatPlayerAsync(p[1], p[2], Int(p[3]), p[4]) }
+                { "chatServer", (p, t) => eh.OnChatServerAsync(p[1], p[2], p[3], t) },
+                { "chatPlayer", (p, t) => eh.OnChatPlayerAsync(p[1], p[2], Int(p[3]), p[4], t) }
             };
         }
 

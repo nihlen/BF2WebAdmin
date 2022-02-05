@@ -9,8 +9,6 @@ namespace BF2WebAdmin.Server
 {
     public class RconClient : IRconClient, IDisposable
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<RconClient>();
-
         private readonly IPAddress _ipAddress;
         private readonly int _port;
         private readonly string _password;

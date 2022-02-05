@@ -1,0 +1,73 @@
+﻿@page "/"
+@using BF2WebAdmin.Shared.Communication.DTOs
+@using Microsoft.AspNetCore.SignalR.Client
+@using System.Collections.Concurrent
+@using BF2WebAdmin.Shared
+@using BF2WebAdmin.Shared.Communication.Events
+@inject NavigationManager _navigationManager
+@inject AdminService _adminService
+@implements IAsyncDisposable
+
+<PageTitle>BF2 Web Admin</PageTitle>
+
+<MudText Typo="Typo.h3" Class="mb-8">Servers</MudText>
+
+<MudGrid>
+    @foreach (var server in _servers.Values)
+    {
+        <MudItem xs="4">
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">@server.Name</MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        <MudIconButton Icon="@Icons.Material.Filled.Settings" Color="Color.Default" />
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudChip Icon="@(server.SocketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
+                         IconColor="@(server.SocketState == SocketState.Connected ? Color.Success : Color.Error)">
+                        @server.SocketState
+                    </MudChip>
+                    <MudChip>@server.GameState</MudChip>
+                    <MudChip>@server.IpAddress:@server.GamePort (@server.QueryPort)</MudChip>
+                    <MudChip>@server.Map</MudChip>
+                    <MudChip>@server.Players / @server.MaxPlayers players</MudChip>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudLink Variant="Variant.Text" Color="Color.Primary" Href="@("/server/" + AdminService.UrlEncodeServerId(server.Id))">View server</MudLink>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    private List<IDisposable> _listeners = new();
+    private ConcurrentDictionary<string, ServerDto> _servers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _listeners = new List<IDisposable>
+        {
+            _adminService.HubConnection.On<ServerUpdateEvent>(nameof(ServerUpdateEvent), e =>
+            {
+                _servers.AddOrUpdate(e.Id, id => e, (id, existingServer) => e);
+                StateHasChanged();
+            }),
+        };
+
+        await _adminService.ConnectAsync();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        foreach (var listener in _listeners)
+        {
+            listener.Dispose();
+        }
+
+        return ValueTask.CompletedTask;
+    }
+}

@@ -1,0 +1,52 @@
+﻿@using BF2WebAdmin.Blazor.Services
+@using BF2WebAdmin.Shared.Communication.DTOs
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.SignalR.Client
+@using System.Collections.Concurrent
+@using BF2WebAdmin.Shared
+@using BF2WebAdmin.Shared.Communication.Events
+@implements IAsyncDisposable
+
+<MudNavMenu>
+    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+    <MudNavGroup Title="Servers" Expanded="true" Icon="@Icons.Material.Filled.List">
+        @foreach (var server in _servers.Values)
+        {
+            <MudNavLink Href="@("/server/" + AdminService.UrlEncodeServerId(server.Id))"
+                    Match="NavLinkMatch.Prefix"
+                    Icon="@(server.SocketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
+                    IconColor="@(server.SocketState == SocketState.Connected ? Color.Success : Color.Error)">
+                @server.Name (@server.Players / @server.MaxPlayers)
+            </MudNavLink>
+        }
+    </MudNavGroup>
+</MudNavMenu>
+
+@code {
+    private List<IDisposable> _listeners = new();
+    private ConcurrentDictionary<string, ServerDto> _servers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _listeners = new List<IDisposable>
+        {
+            _adminService.HubConnection.On<ServerUpdateEvent>(nameof(ServerUpdateEvent), e =>
+            {
+                _servers.AddOrUpdate(e.Id, id => e, (id, existingServer) => e);
+                StateHasChanged();
+            }),
+        };
+
+        await _adminService.ConnectAsync();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        foreach (var listener in _listeners)
+        {
+            listener.Dispose();
+        }
+
+        return ValueTask.CompletedTask;
+    }
+}

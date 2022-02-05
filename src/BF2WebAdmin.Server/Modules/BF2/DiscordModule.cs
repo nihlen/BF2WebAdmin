@@ -1,10 +1,11 @@
 ﻿using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Channels;
-using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
+using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Commands.BF2;
+using BF2WebAdmin.Server.Services;
+using BF2WebAdmin.Shared;
 using Discord;
 using Discord.WebSocket;
 using Serilog;
@@ -12,9 +13,8 @@ using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;
 
 namespace BF2WebAdmin.Server.Modules.BF2
 {
-    // TODO: /whois command using IP and guid matching from JoinHistory table
     // TODO: .need <players> command?
-    public class DiscordModule : IModule,
+    public class DiscordModule : BaseModule,
         IHandleEventAsync<SocketStateChangedEvent>,
         IHandleEventAsync<ChatMessageEvent>,
         IHandleEventAsync<MapChangedEvent>,
@@ -23,7 +23,13 @@ namespace BF2WebAdmin.Server.Modules.BF2
         IHandleEventAsync<PlayerLeftEvent>,
         IHandleEventAsync<PlayerKillEvent>,
         IHandleEventAsync<PlayerDeathEvent>,
-        IHandleCommandAsync<LeaveCommand>
+        IHandleEventAsync<MatchStartEvent>,
+        IHandleEventAsync<MatchEndEvent>,
+        IHandleEventAsync<GameStreamStartedEvent>,
+        IHandleEventAsync<GameStreamStoppedEvent>,
+        IHandleCommandAsync<LeaveCommand>,
+        IHandleCommandAsync<StartStreamCommand>,
+        IHandleCommandAsync<StopStreamCommand>
     {
         public const string DiscordBotHashGod = "DiscordBotHashGod";
         public const string DiscordBotHashSuperAdmin = "DiscordBotHashSuperAdmin";
@@ -32,14 +38,18 @@ namespace BF2WebAdmin.Server.Modules.BF2
         //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<DiscordModule>();
 
         private readonly IGameServer _game;
+        private readonly IGameStreamService _gameStreamService;
         private readonly ServerInfo.DiscordBotConfig _config;
         private readonly IDictionary<int, bool> _newPlayers = new Dictionary<int, bool>();
-        private readonly Channel<string> _discordMessageChannel;
+        private readonly Channel<(ISocketMessageChannel Channel, string? Text, Embed? Embed)> _discordMessageChannel;
         private IEnumerable<SocketTextChannel> _adminChannels;
         private IEnumerable<SocketTextChannel> _notificationChannels;
         private IEnumerable<SocketTextChannel> _matchResultChannels;
         private DiscordSocketClient _discord;
+        private string? _streamUrl;
+        private string? _botName;
 
+        // TODO: some different structure
         private static readonly IDictionary<string, string> WeaponNames = new Dictionary<string, string>
         {
             // Vehicles: https://github.com/chrisw1229/bf2-stats/blob/master/webapp/models/vehicles.py
@@ -186,7 +196,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
 .<command>
 
 # Change to a specific map
-!map:m <map>
+!map:m <map> <gametype> <size> (e.g. !m daqing_2_v_2 gpm_cq 16)
 
 # Kick a player from the server with a message
 !kick:k <playerid> ""<reason>""
@@ -215,45 +225,49 @@ namespace BF2WebAdmin.Server.Modules.BF2
 # Execute a console command
 !exec```";
 
-        private Task _botTask;
-
-        public DiscordModule(IGameServer game)
+        public DiscordModule(IGameServer game, IGameStreamService gameStreamService) : base(game)
         {
             _game = game;
+            _gameStreamService = gameStreamService;
+
             var discordBot = game.ServerInfo.DiscordBot;
             if (discordBot == null)
                 return;
 
             _config = discordBot;
 
+            _discordMessageChannel = Channel.CreateUnbounded<(ISocketMessageChannel Channel, string? Text, Embed? Embed)>(new UnboundedChannelOptions
+            {
+                AllowSynchronousContinuations = true,
+                SingleReader = true,
+                SingleWriter = true
+            });
+
             // TODO: Start async in an event callback - proper?
-            _botTask = Task.Run(StartBotAsync);
+            RunBackgroundTask("Discord Bot", StartBotAsync);
         }
 
         private async Task StartBotAsync()
         {
-            try
+            _discord = new DiscordSocketClient();
+
+            SetupDiscordEvents();
+
+            await _discord.LoginAsync(TokenType.Bot, _config.Token);
+            await _discord.StartAsync();
+
+            // Send all queued Discord messages
+            await foreach (var (channel, text, embed) in _discordMessageChannel.Reader.ReadAllAsync())
             {
-                _discord = new DiscordSocketClient();
-
-                SetupDiscordEvents();
-                SetupGameEvents();
-
-                await _discord.LoginAsync(TokenType.Bot, _config.Token);
-                await _discord.StartAsync();
-
-                //await Task.Delay(-1);
+                try
+                {
+                    await channel.SendMessageAsync(text: text, embed: embed);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to send Discord message {Message}", text);
+                }
             }
-            catch (Exception e)
-            {
-                Log.Error(e, "Discord bot error");
-            }
-        }
-
-        private async Task<string> SendRconCommandAsync(string command)
-        {
-            var rcon = new RconClient(_game.IpAddress, _game.ServerInfo.RconPort, _game.ServerInfo.RconPassword);
-            return await rcon.SendAsync(command);
         }
 
         private void SetupDiscordEvents()
@@ -303,13 +317,13 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
                 if (message.Content.Length > 4 && message.Content[1..5] == "help")
                 {
-                    await message.Channel.SendMessageAsync(HelpText);
+                    _discordMessageChannel.Writer.TryWrite((message.Channel, HelpText, null));
                 }
                 else if (message.Content.StartsWith("!"))
                 {
                     var command = GetRconCommand(message.Content);
                     var response = await SendRconCommandAsync(command);
-                    await message.Channel.SendMessageAsync($"```{GetObfuscatedResponse(response)}```");
+                    _discordMessageChannel.Writer.TryWrite((message.Channel, $"```{GetObfuscatedResponse(response)}```", null));
                 }
                 else if (message.Content.StartsWith("."))
                 {
@@ -323,8 +337,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
                             Name = (message.Author as SocketGuildUser)?.Nickname ?? message.Author.Username,
                             Hash = message.Author.Id == 135810577292328960 ? DiscordBotHashGod : DiscordBotHashAdmin
                         },
-                        Text = message.Content,
-                        Time = DateTime.UtcNow
+                        Text = message.Content
                     });
                 }
                 else if (message.Content.StartsWith("/"))
@@ -357,13 +370,12 @@ namespace BF2WebAdmin.Server.Modules.BF2
                                 sb.Append(player.Score.Deaths.ToString().PadLeft(5));
                                 sb.Append(player.Score.Ping.ToString().PadLeft(5));
                                 sb.AppendLine();
-                                //sb.AppendLine($"{player.Index} {player.DisplayName} {player.Score.Total} {player.Score.Team} {player.Score.Kills} {player.Score.Deaths} {player.Score.Ping}");
                             }
 
                             sb.AppendLine();
                         }
 
-                        await message.Channel.SendMessageAsync($"```{sb}```");
+                        _discordMessageChannel.Writer.TryWrite((message.Channel, $"```{sb}```", null));
                     }
                 }
                 else
@@ -372,108 +384,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
                     _game.GameWriter.SendText($"[§C1001{name}§C1001] {message.Content}", false, false);
                 }
             };
-
-            static string GetRconCommand(string text)
-            {
-                if (text.StartsWith("!m ")) return "map gpm_cq" + text[2..];
-                if (text.StartsWith("!map ")) return "map gpm_cq" + text[4..];
-                if (text.StartsWith("!w ")) return "warn" + text[2..];
-                if (text.StartsWith("!k ")) return "kick" + text[2..];
-                if (text.StartsWith("!b ")) return "ban" + text[2..];
-                return text.TrimStart('!');
-            }
-
-            static string GetObfuscatedResponse(string text)
-            {
-                var result = Regex.Replace(
-                    text,
-                    @"((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)",
-                    "[IP REMOVED]",
-                    RegexOptions.Compiled
-                );
-
-                return result.Length > 1 ? result : "Empty response";
-            }
-        }
-
-        private void SetupGameEvents()
-        {
-            // TODO: Events return Func<Task> instead of Action so they can be safely awaited? test with exceptions in some common event to test locally, had to comment out PlayerKill
-            //_game.SocketStateChanged += async state =>
-            //{
-            //    await SendTextMessageToChannelsAsync($"{(state == SocketState.Connected ? ":green_square:` Connected to" : ":red_square:` Disconnected from")} {_game.Name}`");
-
-            //    await UpdateActivityNameAsync();
-            //};
-
-            //_game.ChatMessage += async message =>
-            //{
-            //    if (message.Type == MessageType.Player)
-            //    {
-            //        var teamFlag = GetTeamFlag(message.Player.Team.Name);
-            //        await SendTextMessageToChannelsAsync($"{teamFlag} `<{message.Channel}> {message.Player.DisplayName}: {Sanitize(message.Text)}`");
-            //    }
-            //    else
-            //    {
-            //        await SendTextMessageToChannelsAsync($":globe_with_meridians: `<Server> {message.Text}`");
-            //    }
-            //};
-
-            //_game.MapChanged += async map =>
-            //{
-            //    await UpdateActivityNameAsync();
-
-            //    await SendTextMessageToChannelsAsync($"`Map changed to {map.Name}`");
-            //};
-
-            //_game.PlayerJoin += async player =>
-            //{
-            //    using (Profiler.Start("DEBUG PlayerJoin UpdateActivityNameAsync"))
-            //    {
-            //        await UpdateActivityNameAsync();
-            //    }
-
-            //    using (Profiler.Start("DEBUG PlayerJoin SendTextMessageToChannelsAsync"))
-            //    {
-            //        _newPlayers.TryAdd(player.Index, true);
-            //        await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} is connecting`");
-            //    }
-            //};
-
-            //_game.PlayerSpawn += async (player, position, rotation) =>
-            //{
-            //    if (!_newPlayers.ContainsKey(player.Index))
-            //        return;
-
-            //    _newPlayers.Remove(player.Index);
-            //    await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} joined (`:flag_{player.Country?.Code?.ToLower()}:`{player.Country.Code})`");
-            //};
-
-            //_game.PlayerLeft += async player =>
-            //{
-            //    await UpdateActivityNameAsync();
-
-            //    _newPlayers.Remove(player.Index);
-            //    await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} disconnected`");
-            //};
-
-            //_game.PlayerKill += async (attacker, attackerPosition, victim, victimPosition, weapon) =>
-            //{
-            //    if (_game.State == GameState.Playing && _game.Players.Count() >= 4)
-            //    {
-            //        var weaponName = GetWeaponName(weapon);
-            //        var weaponText = attacker?.Team.Id == victim?.Team.Id ? "TK: " + weaponName : weaponName;
-            //        await SendTextMessageToChannelsAsync($"`{Sanitize(attacker?.DisplayName)} [{weaponText}] {Sanitize(victim?.DisplayName)}`");
-            //    }
-            //};
-
-            //_game.PlayerDeath += async (player, position, isSuicide) =>
-            //{
-            //    if (_game.State == GameState.Playing && _game.Players.Count() >= 4 && !isSuicide)
-            //    {
-            //        await SendTextMessageToChannelsAsync($"`{Sanitize(player.DisplayName)} died`", debug: true);
-            //    }
-            //};
         }
 
         private static string GetWeaponName(string weapon)
@@ -501,41 +411,31 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
         private async Task UpdateActivityNameAsync()
         {
-            // TODO: use Threading.Channels and send in a different Task so we don't block here if we are rate limited - instead of Task.Run?
-            _ = Task.Run(async () =>
+            RunBackgroundTask("Update Discord bot activity name", async () =>
             {
-                try
+                if (_game.SocketState == SocketState.Disconnected)
                 {
-                    if (_game.SocketState == SocketState.Disconnected)
-                    {
-                        if (_discord.Status != UserStatus.DoNotDisturb)
-                            await _discord.SetStatusAsync(UserStatus.DoNotDisturb);
+                    if (_discord.Status != UserStatus.DoNotDisturb)
+                        await _discord.SetStatusAsync(UserStatus.DoNotDisturb);
 
-                        await _discord.SetActivityAsync(new Game("Disconnected"));
-                        //await _discord.SetActivityAsync(new Game("Disconnected", ActivityType.Playing, ActivityProperties.Spectate, $"IP: {_game.Id} | Servers and maps: https://bf2.nihlen.net/servers"));
-                    }
-                    else
-                    {
-                        if (_discord.Status != UserStatus.Online)
-                            await _discord.SetStatusAsync(UserStatus.Online);
-
-                        var name = $"{_game.Players.Count()}/{_game.MaxPlayers} - {_game.Map?.Name ?? "Unknown"}";
-                        await _discord.SetActivityAsync(new Game(name));
-                        //await _discord.SetActivityAsync(new Game(name, ActivityType.Playing, ActivityProperties.Spectate, $"IP: {_game.Id} | Servers and maps: https://bf2.nihlen.net/servers"));
-                    }
+                    await _discord.SetActivityAsync(new Game("Disconnected"));
                 }
-                catch (Exception e)
+                else
                 {
-                    Log.Error(e, "Error updating activity name");
+                    if (_discord.Status != UserStatus.Online)
+                        await _discord.SetStatusAsync(UserStatus.Online);
+
+                    var name = $"{_game.Players.Count()}/{_game.MaxPlayers} - {_game.Map?.Name ?? "Unknown"}";
+                    await _discord.SetActivityAsync(_streamUrl is null ? new Game(name) : new StreamingGame(name, _streamUrl));
                 }
             });
         }
 
+        // Used to prevent FakeGameServer spam when fast forwarding
         public static bool IsEnabled = true;
 
         public async Task SendTextMessageToChannelsAsync(string text, bool debug = false)
         {
-            // TODO: use Threading.Channels and send in a different Task so we don't block here if we are rate limited
             // TODO: remove after testing
             if (!IsEnabled) return;
 
@@ -548,13 +448,14 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
             var channels = debug ? _adminChannels.Where(c => c.Guild.Name.ToLower().Contains("netsky")) : _adminChannels;
 
-            var tasks = channels.Select(c => c.SendMessageAsync(text));
-            await Task.WhenAll(tasks);
+            foreach (var channel in channels)
+            {
+                _discordMessageChannel.Writer.TryWrite((channel, text, null));
+            }
         }
 
         public async Task SendEmbedMessageToChannelsAsync(Embed embed, bool debug = false)
         {
-            // TODO: use Threading.Channels and send in a different Task so we don't block here if we are rate limited
             // TODO: remove after testing
             if (!IsEnabled) return;
 
@@ -567,13 +468,14 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
             var channels = debug ? _matchResultChannels.Where(c => c.Guild.Name.ToLower().Contains("netsky")) : _matchResultChannels;
 
-            var tasks = channels.Select(c => c.SendMessageAsync(embed: embed));
-            await Task.WhenAll(tasks);
+            foreach (var channel in channels)
+            {
+                _discordMessageChannel.Writer.TryWrite((channel, null, embed));
+            }
         }
 
         public async ValueTask HandleAsync(LeaveCommand command)
         {
-            // TODO: use Threading.Channels and send in a different Task so we don't block here if we are rate limited
             if (_adminChannels == null)
             {
                 Log.Warning("No admin channel channels found");
@@ -589,15 +491,18 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 return;
             }
 
-            if (DateTime.UtcNow - command.Message.Player.LastLeaveNotification < TimeSpan.FromMinutes(5))
+            var isCommandCooldown = DateTime.UtcNow - command.Message.Player.LastLeaveNotification < TimeSpan.FromMinutes(5);
+            if (isCommandCooldown)
                 return;
 
             command.Message.Player.LastLeaveNotification = DateTime.UtcNow;
 
             _game.GameWriter.SendText($"{command.Message.Player.DisplayName} is leaving in {command.Minutes} minutes - Discord notification sent");
 
-            var tasks = _notificationChannels.Select(c => c.SendMessageAsync($"`{command.Message.Player.DisplayName}` is leaving in {command.Minutes} minutes"));
-            await Task.WhenAll(tasks);
+            foreach (var channel in _notificationChannels)
+            {
+                _discordMessageChannel.Writer.TryWrite((channel, $"`{command.Message.Player.DisplayName}` is leaving in {command.Minutes} minutes", null));
+            }
         }
 
         public static string Sanitize(string text)
@@ -638,16 +543,10 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
         public async ValueTask HandleAsync(PlayerJoinEvent e)
         {
-            using (Profiler.Start("DEBUG PlayerJoin UpdateActivityNameAsync"))
-            {
-                await UpdateActivityNameAsync();
-            }
+            await UpdateActivityNameAsync();
 
-            using (Profiler.Start("DEBUG PlayerJoin SendTextMessageToChannelsAsync"))
-            {
-                _newPlayers.TryAdd(e.Player.Index, true);
-                await SendTextMessageToChannelsAsync($"`{Sanitize(e.Player.DisplayName)} is connecting`");
-            }
+            _newPlayers.TryAdd(e.Player.Index, true);
+            await SendTextMessageToChannelsAsync($"`{Sanitize(e.Player.DisplayName)} is connecting`");
         }
 
         public async ValueTask HandleAsync(PlayerSpawnEvent e)
@@ -683,6 +582,60 @@ namespace BF2WebAdmin.Server.Modules.BF2
             {
                 await SendTextMessageToChannelsAsync($"`{Sanitize(e.Player.DisplayName)} died`", debug: true);
             }
+        }
+
+        public async ValueTask HandleAsync(GameStreamStartedEvent e)
+        {
+            _streamUrl = e.StreamUrl;
+            _botName = e.BotName;
+
+            _game.GameWriter.SendText($"Stream has started at {_streamUrl}");
+
+            await UpdateActivityNameAsync();
+        }
+
+        public async ValueTask HandleAsync(GameStreamStoppedEvent e)
+        {
+            _streamUrl = null;
+            _botName = null;
+
+            _game.GameWriter.SendText("Stream has been stopped");
+
+            await UpdateActivityNameAsync();
+        }
+
+        public async ValueTask HandleAsync(StartStreamCommand command)
+        {
+            await StartStreamAsync();
+
+            _game.GameWriter.SendText("Requested stream bot");
+        }
+
+        public async ValueTask HandleAsync(StopStreamCommand command)
+        {
+            await StopStreamAsync();
+
+            _game.GameWriter.SendText("Requested stream bot stop");
+        }
+
+        public async ValueTask HandleAsync(MatchStartEvent e)
+        {
+            await StartStreamAsync();
+        }
+
+        public async ValueTask HandleAsync(MatchEndEvent e)
+        {
+            await StopStreamAsync();
+        }
+
+        private async Task StartStreamAsync()
+        {
+            await _gameStreamService.StartGameStreamAsync(GameServer.IpAddress.ToString(), GameServer.GamePort, GameServer.QueryPort);
+        }
+
+        private async Task StopStreamAsync()
+        {
+            await _gameStreamService.StopGameStreamAsync(GameServer.IpAddress.ToString(), GameServer.GamePort);
         }
     }
 }

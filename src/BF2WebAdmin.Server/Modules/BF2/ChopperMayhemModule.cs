@@ -13,14 +13,13 @@ namespace BF2WebAdmin.Server.Modules.BF2
         IHandleEventAsync<PlayerKillEvent>,
         IHandleEventAsync<PlayerPositionEvent>
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<ChopperMayhemModule>();
         private static readonly IDictionary<string, IList<SafeArea>> MapSafeAreas = new Dictionary<string, IList<SafeArea>>
         {
             {
                 "dalian_plant",
                 new List<SafeArea>
                 {
-                    new SafeArea
+                    new()
                     {
                         Name = "USMC Carrier",
                         TeamId = 2,
@@ -34,7 +33,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
                         }
                     },
 
-                    new SafeArea
+                    new()
                     {
                         Name = "China Airfield",
                         TeamId = 1,
@@ -60,21 +59,17 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 "dalian_plant",
                 new List<Portal>
                 {
-                    new Portal
+                    new()
                     {
                         Name = "Carrier to South Docks",
                         InPosition = new Position(776.5, 147.4, 4.6),
-                        //OutPosition = new Position(246.8, 148.5, -222.6),
-                        //OutPosition = new Position(246.8, 153, -222.6),
                         OutPosition = new Position(311.6, 151.3, -286.8),
                         OutRotation = new Rotation(-76.2, 0, 0)
                     },
-                    new Portal
+                    new()
                     {
                         Name = "Airfield to Warehouse",
                         InPosition = new Position(-792.1, 185, -120),
-                        //OutPosition = new Position(-158.6, 152.1, 242.6),
-                        //OutRotation = new Rotation(-178.8, 0.06, 0)
                         OutPosition = new Position(-217.4, 159.7, 166),
                         OutRotation = new Rotation(137.1, 0, 0)
                     }
@@ -88,122 +83,8 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
         public ChopperMayhemModule(IGameServer gameServer) : base(gameServer)
         {
-            //GameServer.MapChanged += OnMapChangedAsync;
-            //GameServer.PlayerKill += OnPlayerKillAntiBaserapeAsync;
-            //GameServer.PlayerPosition += OnPlayerPositionPortalAsync;
-            ////GameServer.PlayerPosition += OnPlayerPositionAntiNasa;
-
-            //// Testing
-            //GameServer.PlayerSpawn += OnPlayerSpawnAsync;
-            //GameServer.PlayerJoin += OnPlayerJoinAsync;
-            //GameServer.ChatMessage += OnChatMessageAsync;
         }
-
-        //private async Task OnMapChangedAsync(Map map)
-        //{
-        //    GameServer.GameWriter.SendRcon(RconScript.HeliLessBsDamageOn);
-        //    GameServer.GameWriter.SendRcon(
-        //        // No J10 damage
-        //        "ObjectTemplate.activeSafe GenericProjectile AIR_J10_Cannon_Projectile",
-        //        "ObjectTemplate.detonation.explosionDamage 0",
-        //        "ObjectTemplate.minDamage 1",
-        //        "ObjectTemplate.damage 1",
-        //        "ObjectTemplate.detonation.explosionRadius 5",
-        //        "ObjectTemplate.detonation.explosionForce 1000",
-        //        "ObjectTemplate.detonation.explosionDamage 1",
-        //        "ObjectTemplate.activeSafe GenericProjectile aa11_archer",
-        //        "ObjectTemplate.detonation.explosionDamage 0",
-        //        "ObjectTemplate.minDamage 1",
-        //        "ObjectTemplate.damage 1",
-        //        "ObjectTemplate.detonation.explosionRadius 25",
-        //        "ObjectTemplate.detonation.explosionForce 10000000",
-        //        "ObjectTemplate.detonation.explosionDamage 1",
-        //        "ObjectTemplate.activeSafe GenericProjectile mec_250_bomb",
-        //        "ObjectTemplate.detonation.explosionDamage 0",
-        //        "ObjectTemplate.minDamage 1",
-        //        "ObjectTemplate.damage 1",
-        //        "ObjectTemplate.detonation.explosionRadius 25",
-        //        "ObjectTemplate.detonation.explosionForce 10000000",
-        //        "ObjectTemplate.detonation.explosionDamage 1",
-
-        //        // No F35B damage
-        //        "ObjectTemplate.activeSafe GenericProjectile Air_F35b_AutoCannon_Projectile",
-        //        "ObjectTemplate.detonation.explosionDamage 0",
-        //        "ObjectTemplate.minDamage 1",
-        //        "ObjectTemplate.damage 1",
-        //        "ObjectTemplate.detonation.explosionRadius 5",
-        //        "ObjectTemplate.detonation.explosionForce 1000",
-        //        "ObjectTemplate.detonation.explosionDamage 1",
-        //        "ObjectTemplate.activeSafe GenericProjectile aim9m_sidewinder",
-        //        "ObjectTemplate.detonation.explosionDamage 0",
-        //        "ObjectTemplate.minDamage 1",
-        //        "ObjectTemplate.damage 1",
-        //        "ObjectTemplate.detonation.explosionRadius 25",
-        //        "ObjectTemplate.detonation.explosionForce 10000000",
-        //        "ObjectTemplate.detonation.explosionDamage 1",
-        //        "ObjectTemplate.activeSafe GenericProjectile mk82_dumbbomb",
-        //        "ObjectTemplate.detonation.explosionDamage 0",
-        //        "ObjectTemplate.minDamage 1",
-        //        "ObjectTemplate.damage 1",
-        //        "ObjectTemplate.detonation.explosionRadius 25",
-        //        "ObjectTemplate.detonation.explosionForce 10000000",
-        //        "ObjectTemplate.detonation.explosionDamage 1"
-        //    );
-
-        //    if (map.Name.ToLower() == "dalian_plant")
-        //    {
-        //        await GameServer.ModManager.GetModule<MapModule>().HandleAsync(new MapLoadCommand
-        //        {
-        //            Name = "dalian_mayhem6",
-        //            Message = new Message()
-        //        });
-        //    }
-
-        //    GameServer.GameWriter.SendText("Chopper Mayhem init");
-        //}
-
-        //private Task OnPlayerPositionPortalAsync(Player player, Position position, Rotation rotation, int ping)
-        //{
-        //    var isInHeli = player.Vehicle?.RootVehicleTemplate.StartsWith("ahe_") ?? false;
-        //    if (!isInHeli)
-        //        return Task.CompletedTask;
-
-        //    var hasPortals = MapPortals.TryGetValue(GameServer.Map.Name.ToLower(), out var portals);
-        //    if (!hasPortals)
-        //        return Task.CompletedTask;
-
-        //    var inPortal = portals.FirstOrDefault(p => p.InPosition.Distance(position) < 10);
-        //    if (inPortal == null)
-        //        return Task.CompletedTask;
-
-        //    //var objectId = player.SubVehicle.RootVehicleId;
-        //    //var replacements = new Dictionary<string, string>
-        //    //{
-        //    //    {"{OBJECT_ID}", objectId.ToString()}
-        //    //};
-        //    //var scriptOn = RconScript.NoclipOn.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
-        //    //var scriptOff = RconScript.NoclipOff.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
-
-        //    //GameServer.GameWriter.SendRcon(scriptOn);
-        //    //for (var i = 0; i < 100; i++)
-        //    //{
-        //    //    await Task.Delay(50);
-        //    //    GameServer.GameWriter.SendText("Tele #" + i);
-        //    //    GameServer.GameWriter.SendRotate(player, inPortal.OutRotation);
-        //    //    GameServer.GameWriter.SendTeleport(player, new Position(0, 10000, 0));
-        //    //}
-        //    GameServer.GameWriter.SendRotate(player, inPortal.OutRotation);
-        //    GameServer.GameWriter.SendTeleport(player, inPortal.OutPosition);
-
-        //    //Task.Run(async () =>
-        //    //{
-        //    //    await Task.Delay(5000);
-        //    //    GameServer.GameWriter.SendRcon(scriptOff);
-        //    //    GameServer.GameWriter.SendText("Done");
-        //    //});
-        //    return Task.CompletedTask;
-        //}
-
+        
         private Task OnPlayerPositionAntiNasaAsync(Player player, Position position, Rotation rotation, int ping)
         {
             // TODO: use this again?
@@ -242,80 +123,10 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
             return Task.CompletedTask;
         }
-
-        //private Task OnPlayerKillAntiBaserapeAsync(Player attacker, Position attackerPosition, Player victim, Position victimPosition, string weapon)
-        //{
-        //    //if (attacker.Team == victim.Team)
-        //    //    return;
-
-        //    // vicimPosition bugged
-        //    victimPosition = victim.Position;
-
-        //    //GameServer.GameWriter.SendText($"Attacker: {attackerPosition}, Victim: {victimPosition}");
-
-        //    var hasSafeAreas = MapSafeAreas.TryGetValue(GameServer.Map.Name.ToLower(), out var safeAreas);
-        //    if (!hasSafeAreas)
-        //        return Task.CompletedTask;
-
-        //    var isVictimWithinSafeArea = safeAreas
-        //        //.Where(z => z.TeamId == victim.Team.Id)
-        //        .Any(z => victimPosition.Height < z.MaxAltitude && victimPosition.IsInArea(z.Area));
-
-        //    if (isVictimWithinSafeArea)
-        //    {
-        //        KillPlayer(attacker);
-        //        GameServer.GameWriter.SendScore(attacker, attacker.Score.Total - 2, attacker.Score.Team, attacker.Score.Kills - 1, attacker.Score.Deaths);
-        //        GameServer.GameWriter.SendScore(victim, victim.Score.Total, victim.Score.Team, victim.Score.Kills, victim.Score.Deaths - 1);
-        //        GameServer.GameWriter.SendText($"Baserape is not allowed ({attacker.DisplayName})");
-        //    }
-        //    //else
-        //    //{
-        //    //    GameServer.GameWriter.SendText($"{victim.Name} is not in a safe area {victimPosition}");
-        //    //}
-
-        //    return Task.CompletedTask;
-        //}
-
+        
         private async Task OnChatMessageAsync(Message message)
         {
-            //if (message.Type != MessageType.Player)
-            //    return;
-
-            //var vehicleId = message.Player.SubVehicle.RootVehicleId.ToString(); // TODO: Why is subvehicle set?
-            ////GameServer.GameWriter.SendRcon(
-            ////    "object.active id{OBJECT_ID}".Replace("{OBJECT_ID}", vehicleId),
-            ////    //"object.mapMaterial 0 Armor_6_helicopter 0",
-            ////    //"object.mapMaterial 1 Glass_bulletproof 0",
-            ////    //"object.mapMaterial 2 helicopter_landing_rail 0",
-            ////    //"object.mapMaterial 3 helicopter_rotor 0",
-            ////    //"object.mapMaterial 4 wreck 0",
-            ////    //"object.mapMaterial 5 MetalSolid 0"
-            ////    "object.material 0",
-            ////    "object.armor.maxHitPoints 99999",
-            ////    "object.armor.hitPoints 99999"
-            ////);
-            //GameServer.GameWriter.SendHealth(message.Player, 99999);
-
-            //GameServer.GameWriter.SendText("Set material of " + vehicleId);
-
-            //var rotation = new Rotation(0, -90, 0);
-            //var i = 0;
-            //for (var x = 100; x > -350; x -= 12)
-            //{
-            //    for (var y = 100; y > -350; y -= 12)
-            //    {
-            //        if (i++ > 900)
-            //        {
-            //            GameServer.GameWriter.SendText("Too many objects!");
-            //            return;
-            //        }
-
-            //        SpawnObject("concrete_pillar_wall", new Position(x, 220, y), rotation, true, i);
-            //        //await Task.Delay(200);
-            //    }
-            //}
-
-
+            // Generate some objects in different patterns - TODO: are these both in DB now?
             if (message.Text == ".shadeforsandro")
             {
                 var delta = -30;
@@ -383,92 +194,8 @@ namespace BF2WebAdmin.Server.Modules.BF2
                     }
                 }
             }
-
-            //var startX = 650;
-            //var startY = 0;
-            //var distanceX = 12;
-            //var distanceY = 12;
-            //var i2 = 0;
-
-            //var rotation = new Rotation(0, -90, 0);
-            //using (var image = Image.Load(@"C:\Users\Alex\Pictures\bf2text.png"))
-            //{
-            //    for (var ix = 0; ix < image.Width; ix++)
-            //    {
-            //        for (var iy = 0; iy < image.Height; iy++)
-            //        {
-            //            var pixel = image[ix, iy];
-            //            if (pixel.A == 0)
-            //                continue;
-
-            //            Logger.LogInformation($"Pixel found at {ix},{iy}");
-
-            //            var xPos = startX + ix * distanceX;
-            //            var yPos = startY + iy * distanceY;
-            //            SpawnObject("concrete_pillar_wall", new Position(xPos, 370, yPos), rotation, true, i2++);
-            //        }
-            //    }
-            //}
         }
-
-        private Task OnPlayerJoinAsync(Player player)
-        {
-            //var position = Position.Parse("709.000/197.300/-119.300");
-            //var rotation = Rotation.Parse("-82.300/-2.800/1.600");
-            //SpawnObject("ahe_ah1z", position.NewRelativePosition(0, -5, 0), rotation, true);
-            return Task.CompletedTask;
-        }
-
-        private Task OnPlayerSpawnAsync(Player player, Position position, Rotation rotation)
-        {
-            //GameServer.GameWriter.SendRcon(
-            //    "ObjectTemplate.activeSafe SpawnPoint usthe_uh60_AISpawnPoint",
-            //    "ObjectTemplate.setEnterOnSpawn 1",
-            //    "ObjectTemplate.setOnlyForAI 0",
-
-            //    "ObjectTemplate.activeSafe PlayerControlObject ahe_ah1z",
-            //    "ObjectTemplate.addTemplate usthe_uh60_AISpawnPoint"
-            //);
-
-            //SpawnObject("ahe_ah1z", position.NewRelativePosition(0, -12, 0), rotation, true);
-            //GameServer.GameWriter.SendRcon(
-            //    //"ObjectTemplate.create SpawnPoint test1", 
-            //    //"ObjectTemplate.activeSafe SpawnPoint test1", 
-            //    //"ObjectTemplate.isNotSaveable 1", 
-            //    //"ObjectTemplate.setControlPointId 1001", 
-            //    //"Object.create test1", 
-            //    //"Object.absolutePosition 709.000/197.300/-119.300", 
-            //    //"Object.rotation -82.300/-2.800/1.600", 
-            //    //"Object.layer 2"
-
-            //    "ObjectTemplate.create ControlPoint Base2",
-            //    "ObjectTemplate.activeSafe ControlPoint Base2",
-            //    "ObjectTemplate.setNetworkableInfo ControlPointInfo",
-            //    "ObjectTemplate.addTemplate flagpole",
-            //    "ObjectTemplate.setControlPointName Base2",
-            //    "ObjectTemplate.radius 1",
-            //    "ObjectTemplate.team 2",
-            //    "ObjectTemplate.timeToGetControl 0",
-            //    "ObjectTemplate.timeToLoseControl 0",
-            //    "ObjectTemplate.unableToChangeTeam 1",
-            //    "ObjectTemplate.ControlPointId 77",
-            //    "Object.create Base2",
-            //    "Object.absolutePosition 709.000/197.300/-119.300",
-            //    "Object.layer 3",
-            //    "ObjectTemplate.create SpawnPoint Sniper_Spot1_1",
-            //    "ObjectTemplate.activeSafe SpawnPoint Sniper_Spot1_1",
-            //    "ObjectTemplate.modifiedByUser nla",
-            //    "ObjectTemplate.isNotSaveable 1",
-            //    "ObjectTemplate.setControlPointId 77",
-            //    "Object.create Sniper_Spot1_1",
-            //    "Object.absolutePosition 709.000/210.300/-119.300",
-            //    "Object.rotation -82.300/-2.800/1.600",
-            //    "Object.layer 3"
-            //);
-            //GameServer.GameWriter.SendText($"Created custom spawn point");
-            return Task.CompletedTask;
-        }
-
+        
         public async ValueTask HandleAsync(MapChangedEvent e)
         {
             GameServer.GameWriter.SendRcon(RconScript.HeliLessBsDamageOn);
@@ -534,20 +261,14 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
         public ValueTask HandleAsync(PlayerKillEvent e)
         {
-            //if (attacker.Team == victim.Team)
-            //    return;
-
             // victimPosition bugged
             var victimPosition = e.Victim.Position;
-
-            //GameServer.GameWriter.SendText($"Attacker: {attackerPosition}, Victim: {victimPosition}");
 
             var hasSafeAreas = MapSafeAreas.TryGetValue(GameServer.Map.Name.ToLower(), out var safeAreas);
             if (!hasSafeAreas)
                 return ValueTask.CompletedTask;
 
             var isVictimWithinSafeArea = safeAreas
-                //.Where(z => z.TeamId == victim.Team.Id)
                 .Any(z => victimPosition.Height < z.MaxAltitude && victimPosition.IsInArea(z.Area));
 
             if (isVictimWithinSafeArea)
@@ -557,10 +278,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 GameServer.GameWriter.SendScore(e.Victim, e.Victim.Score.Total, e.Victim.Score.Team, e.Victim.Score.Kills, e.Victim.Score.Deaths - 1);
                 GameServer.GameWriter.SendText($"Baserape is not allowed ({e.Attacker.DisplayName})");
             }
-            //else
-            //{
-            //    GameServer.GameWriter.SendText($"{victim.Name} is not in a safe area {victimPosition}");
-            //}
 
             return ValueTask.CompletedTask;
         }
@@ -579,31 +296,9 @@ namespace BF2WebAdmin.Server.Modules.BF2
             if (inPortal == null)
                 return ValueTask.CompletedTask;
 
-            //var objectId = player.SubVehicle.RootVehicleId;
-            //var replacements = new Dictionary<string, string>
-            //{
-            //    {"{OBJECT_ID}", objectId.ToString()}
-            //};
-            //var scriptOn = RconScript.NoclipOn.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
-            //var scriptOff = RconScript.NoclipOff.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
-
-            //GameServer.GameWriter.SendRcon(scriptOn);
-            //for (var i = 0; i < 100; i++)
-            //{
-            //    await Task.Delay(50);
-            //    GameServer.GameWriter.SendText("Tele #" + i);
-            //    GameServer.GameWriter.SendRotate(player, inPortal.OutRotation);
-            //    GameServer.GameWriter.SendTeleport(player, new Position(0, 10000, 0));
-            //}
             GameServer.GameWriter.SendRotate(e.Player, inPortal.OutRotation);
             GameServer.GameWriter.SendTeleport(e.Player, inPortal.OutPosition);
 
-            //Task.Run(async () =>
-            //{
-            //    await Task.Delay(5000);
-            //    GameServer.GameWriter.SendRcon(scriptOff);
-            //    GameServer.GameWriter.SendText("Done");
-            //});
             return ValueTask.CompletedTask;
         }
     }

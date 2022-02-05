@@ -13,22 +13,6 @@ namespace BF2WebAdmin.Common
         None = int.MaxValue
     }
 
-    public enum GameState
-    {
-        PreGame,
-        Playing,
-        EndGame,
-        Paused,
-        Restart,
-        NotConnected
-    }
-
-    public enum SocketState
-    {
-        Connected,
-        Disconnected
-    }
-
     public enum Rank
     {
         Private = 0,

@@ -1,0 +1,51 @@
+﻿@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @text
+        </MudText>
+    </TitleContent>
+
+    <DialogContent>
+        <MudTextField @bind-Value="TextValue" Immediate="true" Label="@placeholder" OnKeyPress="OnKeyPress" />
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Error" OnClick="Submit" @ref="_sendButton">Send</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
+
+    [Parameter] public Action<string> callback { get; set; }
+    [Parameter] public string text { get; set; }
+    [Parameter] public string placeholder { get; set; }
+    [Parameter] public string success { get; set; }
+
+    public string TextValue { get; set; }
+
+    private MudButton _sendButton;
+
+    private async void OnKeyPress(KeyboardEventArgs e)
+    {
+        var isEnter = e.Code is "Enter" or "NumpadEnter";
+        if (!isEnter)
+            return;
+
+        Submit();
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private void Submit()
+    {
+        Snackbar.Add(success, Severity.Success);
+        MudDialog.Close(DialogResult.Ok(TextValue));
+    }
+}

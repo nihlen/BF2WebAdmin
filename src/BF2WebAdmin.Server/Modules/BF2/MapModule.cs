@@ -8,7 +8,6 @@ using BF2WebAdmin.Server.Extensions;
 
 namespace BF2WebAdmin.Server.Modules.BF2
 {
-    // TODO: .clear should remember scores
     public class MapModule : IModule,
         IHandleEventAsync<MapChangedEvent>,
         IHandleCommandAsync<MapLoadCommand>,
@@ -29,12 +28,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             _mapRepository = mapRepository;
             _mapId = Guid.NewGuid();
             _mapObjects = new List<MapModObject>();
-            //_gameServer.MapChanged += map =>
-            //{
-            //    _mapId = Guid.NewGuid();
-            //    _mapObjects = new List<MapModObject>();
-            //    return Task.CompletedTask;
-            //};
         }
 
         public async ValueTask HandleAsync(MapLoadCommand command)
@@ -283,47 +276,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
         //    }
 
         //}
-
-
-        //private async Task TestMessageAsync(Message message)
-        //{
-        //    if (message.Text == ".nuke")
-        //    {
-        //        var delta = -30;
-        //        var rotation = new Rotation(0, -180, 0);
-
-        //        var startX = 330;
-        //        var endX = -380;
-
-        //        var startY = 330;
-        //        var endY = -380;
-
-        //        // [Id],[MapModId],[TemplateName],[Position],[Rotation]
-        //        //var mapGuid = Guid.NewGuid();
-        //        //var lines = new List<string>();
-
-        //        var i = 0;
-        //        //var borderSize = Math.Abs(delta) + 2;
-        //        for (var x = startX; x > endX; x += delta)
-        //        {
-        //            for (var y = startY; y > endY; y += delta)
-        //            {
-        //                if (i++ > 800)
-        //                {
-        //                    _gameServer.GameWriter.SendText("Too many objects!");
-        //                    return;
-        //                }
-
-        //                SpawnObject("supply_crate", new Position(x, 400, y), rotation, false);
-        //                //lines.Add($"{Guid.NewGuid()}\t{mapGuid}\tcoolingtower_01\t{new Position(x, 258, y)}\t{rotation}");
-        //            }
-        //        }
-
-        //        _gameServer.GameWriter.SendText($"Created {i} towers");
-        //        //File.WriteAllLines("sandrosbunker.txt", lines);
-        //    }
-        //}
-
+        
         public ValueTask HandleAsync(MapChangedEvent e)
         {
             _mapId = Guid.NewGuid();

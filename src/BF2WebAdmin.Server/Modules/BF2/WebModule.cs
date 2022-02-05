@@ -1,225 +1,74 @@
-﻿using BF2WebAdmin.Common.Abstractions;
-using BF2WebAdmin.Common.Communication;
-using BF2WebAdmin.Common.Communication.DTOs;
-using BF2WebAdmin.Common.Communication.Messages;
+﻿using BF2WebAdmin.Common.Communication;
+using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
-using Serilog;
+using BF2WebAdmin.Server.Hubs;
+using BF2WebAdmin.Shared.Communication.DTOs;
+using BF2WebAdmin.Shared.Communication.Events;
+using Microsoft.AspNetCore.SignalR;
 
 namespace BF2WebAdmin.Server.Modules.BF2
 {
-    public class WebModule : IModule,
-        IHandleEventAsync<BF2WebAdmin.Server.ServerUpdateEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.PlayerPositionEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.ChatMessageEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.PlayerJoinEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.PlayerLeftEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.PlayerKillEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.PlayerDeathEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.PlayerSpawnEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.PlayerTeamEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.PlayerScoreEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.PlayerVehicleEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.GameStateChangedEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.ProjectilePositionEvent>,
-        IHandleEventAsync<BF2WebAdmin.Server.MapChangedEvent>
+    public class WebModule : BaseModule,
+        IHandleEventAsync<ServerUpdateEvent>,
+        IHandleEventAsync<PlayerPositionEvent>,
+        IHandleEventAsync<ChatMessageEvent>,
+        IHandleEventAsync<PlayerJoinEvent>,
+        IHandleEventAsync<PlayerLeftEvent>,
+        IHandleEventAsync<PlayerKillEvent>,
+        IHandleEventAsync<PlayerDeathEvent>,
+        IHandleEventAsync<PlayerSpawnEvent>,
+        IHandleEventAsync<PlayerTeamEvent>,
+        IHandleEventAsync<PlayerScoreEvent>,
+        IHandleEventAsync<PlayerVehicleEvent>,
+        IHandleEventAsync<GameStateChangedEvent>,
+        IHandleEventAsync<ProjectilePositionEvent>,
+        IHandleEventAsync<MapChangedEvent>,
+        IHandleEventAsync<SocketStateChangedEvent>
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<WebModule>();
+        public const string WebAdminHashGod = "WebAdminHashGod";
 
         private readonly IGameServer _gameServer;
-        private readonly IMessageQueue<MessageEvent, MessageAction> _messageQueue;
-        private const string MessageQueueAddress = ">tcp://localhost:6006";
+        private readonly IHubContext<ServerHub, IServerHubClient> _serverHub;
 
-        private void SendGameEvent(IMessagePayload payload)
-        {
-            _messageQueue.Send(MessageEvent.Create(_gameServer.Id, payload));
-        }
+        private IServerHubClient ClientsAll => _serverHub.Clients.All;
+        private IServerHubClient ClientsGroup => _serverHub.Clients.Group(_gameServer.Id);
+        private IServerHubClient ClientsUser(string userId) => _serverHub.Clients.All; // TODO: fix user messaging - doesn't send anything?
 
-        public WebModule(IGameServer server)
+        public WebModule(IGameServer server, IHubContext<ServerHub, IServerHubClient> serverHub) : base(server)
         {
             _gameServer = server;
-            _messageQueue = new MessageQueue<MessageEvent, MessageAction>(MessageQueueAddress);
-            _messageQueue.Receive += (sender, args) => HandleAction(args.Message);
+            _serverHub = serverHub;
 
-            //_gameServer.ServerUpdate += (name, gamePort, queryPort, maxPlayers) =>
-            //{
-            //    SendGameEvent(new Common.Communication.Messages.ServerUpdateEvent
-            //    {
-            //        Id = _gameServer.Id,
-            //        Name = name,
-            //        IpAddress = _gameServer.IpAddress.ToString(),
-            //        GamePort = gamePort,
-            //        QueryPort = queryPort,
-            //        Map = _gameServer.Map?.Name,
-            //        Players = _gameServer.Players.Count(),
-            //        MaxPlayers = maxPlayers
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.PlayerPosition += (player, position, rotation, ping) =>
-            //{
-            //    SendGameEvent(new Common.Communication.Messages.PlayerPositionEvent
-            //    {
-            //        PlayerId = player.Index,
-            //        Position = new Vector3(position),
-            //        Rotation = new Vector3(rotation),
-            //        Ping = ping
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.ChatMessage += message =>
-            //{
-            //    SendGameEvent(new Common.Communication.Messages.ChatEvent
-            //    {
-            //        Message = new MessageDto(message)
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.PlayerJoin += player =>
-            //{
-            //    using (Profiler.Start("DEBUG PlayerJoin SendGameEvent"))
-            //    {
-            //        SendGameEvent(new Common.Communication.Messages.PlayerJoinEvent
-            //        {
-            //            Player = new PlayerDto(player)
-            //        });
-            //    }
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.PlayerLeft += player =>
-            //{
-            //    SendGameEvent(new Common.Communication.Messages.PlayerLeftEvent
-            //    {
-            //        PlayerId = player.Index
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.PlayerKill += (attacker, attackerPosition, victim, victimPosition, weapon) =>
-            //{
-            //    SendGameEvent(new Common.Communication.Messages.PlayerKillEvent
-            //    {
-            //        AttackerId = attacker.Index,
-            //        AttackerPosition = new Vector3(attackerPosition),
-            //        VictimId = victim.Index,
-            //        VictimPosition = new Vector3(victimPosition),
-            //        Weapon = weapon
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.PlayerDeath += (player, position, isSuicide) =>
-            //{
-            //    SendGameEvent(new Common.Communication.Messages.PlayerDeathEvent
-            //    {
-            //        PlayerId = player.Index,
-            //        Position = new Vector3(position),
-            //        //IsSuicide = isSuicide // TODO: add property
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.PlayerSpawn += (player, position, rotation) =>
-            //{
-            //    SendGameEvent(new Common.Communication.Messages.PlayerSpawnEvent
-            //    {
-            //        PlayerId = player.Index,
-            //        Position = new Vector3(position),
-            //        Rotation = new Vector3(rotation)
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.PlayerTeam += (player, team) =>
-            //{
-            //    SendGameEvent(new Common.Communication.Messages.PlayerTeamEvent
-            //    {
-            //        PlayerId = player.Index,
-            //        TeamId = team.Id
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.PlayerScore += (player, teamScore, kills, deaths, totalScore) =>
-            //{
-            //    SendGameEvent(new Common.Communication.Messages.PlayerScoreEvent
-            //    {
-            //        PlayerId = player.Index,
-            //        TeamScore = teamScore,
-            //        Kills = kills,
-            //        Deaths = deaths,
-            //        TotalScore = totalScore
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.PlayerVehicle += (player, vehicle) =>
-            //{
-            //    SendGameEvent(new Common.Communication.Messages.PlayerVehicleEvent
-            //    {
-            //        PlayerId = player.Index,
-            //        Vehicle = new VehicleDto(vehicle)
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.GameStateChanged += state =>
-            //{
-            //    SendGameEvent(new GameStateEvent
-            //    {
-            //        State = state.ToString()
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.ProjectilePosition += (projectile, position, rotation) =>
-            //{
-            //    SendGameEvent(new Common.Communication.Messages.ProjectilePositionEvent
-            //    {
-            //        ProjectileId = projectile.Id,
-            //        Template = projectile.Template,
-            //        Position = new Vector3(position),
-            //        Rotation = new Vector3(rotation)
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
-
-            //_gameServer.MapChanged += map =>
-            //{
-            //    SendGameEvent(new MapChangeEvent
-            //    {
-            //        Map = map?.Name ?? "?",
-            //        Size = map?.Size ?? 0
-            //    });
-
-            //    return Task.CompletedTask;
-            //};
+            ServerHub.UserConnectEvent += async (_, userId) => await SendServerInfo(userId, false);
+            ServerHub.UserSelectServerEvent += async (_, data) => { if (data.Item2 == _gameServer.Id) await SendServerInfo(data.Item1, true); };
         }
 
-        private void HandleAction(MessageAction message)
+        private async Task SendServerInfo(string userId, bool fullInfo)
         {
-            if (message.Type == nameof(UserConnectAction))
-            {
-                // Send server info to new users
-                Log.Debug("User connected: {UserId}", (message.Payload as UserConnectAction)?.Id);
-                SendGameEvent(
-                    new Common.Communication.Messages.ServerUpdateEvent
+            // Send server info to new user
+            await ClientsUser(userId).ServerUpdateEvent(
+                new Shared.Communication.Events.ServerUpdateEvent
+                {
+                    Id = _gameServer.Id,
+                    Name = _gameServer.Name,
+                    IpAddress = _gameServer.IpAddress.ToString(),
+                    GamePort = _gameServer.GamePort,
+                    QueryPort = _gameServer.QueryPort,
+                    Map = _gameServer.Map?.Name,
+                    Players = _gameServer.Players.Count(),
+                    MaxPlayers = _gameServer.MaxPlayers,
+                    GameState = _gameServer.State,
+                    SocketState = _gameServer.SocketState
+                }
+            );
+
+            if (!fullInfo)
+                return;
+
+            await ClientsUser(userId).ServerSnapshotEvent(
+                new ServerSnapshotEvent
+                {
+                    Server = new ServerDto
                     {
                         Id = _gameServer.Id,
                         Name = _gameServer.Name,
@@ -229,37 +78,21 @@ namespace BF2WebAdmin.Server.Modules.BF2
                         Map = _gameServer.Map?.Name,
                         Players = _gameServer.Players.Count(),
                         MaxPlayers = _gameServer.MaxPlayers,
-                    }
-                );
-
-                // Send player info
-                foreach (var player in _gameServer.Players)
-                {
-                    SendGameEvent(new Common.Communication.Messages.PlayerJoinEvent
-                    {
-                        Player = new PlayerDto(player)
-                    });
-
-                    // Send vehicle info
-                    if (player.Vehicle != null)
-                    {
-                        SendGameEvent(new Common.Communication.Messages.PlayerVehicleEvent
-                        {
-                            PlayerId = player.Index,
-                            Vehicle = new VehicleDto(player.Vehicle)
-                        });
-                    }
+                        GameState = _gameServer.State,
+                        SocketState = _gameServer.SocketState
+                    },
+                    Maps = _gameServer.Maps.Select(m => m.ToDto()),
+                    Teams = _gameServer.Teams.Select(t => t.ToDto()),
+                    Players = _gameServer.Players.Select(p => p.ToDto()).ToList(),
+                    EventLog = _gameServer.Events.Select(e => new EventLogDto { Message = e.Message, Timestamp = e.Time }),
+                    ChatLog = _gameServer.Messages.Select(m => new ChatLogDto { Message = m.Message.ToDto(), Timestamp = m.Time })
                 }
-            }
-            else if (message.Type == nameof(UserDisconnectAction))
-            {
-                Log.Debug("User disconnected: {UserId}", (message.Payload as UserDisconnectAction)?.Id);
-            }
+            );
         }
-
-        public ValueTask HandleAsync(ServerUpdateEvent e)
+        
+        public async ValueTask HandleAsync(ServerUpdateEvent e)
         {
-            SendGameEvent(new Common.Communication.Messages.ServerUpdateEvent
+            await ClientsGroup.ServerUpdateEvent(new Shared.Communication.Events.ServerUpdateEvent
             {
                 Id = _gameServer.Id,
                 Name = e.Name,
@@ -268,164 +101,276 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 QueryPort = e.QueryPort,
                 Map = _gameServer.Map?.Name,
                 Players = _gameServer.Players.Count(),
-                MaxPlayers = e.MaxPlayers
+                MaxPlayers = e.MaxPlayers,
+                GameState = _gameServer.State,
+                SocketState = _gameServer.SocketState,
+                TimeStamp = e.TimeStamp
             });
-
-            return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(PlayerPositionEvent e)
+        public async ValueTask HandleAsync(PlayerPositionEvent e)
         {
-            SendGameEvent(new Common.Communication.Messages.PlayerPositionEvent
+            await ClientsGroup.PlayerPositionEvent(new Shared.Communication.Events.PlayerPositionEvent
             {
                 PlayerId = e.Player.Index,
-                Position = new Vector3(e.Position),
-                Rotation = new Vector3(e.Rotation),
-                Ping = e.Ping
+                Position = e.Position.ToDto(),
+                Rotation = e.Rotation.ToDto(),
+                Ping = e.Ping,
+                TimeStamp = e.TimeStamp
             });
-
-            return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(ChatMessageEvent e)
+        public async ValueTask HandleAsync(ChatMessageEvent e)
         {
-            SendGameEvent(new Common.Communication.Messages.ChatEvent
+            await ClientsGroup.ChatEvent(new ChatEvent
             {
-                Message = new MessageDto(e.Message)
+                Message = e.Message.ToDto(),
+                TimeStamp = e.TimeStamp
             });
-
-            return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(PlayerJoinEvent e)
+        public async ValueTask HandleAsync(PlayerJoinEvent e)
         {
-            using (Profiler.Start("DEBUG PlayerJoin SendGameEvent"))
-            {
-                SendGameEvent(new Common.Communication.Messages.PlayerJoinEvent
+            await ClientsAll.ServerUpdateEvent(
+                new Shared.Communication.Events.ServerUpdateEvent
                 {
-                    Player = new PlayerDto(e.Player)
-                });
-            }
+                    Id = _gameServer.Id,
+                    Name = _gameServer.Name,
+                    IpAddress = _gameServer.IpAddress.ToString(),
+                    GamePort = _gameServer.GamePort,
+                    QueryPort = _gameServer.QueryPort,
+                    Map = _gameServer.Map?.Name,
+                    Players = _gameServer.Players.Count(),
+                    MaxPlayers = _gameServer.MaxPlayers,
+                    GameState = _gameServer.State,
+                    SocketState = _gameServer.SocketState,
+                    TimeStamp = e.TimeStamp
+                }
+            );
 
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask HandleAsync(PlayerLeftEvent e)
-        {
-            SendGameEvent(new Common.Communication.Messages.PlayerLeftEvent
+            await ClientsGroup.PlayerJoinEvent(new Shared.Communication.Events.PlayerJoinEvent
             {
-                PlayerId = e.Player.Index
+                Player = e.Player.ToDto(),
+                TimeStamp = e.TimeStamp
             });
-
-            return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(PlayerKillEvent e)
+        public async ValueTask HandleAsync(PlayerLeftEvent e)
         {
-            SendGameEvent(new Common.Communication.Messages.PlayerKillEvent
+            await ClientsAll.ServerUpdateEvent(
+                new Shared.Communication.Events.ServerUpdateEvent
+                {
+                    Id = _gameServer.Id,
+                    Name = _gameServer.Name,
+                    IpAddress = _gameServer.IpAddress.ToString(),
+                    GamePort = _gameServer.GamePort,
+                    QueryPort = _gameServer.QueryPort,
+                    Map = _gameServer.Map?.Name,
+                    Players = _gameServer.Players.Count(),
+                    MaxPlayers = _gameServer.MaxPlayers,
+                    GameState = _gameServer.State,
+                    SocketState = _gameServer.SocketState,
+                    TimeStamp = e.TimeStamp
+                }
+            );
+
+            await ClientsGroup.PlayerLeftEvent(new Shared.Communication.Events.PlayerLeftEvent
+            {
+                PlayerId = e.Player.Index,
+                TimeStamp = e.TimeStamp
+            });
+        }
+
+        public async ValueTask HandleAsync(PlayerKillEvent e)
+        {
+            await ClientsGroup.PlayerKillEvent(new Shared.Communication.Events.PlayerKillEvent
             {
                 AttackerId = e.Attacker.Index,
-                AttackerPosition = new Vector3(e.AttackerPosition),
+                AttackerPosition = e.AttackerPosition.ToDto(),
                 VictimId = e.Victim.Index,
-                VictimPosition = new Vector3(e.VictimPosition),
-                Weapon = e.Weapon
+                VictimPosition = e.VictimPosition.ToDto(),
+                Weapon = e.Weapon,
+                TimeStamp = e.TimeStamp
             });
-
-            return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(PlayerDeathEvent e)
+        public async ValueTask HandleAsync(PlayerDeathEvent e)
         {
-            SendGameEvent(new Common.Communication.Messages.PlayerDeathEvent
+            await ClientsGroup.PlayerDeathEvent(new Shared.Communication.Events.PlayerDeathEvent
             {
                 PlayerId = e.Player.Index,
-                Position = new Vector3(e.Position),
+                Position = e.Position.ToDto(),
                 //IsSuicide = isSuicide // TODO: add property
+                TimeStamp = e.TimeStamp
             });
-
-            return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(PlayerSpawnEvent e)
+        public async ValueTask HandleAsync(PlayerSpawnEvent e)
         {
-            SendGameEvent(new Common.Communication.Messages.PlayerSpawnEvent
+            await ClientsGroup.PlayerSpawnEvent(new Shared.Communication.Events.PlayerSpawnEvent
             {
                 PlayerId = e.Player.Index,
-                Position = new Vector3(e.Position),
-                Rotation = new Vector3(e.Rotation)
+                Position = e.Position.ToDto(),
+                Rotation = e.Rotation.ToDto(),
+                TimeStamp = e.TimeStamp
             });
-
-            return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(PlayerTeamEvent e)
+        public async ValueTask HandleAsync(PlayerTeamEvent e)
         {
-            SendGameEvent(new Common.Communication.Messages.PlayerTeamEvent
+            await ClientsGroup.PlayerTeamEvent(new Shared.Communication.Events.PlayerTeamEvent
             {
                 PlayerId = e.Player.Index,
-                TeamId = e.Team.Id
+                TeamId = e.Team.Id,
+                TimeStamp = e.TimeStamp
             });
-
-            return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(PlayerScoreEvent e)
+        public async ValueTask HandleAsync(PlayerScoreEvent e)
         {
-            SendGameEvent(new Common.Communication.Messages.PlayerScoreEvent
+            await ClientsGroup.PlayerScoreEvent(new Shared.Communication.Events.PlayerScoreEvent
             {
                 PlayerId = e.Player.Index,
                 TeamScore = e.TeamScore,
                 Kills = e.Kills,
                 Deaths = e.Deaths,
-                TotalScore = e.TotalScore
+                TotalScore = e.TotalScore,
+                TimeStamp = e.TimeStamp
             });
-
-            return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(PlayerVehicleEvent e)
+        public async ValueTask HandleAsync(PlayerVehicleEvent e)
         {
-            SendGameEvent(new Common.Communication.Messages.PlayerVehicleEvent
+            await ClientsGroup.PlayerVehicleEvent(new Shared.Communication.Events.PlayerVehicleEvent
             {
                 PlayerId = e.Player.Index,
-                Vehicle = new VehicleDto(e.Vehicle)
+                Vehicle = e.Vehicle.ToDto(),
+                TimeStamp = e.TimeStamp
             });
-
-            return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(GameStateChangedEvent e)
+        public async ValueTask HandleAsync(GameStateChangedEvent e)
         {
-            SendGameEvent(new GameStateEvent
+            await ClientsGroup.GameStateEvent(new GameStateEvent
             {
-                State = e.GameState.ToString()
+                State = e.GameState,
+                TimeStamp = e.TimeStamp
             });
-
-            return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(ProjectilePositionEvent e)
+        public async ValueTask HandleAsync(ProjectilePositionEvent e)
         {
-            SendGameEvent(new Common.Communication.Messages.ProjectilePositionEvent
+            await ClientsGroup.ProjectilePositionEvent(new Shared.Communication.Events.ProjectilePositionEvent
             {
                 ProjectileId = e.Projectile.Id,
                 Template = e.Projectile.Template,
-                Position = new Vector3(e.Position),
-                Rotation = new Vector3(e.Rotation)
+                Position = e.Position.ToDto(),
+                Rotation = e.Rotation.ToDto(),
+                TimeStamp = e.TimeStamp
             });
+        }
+
+        public async ValueTask HandleAsync(MapChangedEvent e)
+        {
+            await ClientsAll.ServerUpdateEvent(
+                new Shared.Communication.Events.ServerUpdateEvent
+                {
+                    Id = _gameServer.Id,
+                    Name = _gameServer.Name,
+                    IpAddress = _gameServer.IpAddress.ToString(),
+                    GamePort = _gameServer.GamePort,
+                    QueryPort = _gameServer.QueryPort,
+                    Map = _gameServer.Map?.Name,
+                    Players = _gameServer.Players.Count(),
+                    MaxPlayers = _gameServer.MaxPlayers,
+                    GameState = _gameServer.State,
+                    SocketState = _gameServer.SocketState,
+                    TimeStamp = e.TimeStamp
+                }
+            );
+
+            await ClientsGroup.MapChangeEvent(new MapChangeEvent
+            {
+                Map = e.Map?.Name ?? "?",
+                Size = e.Map?.Size ?? 0,
+                Index = e.Map?.Index ?? 0,
+                Teams = e.Teams.Select(t => t.ToDto()),
+                TimeStamp = e.TimeStamp
+            });
+        }
+
+        public async ValueTask HandleAsync(SocketStateChangedEvent e)
+        {
+            await ClientsAll.ServerUpdateEvent(
+                new Shared.Communication.Events.ServerUpdateEvent
+                {
+                    Id = _gameServer.Id,
+                    Name = _gameServer.Name,
+                    IpAddress = _gameServer.IpAddress.ToString(),
+                    GamePort = _gameServer.GamePort,
+                    QueryPort = _gameServer.QueryPort,
+                    Map = _gameServer.Map?.Name,
+                    Players = _gameServer.Players.Count(),
+                    MaxPlayers = _gameServer.MaxPlayers,
+                    GameState = _gameServer.State,
+                    SocketState = _gameServer.SocketState,
+                    TimeStamp = e.TimeStamp
+                }
+            );
+
+            await ClientsGroup.SocketStateEvent(new SocketStateEvent
+            {
+                State = e.SocketState,
+                TimeStamp = e.TimeStamp
+            });
+        }
+
+        public ValueTask HandleAdminChatAsync(string userId, string message)
+        {
+            if (message.StartsWith("."))
+            {
+                return HandleCustomCommandAsync(userId, message);
+            }
+
+            if (message.StartsWith("!"))
+            {
+                return HandleRconCommandAsync(userId, message);
+            }
+
+            GameServer.GameWriter.SendText($"[§C1001{userId}§C1001] {message}", false, false);
 
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask HandleAsync(MapChangedEvent e)
+        public async ValueTask HandleRconCommandAsync(string userId, string message)
         {
-            SendGameEvent(new MapChangeEvent
-            {
-                Map = e.Map?.Name ?? "?",
-                Size = e.Map?.Size ?? 0
-            });
+            var command = GetRconCommand(message);
+            var response = await SendRconCommandAsync(command);
+            var obfuscatedResponse = GetObfuscatedResponse(response);
 
-            return ValueTask.CompletedTask;
+            await ClientsUser(userId).RequestResponseEvent(
+                new Shared.Communication.Events.RequestResponseEvent
+                {
+                    Request = message,
+                    Response = obfuscatedResponse
+                }
+            );
+        }
+
+        public async ValueTask HandleCustomCommandAsync(string userId, string message)
+        {
+            await GameServer.ModManager.HandleFakeChatMessageAsync(new Message
+            {
+                Channel = ChatChannel.Global,
+                Type = MessageType.Player,
+                Player = new Player
+                {
+                    Index = -1,
+                    Name = userId,
+                    Hash = WebAdminHashGod
+                },
+                Text = message
+            });
         }
     }
 }

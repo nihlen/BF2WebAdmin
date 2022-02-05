@@ -7,10 +7,9 @@ using Serilog;
 
 namespace BF2WebAdmin.Server
 {
+    // TODO: move this to a separate project that can run in its own container?
     public class FakeGameServer
     {
-        //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<FakeGameServer>();
-
         private readonly IPAddress _ipAddress;
         private readonly int _port;
         private readonly int _rconPort;
@@ -151,7 +150,7 @@ namespace BF2WebAdmin.Server
                     //if (line.Contains("playerPosition"))
                     //    continue;
 
-                    Log.Debug("{Line} Sending... {Message}", lineNumber, parts[1]);
+                    //Log.Debug("{Line} Sending... {Message}", lineNumber, parts[1]);
                     await _writer.WriteLineAsync(parts[1]);
                 }
             }

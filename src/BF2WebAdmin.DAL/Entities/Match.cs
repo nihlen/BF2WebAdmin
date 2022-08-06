@@ -7,8 +7,7 @@ namespace BF2WebAdmin.Data.Entities
 {
     public class Match
     {
-        [ExplicitKey]
-        public Guid Id { get; set; }
+        [ExplicitKey] public Guid Id { get; set; }
         public string ServerId { get; set; }
         public string ServerName { get; set; }
         public string Map { get; set; }
@@ -22,31 +21,26 @@ namespace BF2WebAdmin.Data.Entities
         public DateTime? MatchStart { get; set; }
         public DateTime? MatchEnd { get; set; }
 
-        [Computed]
-        public IEnumerable<MatchRound> Rounds { get; set; }
+        [Computed] public List<MatchRound> MatchRounds { get; set; } = new();
     }
 
     public class MatchRound
     {
-        [ExplicitKey]
-        public Guid Id { get; set; }
-        public Guid? MatchId { get; set; }
+        [ExplicitKey] public Guid Id { get; set; }
         public int WinningTeamId { get; set; }
         public double PositionTrackerInterval { get; set; }
         public DateTime? RoundStart { get; set; }
         public DateTime? RoundEnd { get; set; }
 
-        [Computed]
-        public IEnumerable<MatchRoundPlayer> Players { get; set; }
+        [Computed] public List<MatchRoundPlayer> MatchRoundPlayers { get; set; } = new();
+        public Guid? MatchId { get; set; }
+        [Computed] public Match Match { get; set; }
     }
 
     public class MatchRoundPlayer
     {
-        [ExplicitKey]
-        public Guid RoundId { get; set; }
-        [ExplicitKey]
-        public string PlayerHash { get; set; }
-        public Guid MatchId { get; set; }
+        [ExplicitKey] public Guid RoundId { get; set; }
+        [ExplicitKey] public string PlayerHash { get; set; }
         public string PlayerName { get; set; }
         public int TeamId { get; set; }
         public string SubVehicle { get; set; }
@@ -59,5 +53,10 @@ namespace BF2WebAdmin.Data.Entities
         public Position KillerPosition { get; set; }
         public string MovementPathJson { get; set; }
         public string ProjectilePathsJson { get; set; }
+
+        public Guid MatchId { get; set; }
+        [Computed] public Match Match { get; set; }
+        [Computed] public MatchRound Round { get; set; }
+
     }
 }

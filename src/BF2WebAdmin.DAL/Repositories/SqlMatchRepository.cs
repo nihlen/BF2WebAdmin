@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.SqlClient;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Transactions;
@@ -9,15 +8,16 @@ using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Entities;
 using Dapper;
 using Dapper.Contrib.Extensions;
+using Microsoft.Data.SqlClient;
 
 namespace BF2WebAdmin.Data.Repositories
 {
-    public class MatchRepository : IMatchRepository
+    public class SqlMatchRepository : IMatchRepository
     {
         private readonly string _connectionString;
         protected IDbConnection NewConnection => new SqlConnection(_connectionString);
 
-        public MatchRepository(string connectionString)
+        public SqlMatchRepository(string connectionString)
         {
             _connectionString = connectionString;
         }
@@ -30,7 +30,7 @@ namespace BF2WebAdmin.Data.Repositories
             if (result == null)
                 throw new ArgumentException($"Match {nameof(id)} {id} was not found");
 
-            result.Rounds = await connection.QueryAsync<MatchRound>(
+            result.MatchRounds = (await connection.QueryAsync<MatchRound>(
                 @"SELECT [Id]
                     ,[MatchId]
                     ,[WinningTeamId]
@@ -39,7 +39,7 @@ namespace BF2WebAdmin.Data.Repositories
                 FROM [dbo].[MatchRound]
                 WHERE [MatchId] = @MatchId",
                 new { MatchId = id }
-            );
+            )).ToList();
 
             var roundPlayers = (await connection.QueryAsync<MatchRoundPlayer>(
                 @"SELECT [RoundId]
@@ -62,9 +62,9 @@ namespace BF2WebAdmin.Data.Repositories
                 new { MatchId = id }
             )).ToLookup(p => p.RoundId);
 
-            foreach (var round in result.Rounds)
+            foreach (var round in result.MatchRounds)
             {
-                round.Players = roundPlayers[round.Id];
+                round.MatchRoundPlayers = roundPlayers[round.Id].ToList();
             }
 
             return result;
@@ -127,9 +127,9 @@ namespace BF2WebAdmin.Data.Repositories
 
             await connection.InsertAsync(round);
 
-            if (round.Players != null && round.Players.Any())
+            if (round.MatchRoundPlayers != null && round.MatchRoundPlayers.Any())
             {
-                await connection.InsertAsync(round.Players);
+                await connection.InsertAsync(round.MatchRoundPlayers);
             }
 
             transaction.Complete();

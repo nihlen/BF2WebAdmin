@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using BF2WebAdmin.Common.Exceptions;
 using BF2WebAdmin.Data.Abstractions;
@@ -28,10 +29,10 @@ namespace BF2WebAdmin.Data.Repositories
                 var map = await connection.GetAsync<MapMod>(id);
                 //var predicate = Predicates.Field<MapModObject>(f => f.MapModId, Operator.Eq, map.Id);
                 //map.Objects = conn.GetList<MapModObject>(predicate);
-                map.Objects = connection.Query<MapModObject>(
+                map.MapModObjects = connection.Query<MapModObject>(
                     @"SELECT [Id], [MapModId], [TemplateName], [Position], [Rotation] FROM [MapModObject] WHERE [MapModId] = @MapModId",
                     new { MapModId = map.Id }
-                );
+                ).ToList();
                 return map;
             }
         }
@@ -53,7 +54,7 @@ namespace BF2WebAdmin.Data.Repositories
             using (var connection = NewConnection)
             {
                 await connection.InsertAsync(map);
-                await connection.InsertAsync(map.Objects);
+                await connection.InsertAsync(map.MapModObjects);
             }
         }
 
@@ -62,7 +63,7 @@ namespace BF2WebAdmin.Data.Repositories
             using (var connection = NewConnection)
             {
                 await connection.UpdateAsync(map);
-                await connection.UpdateAsync(map.Objects);
+                await connection.UpdateAsync(map.MapModObjects);
             }
         }
 
@@ -74,7 +75,7 @@ namespace BF2WebAdmin.Data.Repositories
                 if (map == null)
                     throw new EntityNotFoundException(id.ToString());
 
-                await connection.DeleteAsync(map.Objects);
+                await connection.DeleteAsync(map.MapModObjects);
                 await connection.DeleteAsync(map);
             }
         }

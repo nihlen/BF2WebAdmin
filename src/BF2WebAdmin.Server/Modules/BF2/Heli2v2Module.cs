@@ -1063,7 +1063,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
                 if (mapRounds)
                 {
-                    result.Rounds = finishedRounds.Select(ToRoundEntity);
+                    result.MatchRounds = finishedRounds.Select(ToRoundEntity).ToList();
                 }
             }
 
@@ -1084,7 +1084,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
             if (round.Players != null && round.Players.Any())
             {
-                result.Players = round.Players.Select(p => new MatchRoundPlayer
+                result.MatchRoundPlayers = round.Players.Select(p => new MatchRoundPlayer
                 {
                     RoundId = p.RoundId,
                     PlayerHash = p.PlayerHash,
@@ -1101,7 +1101,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
                     KillerPosition = p.KillerPosition,
                     MovementPathJson = Compression.CompressText(JsonConvert.SerializeObject(p.MovementPath.Select(p => p.ToString()))),
                     ProjectilePathsJson = Compression.CompressText(JsonConvert.SerializeObject(p.ProjectilePaths.Select(p => p.Select(pp => pp.ToString())))),
-                });
+                }).ToList();
             }
 
             return result;

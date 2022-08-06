@@ -25,9 +25,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="1.50.2" />
-    <PackageReference Include="Dapper.Contrib" Version="1.50.0" />
-    <PackageReference Include="RavenDB.Client" Version="3.5.35142-Unstable" />
+    <PackageReference Include="Dapper" Version="2.0.123" />
+    <PackageReference Include="Dapper.Contrib" Version="2.0.78" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="6.0.7" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="6.0.7" />
+    <PackageReference Include="RavenDB.Client" Version="3.5.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Schema.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

@@ -39,14 +39,14 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 return;
             }
 
-            if ((_mapObjects.Count + map.Objects.Count()) > MaxObjectCount)
+            if ((_mapObjects.Count + map.MapModObjects.Count()) > MaxObjectCount)
             {
                 _gameServer.GameWriter.SendText("Error: Max object count reached, loading this could crash the server. Use .clear first");
                 return;
             }
 
             var currentMap = _gameServer.Map.Name;
-            foreach (var mapObject in map.Objects)
+            foreach (var mapObject in map.MapModObjects)
             {
                 // Why is this ignored - invalid for dalian?
                 if (mapObject.TemplateName == "oilcistern_02" && currentMap == "dalian_plant")
@@ -55,7 +55,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 SpawnObject(mapObject.TemplateName, mapObject.Position, mapObject.Rotation, false);
             }
 
-            _gameServer.GameWriter.SendText($"§C1001Loaded map '{command.Name}' ({map.Objects.Count()} objects)");
+            _gameServer.GameWriter.SendText($"§C1001Loaded map '{command.Name}' ({map.MapModObjects.Count()} objects)");
         }
 
         public async ValueTask HandleAsync(MapSaveCommand command)
@@ -75,7 +75,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 CreatedBy = command.Message.Player.Hash,
                 CreatedDate = now,
                 EditedDate = now,
-                Objects = _mapObjects.ToArray()
+                MapModObjects = _mapObjects.ToList()
             };
 
             await _mapRepository.CreateAsync(map);

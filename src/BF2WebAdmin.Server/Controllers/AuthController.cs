@@ -74,6 +74,12 @@ public class AuthController : Controller
 
         return Redirect(returnUrl ?? "/");
     }
+
+    [HttpGet("/test")]
+    public async Task<IActionResult> Test()
+    {
+        return Ok("alive");
+    }
 }
 
 public class AuthSettings

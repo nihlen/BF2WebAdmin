@@ -1,8 +1,8 @@
-﻿using System.Data.SqlClient;
-using System.Net;
+﻿using System.Net;
 using System.Text.RegularExpressions;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
+using BF2WebAdmin.Data;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Entities;
 using BF2WebAdmin.Data.Repositories;
@@ -15,6 +15,8 @@ using BF2WebAdmin.Server.Logging;
 using BF2WebAdmin.Server.Modules.BF2;
 using BF2WebAdmin.Server.Services;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Polly;
 using Polly.Registry;
 using Serilog;
@@ -160,22 +162,34 @@ namespace BF2WebAdmin.Server
             serviceCollection.Configure<GeoipConfig>(geoipConfig);
 
             // Services
-            var connectionString = Configuration.GetConnectionString("BF2DB");
             //var connectionString = Configuration.GetValue<DatabaseConfig>("Database").ConnectionStrings.BF2DB;
             serviceCollection.AddSingleton(_gameServer);
-            //serviceCollection.AddSingleton<IScriptRepository>(c => new SqlScriptRepository(c.GetRequiredService<DatabaseConfig>().ConnectionStrings.BF2DB));
-            serviceCollection.AddSingleton<IMapRepository>(c => new SqlMapRepository(connectionString));
-            serviceCollection.AddSingleton<IServerSettingsRepository>(c => new ServerSettingsRepository(connectionString));
-            //serviceCollection.AddSingleton<IServerSettingsRepository>(c => new FakeServerSettingsRepository());
-            serviceCollection.AddSingleton<IMatchRepository>(c => new MatchRepository(connectionString));
             serviceCollection.AddSingleton<ICountryResolver>(c => new CountryResolver(geoipConfig["DatabasePath"]));
             serviceCollection.AddSingleton<IReadOnlyPolicyRegistry<string>>(PolicyRegistry);
             serviceCollection.AddSingleton<IChatLogger, DiscordChatLogger>();
             serviceCollection.AddSingleton<IMediator>(c => Mediator);
             serviceCollection.AddSingleton<IHubContext<ServerHub, IServerHubClient>>(sp => _globalServices.GetRequiredService<IHubContext<ServerHub, IServerHubClient>>());
             serviceCollection.AddSingleton<MassTransit.IBus>(sp => _globalServices.GetRequiredService<MassTransit.IBus>());
-            serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RabbitMqGameStreamService>());
+            serviceCollection.AddSingleton<IGameStreamService, RabbitMqGameStreamService>();
+            //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RabbitMqGameStreamService>());
             //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RedisGameStreamService>());
+
+            var connectionString = Configuration.GetConnectionString("BF2DB");
+            if (connectionString.Contains(".db"))
+            {
+                // SQLite
+                serviceCollection.AddDbContext<BF2Context>(o => o.UseSqlite(connectionString));
+                serviceCollection.AddScoped<IMapRepository>(c => new SqlMapRepository(connectionString));
+                serviceCollection.AddScoped<IServerSettingsRepository, ServerSettingsRepository>();
+                serviceCollection.AddScoped<IMatchRepository>(c => new SqlMatchRepository(connectionString));
+            }
+            else
+            {
+                // SQL Server
+                serviceCollection.AddSingleton<IMapRepository>(c => new SqlMapRepository(connectionString));
+                serviceCollection.AddSingleton<IServerSettingsRepository>(c => new SqlServerSettingsRepository(connectionString));
+                serviceCollection.AddSingleton<IMatchRepository>(c => new SqlMatchRepository(connectionString));
+            }
 
             // Modules
             foreach (var moduleType in _moduleResolver.ModuleTypes)
@@ -184,13 +198,21 @@ namespace BF2WebAdmin.Server
             }
 
             _services = serviceCollection.BuildServiceProvider();
+
+            if (connectionString.Contains(".db"))
+            {
+                // SQLite initialization
+                var context = _services.GetRequiredService<BF2Context>();
+                context.Database.EnsureCreated();
+            }
         }
 
         private async Task CreateModulesAsync()
         {
             var serverSettingsRepository = _services.GetService<IServerSettingsRepository>();
-            var moduleNames = await serverSettingsRepository.GetModsAsync(_gameServer.Id);
-            var enabledModuleTypes = _moduleResolver.ModuleTypes.Where(t => moduleNames.Contains(t.Name));
+            var defaultModuleNames = new[] { nameof(WebModule) };
+            var enabledModuleNames = await serverSettingsRepository.GetModsAsync(_gameServer.Id);
+            var enabledModuleTypes = _moduleResolver.ModuleTypes.Where(t => defaultModuleNames.Contains(t.Name) || enabledModuleNames.Contains(t.Name));
 
             // Instantiate modules
             foreach (var moduleType in enabledModuleTypes)

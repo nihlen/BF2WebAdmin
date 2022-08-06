@@ -64,7 +64,8 @@ namespace BF2WebAdmin.Server
                     var client = await server.AcceptTcpClientAsync();
                     var ipEndPoint = GetIpEndPoint(client);
                     var ipv4 = ipEndPoint.Address.MapToIPv4();
-                    if (_serverInfo.All(s => s.IpAddress != ipv4.ToString()))
+                    var isSameHost = IPAddress.IsLoopback(ipv4) || ipv4.Equals(_ipAddress);
+                    if (_serverInfo.All(s => s.IpAddress != ipv4.ToString()) && !isSameHost)
                     {
                         Log.Warning($"Unauthorized connection from {ipEndPoint.Address} - closing socket");
                         client.Close();
@@ -430,7 +431,10 @@ namespace BF2WebAdmin.Server
 
             var gamePort = int.Parse(parts[3]);
             var key = $"{ipEndPoint.Address}:{gamePort}";
-            var serverInfo = _serverInfo.FirstOrDefault(i => i.IpAddress == ipEndPoint.Address.ToString() && i.GamePort == gamePort);
+            var serverInfo = _serverInfo.FirstOrDefault(i => 
+                (i.IpAddress == ipEndPoint.Address.ToString() || IPAddress.IsLoopback(ipEndPoint.Address) || ipEndPoint.Address.Equals(_ipAddress)) && 
+                i.GamePort == gamePort
+            );
             if (serverInfo == null)
                 throw new Exception($"Server info not found in settings: {ipEndPoint.Address}:{gamePort}");
 

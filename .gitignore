@@ -240,7 +240,6 @@ App.db.config
 *.secret.*
 *.secret
 appsecrets.*
-RconScript.cs
 
 # Seed scripts, map mods
 Seed/
@@ -251,5 +250,5 @@ Logs/
 # GeoIPLite 
 *.mmdb
 
-# Nuget config with credentials
-nuget.config
+# SQLite DB
+*.db

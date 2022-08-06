@@ -7,6 +7,10 @@ using MassTransit;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
@@ -106,6 +110,42 @@ try
     {
         opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[] { "application/octet-stream" });
     });
+    builder.Services.AddOpenTelemetryMetrics(b => b
+        //.AddConsoleExporter()
+        //.AddConsoleExporter(o =>
+        //{
+        //    o.Targets = ConsoleExporterOutputTargets.Console | ConsoleExporterOutputTargets.Debug;
+        //})
+        .AddOtlpExporter(o =>
+        {
+            o.Endpoint = new Uri("http://localhost:4317"); // TODO: config
+            o.Protocol = OtlpExportProtocol.Grpc;
+        })
+        .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BF2WA"))
+        //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName: "BF2WA", serviceVersion: typeof(Program).Assembly.GetName().Version?.ToString()))
+        .AddHttpClientInstrumentation()
+        .AddAspNetCoreInstrumentation()
+    );
+    builder.Services.AddOpenTelemetryTracing(b => b
+        //.AddConsoleExporter()
+        //.AddConsoleExporter(o =>
+        //{
+        //    o.Targets = ConsoleExporterOutputTargets.Console | ConsoleExporterOutputTargets.Debug;
+        //})
+        .AddOtlpExporter(o =>
+        {
+            o.Endpoint = new Uri("http://localhost:4317"); // TODO: config
+            o.Protocol = OtlpExportProtocol.Grpc;
+        })
+        //.AddSource("BF2WA")
+        .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BF2WA"))
+        //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName: "BF2WA", serviceVersion: typeof(Program).Assembly.GetName().Version?.ToString()))
+        .AddHttpClientInstrumentation()
+        .AddAspNetCoreInstrumentation()
+        .AddSqlClientInstrumentation()
+        //.AddMassTransitInstrumentation()
+        //.AddRedisInstrumentation() // this somehow breaks exporting - nothing is logged
+    );
 
     var app = builder.Build();
 
@@ -141,6 +181,13 @@ try
     app.MapControllers();
     app.MapHub<ServerHub>("/hubs/server");
     app.MapFallbackToFile("index.html");
+
+    //var myActivitySource = new ActivitySource("BF2WA");
+    //using (var activity = myActivitySource.StartActivity("SayHello"))
+    //{
+    //    activity?.SetTag("foo", 1);
+    //    Log.Information("activity done");
+    //}
 
     app.Run();
 }

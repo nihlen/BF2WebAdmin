@@ -33,4 +33,8 @@
     <ProjectReference Include="..\BF2WebAdmin.Shared\BF2WebAdmin.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="External\" />
+  </ItemGroup>
+
 </Project>

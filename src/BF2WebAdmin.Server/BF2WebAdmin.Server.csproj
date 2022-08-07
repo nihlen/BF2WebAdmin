@@ -47,8 +47,6 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="5.0.0" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="5.0.0" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.10.9" />
-    <PackageReference Include="Nihlen.Gamespy" Version="1.0.0" />
-    <PackageReference Include="Nihlen.Message" Version="1.1.0" />
     <PackageReference Include="OpenTelemetry" Version="1.2.0-rc2" />
     <PackageReference Include="OpenTelemetry.Contrib.Instrumentation.MassTransit" Version="1.0.0-beta2" />
     <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.2.0-rc2" />

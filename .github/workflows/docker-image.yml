@@ -34,9 +34,7 @@ jobs:
       with:
         images: nihlen/bf2-webadmin
         tags: |
-          # minimal (short sha)
-          type=sha     
-          # set latest tag for default branch
+          type=sha
           type=raw,value=latest,enable={{is_default_branch}}
   
     - name: Build and push Docker image

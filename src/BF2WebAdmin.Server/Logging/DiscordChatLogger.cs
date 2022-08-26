@@ -75,4 +75,12 @@ namespace BF2WebAdmin.Server.Logging
             }
         }
     }
+
+    public class FakeChatLogger : IChatLogger
+    {
+        public Task SendAsync(string message, string serverGroup, string messageType)
+        {
+            return Task.CompletedTask;
+        }
+    }
 }

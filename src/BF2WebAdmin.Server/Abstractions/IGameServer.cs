@@ -16,6 +16,7 @@ namespace BF2WebAdmin.Server.Abstractions
         string Id { get; }
         string Name { get; }
         IPAddress IpAddress { get; }
+        IPAddress ConnectedIpAddress { get; }
         int GamePort { get; }
         int QueryPort { get; }
         int RconPort { get; }
@@ -23,7 +24,7 @@ namespace BF2WebAdmin.Server.Abstractions
         GameState State { get; }
         SocketState SocketState { get; }
 
-        Map Map { get; }
+        Map? Map { get; }
         IEnumerable<Map> Maps { get; }
         IEnumerable<Team> Teams { get; }
         IEnumerable<Player> Players { get; }
@@ -52,7 +53,7 @@ namespace BF2WebAdmin.Server.Abstractions
         void SetRconResponse(string responseCode, string value);
         Vehicle GetVehicle(Player player, int rootVehicleId, string rootVehicleName, string vehicleName);
         Player GetPlayer(int index);
-        Player GetPlayer(string namePart);
+        Player? GetPlayer(string namePart);
         Projectile GetProjectile(int id, string templateName, Position position);
         Task<bool> FixTeamMismatchAsync(IEnumerable<Player> players);
     }

@@ -13,7 +13,7 @@ using Serilog;
 
 namespace BF2WebAdmin.Server.Modules.BF2
 {
-    public class BF2Module : IModule,
+    public class BF2Module : BaseModule,
         IHandleEventAsync<MapChangedEvent>,
         IHandleEventAsync<PlayerJoinEvent>,
         IHandleEventAsync<PlayerLeftEvent>,
@@ -46,7 +46,10 @@ namespace BF2WebAdmin.Server.Modules.BF2
         IHandleCommandAsync<FreezeAllCommand>,
         IHandleCommandAsync<BlurCommand>,
         IHandleCommandAsync<SetAuthCommand>,
-        IHandleCommandAsync<GetAuthCommand>
+        IHandleCommandAsync<GetAuthCommand>,
+        IHandleCommand<SwitchCommand>,
+        IHandleCommand<SwitchIdCommand>,
+        IHandleCommand<SwitchAllCommand>
     {
         private readonly IGameServer _gameServer;
         private readonly ICountryResolver _countryResolver;
@@ -62,7 +65,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
         // TODO: does this need to be static for all servers to get it?
         public event Action<string, string> ServerGroupMessage;
 
-        public BF2Module(IGameServer server, ICountryResolver countryResolver, IServerSettingsRepository serverSettingsRepository, IChatLogger chatLogger)
+        public BF2Module(IGameServer server, ICountryResolver countryResolver, IServerSettingsRepository serverSettingsRepository, IChatLogger chatLogger) : base(server)
         {
             _gameServer = server;
             _countryResolver = countryResolver;
@@ -504,7 +507,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 return;
             }
 
-            var rconClient = new RconClient(_gameServer.IpAddress, _gameServer.ServerInfo.RconPort, _gameServer.ServerInfo.RconPassword);
+            var rconClient = new RconClient(_gameServer.ConnectedIpAddress, _gameServer.ServerInfo.RconPort, _gameServer.ServerInfo.RconPassword);
 
             // Delete existing admins
             var ingameAdminResponse = await rconClient.SendAsync("iga listAdmins");
@@ -591,6 +594,31 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 }
             };
         }
+        
+        public void Handle(SwitchCommand command)
+        {
+            var player = _gameServer.GetPlayer(command.Name);
+            if (player == null)
+                return;
+
+            SwitchPlayer(player);
+        }
+
+        public void Handle(SwitchIdCommand command)
+        {
+            var player = _gameServer.GetPlayer(command.PlayerId);
+            if (player == null)
+                return;
+
+            SwitchPlayer(player);
+        }
+
+        public void Handle(SwitchAllCommand command)
+        {
+            SwitchAll();
+        }
+
+
     }
 
     public class PlayerSnapshot

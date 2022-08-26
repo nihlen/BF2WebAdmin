@@ -36,6 +36,20 @@ namespace BF2WebAdmin.Server.Abstractions
         {
             GameServer.GameWriter.SendHealth(player, 1);
         }
+        
+        protected void SwitchAll()
+        {
+            GameServer.GameWriter.SendText("Switching teams");
+
+            foreach (var player in GameServer.Players)
+                SwitchPlayer(player);
+        }
+
+        protected void SwitchPlayer(Player player)
+        {
+            GameServer.GameWriter.SendTeam(player, player.Team.Id == 1 ? 2 : 1);
+            GameServer.GameWriter.SendHealth(player, 1);
+        }
 
         protected static string GetRconCommand(string text)
         {
@@ -64,7 +78,7 @@ namespace BF2WebAdmin.Server.Abstractions
 
         protected async Task<string> SendRconCommandAsync(string command)
         {
-            var rcon = new RconClient(GameServer.IpAddress, GameServer.ServerInfo.RconPort, GameServer.ServerInfo.RconPassword);
+            var rcon = new RconClient(GameServer.ConnectedIpAddress, GameServer.ServerInfo.RconPort, GameServer.ServerInfo.RconPassword);
             return await rcon.SendAsync(command);
         }
 

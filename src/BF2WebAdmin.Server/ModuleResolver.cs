@@ -82,7 +82,11 @@ namespace BF2WebAdmin.Server
 
                 // Has an instance of this module been created?
                 if (!Modules.ContainsKey(commandHandler.ModuleType))
-                    throw new NullReferenceException($"No instance of {commandHandler.ModuleType} exists");
+                {
+                    // throw new NullReferenceException($"No instance of {commandHandler.ModuleType} exists");
+                    Log.Verbose("No instance of {ModuleType} exists", commandHandler.ModuleType);
+                    continue;
+                }
 
                 // Check if this module is a valid synchronous handler for TCommand
                 if (Modules[commandHandler.ModuleType] is IHandleCommand<TCommand> syncHandler)
@@ -134,7 +138,7 @@ namespace BF2WebAdmin.Server
             }
 
             if (handlerCount == 0)
-                Log.Warning("No command handlers registered for {commandName}", typeof(TCommand).Name);
+                Log.Verbose("No command handlers registered for {commandName}", typeof(TCommand).Name);
         }
 
         private IDictionary<Type, IList<Func<IEvent, ValueTask>>> GetEventHandlers()
@@ -174,8 +178,9 @@ namespace BF2WebAdmin.Server
                 // Has an instance of this module been created?
                 if (!Modules.ContainsKey(eventHandler.ModuleType))
                 {
+                    // Some modules are optional
                     //throw new NullReferenceException($"No instance of {eventHandler.ModuleType} exists");
-                    Log.Warning($"No instance of {eventHandler.ModuleType.Name} exists for {eventHandler.EventType.Name}");
+                    Log.Verbose("No instance of {ModuleTypeName} exists for {EventTypeName}", eventHandler.ModuleType.Name, eventHandler.EventType.Name);
                     continue;
                 }
 
@@ -204,7 +209,7 @@ namespace BF2WebAdmin.Server
             }
 
             if (handlerCount == 0)
-                Log.Warning("No event handlers registered for {EventName}", typeof(TEvent).Name);
+                Log.Verbose("No event handlers registered for {EventName}", typeof(TEvent).Name);
         }
 
         private static void ScanAssembly()

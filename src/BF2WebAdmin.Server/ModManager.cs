@@ -112,11 +112,19 @@ namespace BF2WebAdmin.Server
         {
             var modManager = new ModManager(gameServer, globalServices);
 
-            await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(() => Task.WhenAll(
-                modManager.GetServerSettingsAsync(),
-                modManager.CreateModulesAsync(),
-                modManager.GetAuthPlayersAsync()
-            ));
+            // EF Core queries can't run on the same DBContext in parallel
+            // await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(() => Task.WhenAll(
+            //     modManager.GetServerSettingsAsync(),
+            //     modManager.CreateModulesAsync(),
+            //     modManager.GetAuthPlayersAsync()
+            // ));
+
+            await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(async () =>
+            {
+                await modManager.GetServerSettingsAsync();
+                await modManager.CreateModulesAsync();
+                await modManager.GetAuthPlayersAsync();
+            });
 
             return modManager;
         }
@@ -138,9 +146,9 @@ namespace BF2WebAdmin.Server
             var builder = new ConfigurationBuilder()
                 .SetBasePath(configPath)
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
-                .AddJsonFile($"appsettings.{profile}.json", optional: false, reloadOnChange: false)
+                .AddJsonFile($"appsettings.{profile}.json", optional: true, reloadOnChange: false)
                 .AddJsonFile("appsecrets.json", optional: false, reloadOnChange: false)
-                .AddJsonFile($"appsecrets.{profile}.json", optional: false, reloadOnChange: false);
+                .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false);
 
             Configuration = builder.Build();
         }
@@ -166,16 +174,25 @@ namespace BF2WebAdmin.Server
             serviceCollection.AddSingleton(_gameServer);
             serviceCollection.AddSingleton<ICountryResolver>(c => new CountryResolver(geoipConfig["DatabasePath"]));
             serviceCollection.AddSingleton<IReadOnlyPolicyRegistry<string>>(PolicyRegistry);
-            serviceCollection.AddSingleton<IChatLogger, DiscordChatLogger>();
             serviceCollection.AddSingleton<IMediator>(c => Mediator);
             serviceCollection.AddSingleton<IHubContext<ServerHub, IServerHubClient>>(sp => _globalServices.GetRequiredService<IHubContext<ServerHub, IServerHubClient>>());
             serviceCollection.AddSingleton<MassTransit.IBus>(sp => _globalServices.GetRequiredService<MassTransit.IBus>());
             serviceCollection.AddSingleton<IGameStreamService, RabbitMqGameStreamService>();
             //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RabbitMqGameStreamService>());
             //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RedisGameStreamService>());
+            
+            var discordSettings = Configuration.GetSection("Discord").Get<DiscordConfig>();
+            if (!string.IsNullOrWhiteSpace(discordSettings?.Webhooks?.FirstOrDefault()?.WebhookId))
+            {
+                serviceCollection.AddSingleton<IChatLogger, DiscordChatLogger>();
+            }
+            else
+            {
+                serviceCollection.AddSingleton<IChatLogger, FakeChatLogger>();
+            }
 
             var connectionString = Configuration.GetConnectionString("BF2DB");
-            if (connectionString.Contains(".db"))
+            if (connectionString.Contains(".sqlite"))
             {
                 // SQLite
                 serviceCollection.AddDbContext<BF2Context>(o => o.UseSqlite(connectionString));
@@ -198,19 +215,12 @@ namespace BF2WebAdmin.Server
             }
 
             _services = serviceCollection.BuildServiceProvider();
-
-            if (connectionString.Contains(".db"))
-            {
-                // SQLite initialization
-                var context = _services.GetRequiredService<BF2Context>();
-                context.Database.EnsureCreated();
-            }
         }
 
         private async Task CreateModulesAsync()
         {
             var serverSettingsRepository = _services.GetService<IServerSettingsRepository>();
-            var defaultModuleNames = new[] { nameof(WebModule) };
+            var defaultModuleNames = new[] { nameof(BF2Module), nameof(LogModule), nameof(WebModule) };
             var enabledModuleNames = await serverSettingsRepository.GetModsAsync(_gameServer.Id);
             var enabledModuleTypes = _moduleResolver.ModuleTypes.Where(t => defaultModuleNames.Contains(t.Name) || enabledModuleNames.Contains(t.Name));
 
@@ -241,7 +251,8 @@ namespace BF2WebAdmin.Server
             var serverSettingsRepository = _services.GetService<IServerSettingsRepository>();
             var authPlayers = (await serverSettingsRepository.GetPlayerAuthAsync(_gameServer.Id)).ToList();
 
-            // Add dummy admins so we can send commands from Discord
+            
+            // Add dummy admins for each server group so we can send commands from Discord
             foreach (var group in authPlayers.GroupBy(p => p.ServerGroup).Select(g => g.Key))
             {
                 authPlayers.Add(new ServerPlayerAuth { AuthLevel = (int)Auth.God, PlayerHash = DiscordModule.DiscordBotHashGod, ServerGroup = group });
@@ -249,6 +260,12 @@ namespace BF2WebAdmin.Server
                 authPlayers.Add(new ServerPlayerAuth { AuthLevel = (int)Auth.Admin, PlayerHash = DiscordModule.DiscordBotHashAdmin, ServerGroup = group });
                 authPlayers.Add(new ServerPlayerAuth { AuthLevel = (int)Auth.God, PlayerHash = WebModule.WebAdminHashGod, ServerGroup = group });
             }
+            
+            // Add dummy admins without groups
+            authPlayers.Add(new ServerPlayerAuth { AuthLevel = (int)Auth.God, PlayerHash = DiscordModule.DiscordBotHashGod });
+            authPlayers.Add(new ServerPlayerAuth { AuthLevel = (int)Auth.SuperAdmin, PlayerHash = DiscordModule.DiscordBotHashSuperAdmin });
+            authPlayers.Add(new ServerPlayerAuth { AuthLevel = (int)Auth.Admin, PlayerHash = DiscordModule.DiscordBotHashAdmin });
+            authPlayers.Add(new ServerPlayerAuth { AuthLevel = (int)Auth.God, PlayerHash = WebModule.WebAdminHashGod });
 
             AuthPlayers = authPlayers.ToLookup(p => p.PlayerHash);
         }
@@ -315,7 +332,7 @@ namespace BF2WebAdmin.Server
                 catch (CommandArgumentCountException ex)
                 {
                     //Logger.LogError(ex, $"{parser} Wrong argument count: {ex.Message}");
-                    Log.Debug("Wrong argument count: {Message}", ex.Message);
+                    Log.Verbose("Wrong argument count: {Message}", ex.Message);
                 }
                 catch (FormatException ex)
                 {

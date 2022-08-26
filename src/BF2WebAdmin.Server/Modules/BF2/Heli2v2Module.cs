@@ -37,9 +37,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
         IHandleEventAsync<MatchEndEvent>,
         IHandleEventAsync<RoundStartEvent>,
         IHandleEventAsync<RoundEndEvent>,
-        IHandleCommand<SwitchCommand>,
-        IHandleCommand<SwitchIdCommand>,
-        IHandleCommand<SwitchAllCommand>,
         IHandleCommand<SwitchLaterCommand>,
         IHandleCommand<HeliMgCommand>,
         IHandleCommand<NoclipCommand>,
@@ -531,29 +528,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
             return string.Compare(p1.Hash, p2.Hash, StringComparison.Ordinal) <= 0 ? p1.Hash + p2.Hash : p2.Hash + p1.Hash;
         }
 
-        public void Handle(SwitchCommand command)
-        {
-            var player = _gameServer.GetPlayer(command.Name);
-            if (player == null)
-                return;
-
-            SwitchPlayer(player);
-        }
-
-        public void Handle(SwitchIdCommand command)
-        {
-            var player = _gameServer.GetPlayer(command.PlayerId);
-            if (player == null)
-                return;
-
-            SwitchPlayer(player);
-        }
-
-        public void Handle(SwitchAllCommand command)
-        {
-            SwitchAll();
-        }
-
         public void Handle(SwitchLaterCommand command)
         {
             if (!_roundsActive)
@@ -564,20 +538,6 @@ namespace BF2WebAdmin.Server.Modules.BF2
 
             _gameServer.GameWriter.SendText($"Switching in {command.Rounds} rounds");
             _switchRounds = command.Rounds;
-        }
-
-        private void SwitchAll()
-        {
-            _gameServer.GameWriter.SendText("Switching teams");
-
-            foreach (var player in _gameServer.Players)
-                SwitchPlayer(player);
-        }
-
-        private void SwitchPlayer(Player player)
-        {
-            _gameServer.GameWriter.SendTeam(player, player.Team.Id == 1 ? 2 : 1);
-            _gameServer.GameWriter.SendHealth(player, 1);
         }
 
         public void Handle(HeliMgCommand command)

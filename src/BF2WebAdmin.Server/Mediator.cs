@@ -24,7 +24,7 @@ public class Mediator : IMediator
         var eventType = gameEvent.GetType();
         if (!_moduleResolver.EventHandlers.TryGetValue(eventType, out var handlers))
         {
-            Log.Warning("No handler found for event type {EventType}", eventType);
+            Log.Verbose("No handler found for event type {EventType}", eventType);
             return;
         }
 

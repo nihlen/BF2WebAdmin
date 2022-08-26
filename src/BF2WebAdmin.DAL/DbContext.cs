@@ -3,6 +3,7 @@ using System.Data;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace BF2WebAdmin.Data;
@@ -45,6 +46,21 @@ public class BF2Context : DbContext
     {
         configurationBuilder.Properties<Position>().HaveConversion<PositionConverter>();
         configurationBuilder.Properties<Rotation>().HaveConversion<RotationConverter>();
+    }
+}
+
+/// <summary>
+/// Used when creating DB migrations
+/// dotnet ef migrations add InitialCreate
+/// </summary>
+public class BF2ContextFactory : IDesignTimeDbContextFactory<BF2Context>
+{
+    public BF2Context CreateDbContext(string[] args)
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<BF2Context>();
+        optionsBuilder.UseSqlite("Data Source=BF2WebAdmin.sqlite;Cache=Shared");
+
+        return new BF2Context(optionsBuilder.Options);
     }
 }
 

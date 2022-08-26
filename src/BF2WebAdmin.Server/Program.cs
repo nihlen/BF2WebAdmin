@@ -164,7 +164,7 @@ try
     var app = builder.Build();
 
     Log.Information("BF2WebAdmin.Server is starting");
-    Log.Information("Current profile: {profile}", profile);
+    Log.Information("Current profile: {Profile}", profile);
     
     if (connectionString.Contains(".sqlite"))
     {
@@ -188,10 +188,10 @@ try
     else
     {
         app.UseExceptionHandler("/Error");
-        // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
 
         if (serverSettings.ForceHttps)
         {
+            // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
             app.UseHsts();
         }
     }

@@ -263,6 +263,8 @@ namespace BF2WebAdmin.Server
         /// Send text (convenience function)
         /// </summary>
         /// <param name="text">Text to send to server chat</param>
+        /// <param name="useServerName">If the server name should be prepended to the message</param>
+        /// <param name="sanitize">If we should sanitize characters in the message could cause problems if used incorrectly</param>
         public void SendText(string text, bool useServerName = true, bool sanitize = true)
         {
             const int maxLength = 180;
@@ -273,7 +275,7 @@ namespace BF2WebAdmin.Server
                 text = text.Replace("\"", "'");
             }
 
-            text = text.Length > maxLength ? text.Substring(0, maxLength) + "..." : text;
+            text = text.Length > maxLength ? text[..maxLength] + "..." : text;
 
             if (useServerName)
             {

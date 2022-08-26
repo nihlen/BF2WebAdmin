@@ -28,16 +28,12 @@ namespace BF2WebAdmin.Common
             if (string.IsNullOrWhiteSpace(_geoipDatabasePath))
                 throw new Exception("No GeoipDbPath found in appsettings");
 
-            using (var reader = new DatabaseReader(_geoipDatabasePath))
-            {
-                if (reader.TryCountry(ipAddress, out var response))
-                {
-                    CacheManager.Add(ipAddress, response, DateTime.UtcNow.AddDays(1));
-                    return response;
-                }
-
+            using var reader = new DatabaseReader(_geoipDatabasePath);
+            if (!reader.TryCountry(ipAddress, out var response)) 
                 return null;
-            }
+            
+            CacheManager.Add(ipAddress, response, DateTime.UtcNow.AddDays(1));
+            return response;
         }
     }
 }

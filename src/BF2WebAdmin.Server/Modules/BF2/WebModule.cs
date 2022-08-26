@@ -337,7 +337,7 @@ namespace BF2WebAdmin.Server.Modules.BF2
                 return HandleRconCommandAsync(userId, message);
             }
 
-            GameServer.GameWriter.SendText($"[§C1001{userId}§C1001] {message}", false, false);
+            GameServer.GameWriter.SendText($"[§C1001{userId}§C1001] {message}", false, true);
 
             return ValueTask.CompletedTask;
         }

@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,11 +14,11 @@ namespace BF2WebAdmin.Server
         private readonly int _port;
         private readonly string _password;
 
-        private TcpClient _client;
+        private TcpClient? _client;
 
-        private NetworkStream _stream;
-        private StreamReader _reader;
-        private BinaryWriter _writer;
+        private NetworkStream? _stream;
+        private StreamReader? _reader;
+        private BinaryWriter? _writer;
 
         public RconClient(IPAddress ipAddress, int port, string password)
         {
@@ -28,19 +29,19 @@ namespace BF2WebAdmin.Server
 
         public async Task<string> SendAsync(string command)
         {
-            Log.Information("RCON connecting to {IpAddress} {Port}", _ipAddress, _port);
-            if (_client == null || !_client.Connected)
+            Log.Debug("RCON connecting to {IpAddress} {Port} with command {Command}", _ipAddress, _port, command);
+            if (_client?.Connected != true)
                 await AuthenticateClientAsync();
 
-            _writer.Write(GetCommandBytes(command));
-            var response = ReadCommandResponse(_stream);
+            _writer?.Write(GetCommandBytes(command));
+            var response = ReadCommandResponse(_stream!);
             Log.Debug("RCON response: {Response}", response);
             return response;
         }
 
         private async Task AuthenticateClientAsync()
         {
-            // Use IPv4 or BF2 Rcon fails
+            // Use IPv4 or BF2 RCON fails
             _client = new TcpClient(AddressFamily.InterNetwork);
             await _client.ConnectAsync(_ipAddress, _port);
 
@@ -58,7 +59,7 @@ namespace BF2WebAdmin.Server
 
                 if (msg.StartsWith(RconResponses.DigestSeedResponse))
                 {
-                    var hash = GetMD5Hash(msg.Substring(17), _password);
+                    var hash = GetMd5Hash(msg[17..], _password);
                     _writer.Write(GetLoginBytes("login " + hash));
                 }
                 else if (msg.StartsWith(RconResponses.NotAuthenticatedResponse))
@@ -81,7 +82,7 @@ namespace BF2WebAdmin.Server
                 throw new RconException("Failed to authenticate");
         }
 
-        private static string GetMD5Hash(string seed, string password)
+        private static string GetMd5Hash(string seed, string password)
         {
             var hash = ComputeHash(seed, password);
             var hex = ToHexString(hash);
@@ -116,7 +117,7 @@ namespace BF2WebAdmin.Server
             while (true)
             {
                 var ch = stream.ReadByte();
-                if ((ch == -1) || (ch == 4))
+                if (ch is -1 or 4)
                     return sb.ToString();
 
                 sb.Append((char)ch);
@@ -131,7 +132,7 @@ namespace BF2WebAdmin.Server
             _client?.Dispose();
         }
 
-        public class RconException : Exception
+        private class RconException : Exception
         {
             public RconException(string message) : base(message) { }
         }

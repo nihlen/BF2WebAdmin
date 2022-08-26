@@ -497,8 +497,18 @@ namespace BF2WebAdmin.Server
                     // Log.Information("Sending reconnect command for {GameServerIp} to connect to {SelfIpAddress}", gameServerIp, ipAddress);
                     Log.Information("Sending reconnect command for {GameServerIp} to connect to this server", gameServerIp);
                     using var client = new RconClient(gameServerIp, serverInfo.RconPort, serverInfo.RconPassword);
-                    await client.SendAsync($"wa connect {ipAddress} {port}");
-                    // await client.SendAsync($"wa connectprivate {port}");
+                    
+                    // Let mm_webadmin connect to this server using the IP from the RCON connection
+                    // Used in most cases, unless connection fails during reconnection request
+                    var response = await client.SendAsync($"wa connectprivate {port}");
+
+                    if (response?.Contains("Connection failed") ?? false)
+                    {   
+                        // Let mm_webadmin connect to a server with a specific IP
+                        // Used when the connecting IP is not open for connections the other way, but another IP for the same machine is (local dev)
+                        Log.Debug("Using fallback connection for {GameServerIp}", gameServerIp);
+                        response = await client.SendAsync($"wa connect {ipAddress} {port}");
+                    }
                 });
         }
     }

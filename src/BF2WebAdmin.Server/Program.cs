@@ -1,4 +1,5 @@
-﻿using BF2WebAdmin.Server;
+﻿using BF2WebAdmin.Data;
+using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.Controllers;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Hubs;
@@ -6,6 +7,7 @@ using BF2WebAdmin.Server.Services;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
@@ -29,65 +31,70 @@ try
     builder.Configuration
         .SetBasePath(configPath)
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
-        .AddJsonFile($"appsettings.{profile}.json", optional: false, reloadOnChange: false)
+        .AddJsonFile($"appsettings.{profile}.json", optional: true, reloadOnChange: false)
         .AddJsonFile("appsecrets.json", optional: false, reloadOnChange: false)
-        .AddJsonFile($"appsecrets.{profile}.json", optional: false, reloadOnChange: false);
+        .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false);
 
     builder.Host.UseSerilog((context, services, configuration) =>
     {
-        var seqSettings = services.GetService<IOptions<SeqSettings>>()?.Value;
-        ArgumentNullException.ThrowIfNull(seqSettings);
-
         configuration
-            .MinimumLevel.Verbose()
+            .MinimumLevel.Debug()
             .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
             .Enrich.FromLogContext()
             .WriteTo.Console()
-            .WriteTo.File(@"Logs/server-.log", LogEventLevel.Verbose, "{Timestamp:HH:mm:ss} [{Level}] [{SourceContext}] {Message}{NewLine}{Exception}", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 31)
-            .WriteTo.Seq(seqSettings.ServerUrl, apiKey: seqSettings.ApiKey, controlLevelSwitch: new LoggingLevelSwitch());
+            .WriteTo.File(@"Logs/server-.log", LogEventLevel.Verbose, "{Timestamp:HH:mm:ss} [{Level}] [{SourceContext}] {Message}{NewLine}{Exception}", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 31);
+
+        var seqSettings = services.GetService<IOptions<SeqSettings>>()?.Value;
+        if (!string.IsNullOrWhiteSpace(seqSettings?.ServerUrl))
+        {
+            configuration.WriteTo.Seq(seqSettings.ServerUrl, apiKey: seqSettings.ApiKey, controlLevelSwitch: new LoggingLevelSwitch());
+        }
     });
 
     // Add services to the container.
 
-    var mqSettings = builder.Configuration.GetSection("RabbitMQ").Get<RabbitMqSettings>();
-    ArgumentNullException.ThrowIfNull(mqSettings);
-
     builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
     builder.Services.Configure<SeqSettings>(builder.Configuration.GetSection("Seq"));
     builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Authentication"));
-    builder.Services.AddMassTransit(x =>
+
+    var serverSettings = builder.Configuration.GetSection("ServerSettings").Get<ServerSettings>();
+    ArgumentNullException.ThrowIfNull(serverSettings);
+
+    var mqSettings = builder.Configuration.GetSection("RabbitMQ").Get<RabbitMqSettings>();
+    if (!string.IsNullOrWhiteSpace(mqSettings?.Host))
     {
-        //x.AddConsumersFromNamespaceContaining<GameStreamConsumer>();
-
-        x.SetKebabCaseEndpointNameFormatter();
-
-        x.UsingRabbitMq((context, cfg) =>
+        builder.Services.AddMassTransit(x =>
         {
-            cfg.Host(mqSettings.Host, mqSettings.Port, mqSettings.VirtualHost, host =>
-            {
-                host.Username(mqSettings.Username);
-                host.Password(mqSettings.Password);
-            });
+            //x.AddConsumersFromNamespaceContaining<GameStreamConsumer>();
 
-            //cfg.ConfigureEndpoints(context);
+            x.SetKebabCaseEndpointNameFormatter();
 
-            cfg.ReceiveEndpoint("game-stream-server", e =>
+            x.UsingRabbitMq((context, cfg) =>
             {
-                //e.Consumer<GameStreamConsumer>();
-                e.Consumer(() => context.GetRequiredService<GameStreamConsumer>());
+                cfg.Host(mqSettings.Host, mqSettings.Port, mqSettings.VirtualHost, host =>
+                {
+                    host.Username(mqSettings.Username);
+                    host.Password(mqSettings.Password);
+                });
+
+                //cfg.ConfigureEndpoints(context);
+
+                cfg.ReceiveEndpoint("game-stream-server", e =>
+                {
+                    //e.Consumer<GameStreamConsumer>();
+                    e.Consumer(() => context.GetRequiredService<GameStreamConsumer>());
+                });
             });
         });
-    });
-    builder.Services.AddMassTransitHostedService(true);
-    builder.Services.AddSingleton<GameStreamConsumer>();
+        builder.Services.AddMassTransitHostedService(true);
+        builder.Services.AddSingleton<GameStreamConsumer>();
+    }
+
     builder.Services.AddSingleton<ISocketServer>(services =>
     {
-        var settings = services.GetService<IOptions<ServerSettings>>()?.Value;
-        ArgumentNullException.ThrowIfNull(settings);
-
         // TODO: resolve ip somewhere else
-        var serverIp = settings.IpAddress.GetIpAddressAsync().GetAwaiter().GetResult();
-        return new SocketServer(serverIp, settings.Port, settings.GameServers, services, settings.PrintSendLog, settings.PrintRecvLog);
+        var serverIp = serverSettings.IpAddress.GetIpAddressAsync().GetAwaiter().GetResult();
+        return new SocketServer(serverIp, serverSettings.Port, serverSettings.GameServers, services, serverSettings.PrintSendLog, serverSettings.PrintRecvLog);
     });
     builder.Services.AddHostedService<BF2WebAdminService>();
     builder.Services.AddSignalR()
@@ -143,14 +150,30 @@ try
         .AddHttpClientInstrumentation()
         .AddAspNetCoreInstrumentation()
         .AddSqlClientInstrumentation()
-        //.AddMassTransitInstrumentation()
-        //.AddRedisInstrumentation() // this somehow breaks exporting - nothing is logged
+    //.AddMassTransitInstrumentation()
+    //.AddRedisInstrumentation() // this somehow breaks exporting - nothing is logged
     );
+
+    var connectionString = builder.Configuration.GetConnectionString("BF2DB");
+    if (connectionString.Contains(".sqlite"))
+    {
+        // SQLite
+        builder.Services.AddDbContext<BF2Context>(o => o.UseSqlite(connectionString));
+    }
 
     var app = builder.Build();
 
     Log.Information("BF2WebAdmin.Server is starting");
     Log.Information("Current profile: {profile}", profile);
+    
+    if (connectionString.Contains(".sqlite"))
+    {
+        // SQLite initialization
+        Log.Information("Running SQLite migrations");
+        using var scope = app.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<BF2Context>();
+        await context.Database.MigrateAsync();
+    }
 
     // Set ServerHub static for use in WebModule
     //ServerHub.Current = app.Services.GetRequiredService<IHubContext<ServerHub, IServerHubClient>>();
@@ -166,7 +189,11 @@ try
     {
         app.UseExceptionHandler("/Error");
         // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-        app.UseHsts();
+
+        if (serverSettings.ForceHttps)
+        {
+            app.UseHsts();
+        }
     }
 
     app.UseBlazorFrameworkFiles();

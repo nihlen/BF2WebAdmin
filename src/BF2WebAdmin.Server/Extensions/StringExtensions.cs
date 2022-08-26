@@ -15,17 +15,24 @@ namespace BF2WebAdmin.Server.Extensions
             return sb.ToString();
         }
 
-        public static async Task<IPAddress> GetIpAddressAsync(this string address)
+        public static async Task<IPAddress?> GetIpAddressAsync(this string address)
         {
+            var isIpAddress = IPAddress.TryParse(address, out var ipResult);
+
             // Allow both hostname and IP address string
             var addressType = Uri.CheckHostName(address);
-            if (addressType == UriHostNameType.Dns)
+            if (addressType == UriHostNameType.Dns || !isIpAddress)
             {
                 var result = await Dns.GetHostAddressesAsync(address);
-                return result.FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork);
+                var firstIPv4 = result.FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork);
+                if (firstIPv4 != null)
+                    return firstIPv4;
             }
 
-            return IPAddress.Parse(address).MapToIPv4();
+            if (isIpAddress) 
+                return ipResult!.MapToIPv4();
+
+            throw new Exception("Invalid address: " + address);
         }
     }
 }

@@ -64,10 +64,10 @@ namespace BF2WebAdmin.Server
                     var client = await server.AcceptTcpClientAsync();
                     var ipEndPoint = GetIpEndPoint(client);
                     var ipv4 = ipEndPoint.Address.MapToIPv4();
-                    var isSameHost = IPAddress.IsLoopback(ipv4) || ipv4.Equals(_ipAddress);
-                    if (_serverInfo.All(s => s.IpAddress != ipv4.ToString()) && !isSameHost)
+                    var isPrivateIp = ipv4.IsPrivate();
+                    if (_serverInfo.All(s => s.IpAddress != ipv4.ToString()) && !isPrivateIp)
                     {
-                        Log.Warning($"Unauthorized connection from {ipEndPoint.Address} - closing socket");
+                        Log.Warning("Unauthorized connection from {IpAddress} - closing socket", ipEndPoint.Address);
                         client.Close();
                         continue;
                     }
@@ -425,25 +425,26 @@ namespace BF2WebAdmin.Server
             var eventType = parts[0];
             if (eventType != "serverInfo")
             {
-                Log.Warning($"Unexpected server event {eventType} - expected serverInfo");
+                Log.Warning("Unexpected server event {EventType} - expected serverInfo", eventType);
                 return default;
             }
 
             var gamePort = int.Parse(parts[3]);
-            var key = $"{ipEndPoint.Address}:{gamePort}";
             var serverInfo = _serverInfo.FirstOrDefault(i => 
-                (i.IpAddress == ipEndPoint.Address.ToString() || IPAddress.IsLoopback(ipEndPoint.Address) || ipEndPoint.Address.Equals(_ipAddress)) && 
+                (i.IpAddress == ipEndPoint.Address.ToString() || ipEndPoint.Address.IsPrivate() || ipEndPoint.Address.Equals(_ipAddress)) && 
                 i.GamePort == gamePort
             );
             if (serverInfo == null)
                 throw new Exception($"Server info not found in settings: {ipEndPoint.Address}:{gamePort}");
 
-            var gameServer = await GetGameServerAsync(ipEndPoint, gameWriter, key, serverInfo);
+            var publicIpAddress = ipEndPoint.Address.IsPrivate() ? _ipAddress : ipEndPoint.Address;
+            var key = $"{publicIpAddress}:{gamePort}";
+            var gameServer = await GetGameServerAsync(publicIpAddress, ipEndPoint.Address, gameWriter, key, serverInfo);
             var gameReader = new GameReader(gameServer);
             return (gameServer, gameReader);
         }
 
-        private async Task<IGameServer> GetGameServerAsync(IPEndPoint ipEndPoint, IGameWriter gameWriter, string key, ServerInfo serverInfo)
+        private async Task<IGameServer> GetGameServerAsync(IPAddress publicIpAddress, IPAddress connectedIpAddress, IGameWriter gameWriter, string key, ServerInfo serverInfo)
         {
             if (_servers.ContainsKey(key))
             {
@@ -454,7 +455,7 @@ namespace BF2WebAdmin.Server
             }
 
             Log.Information("Created new GameServer instance {ServerKey}", key);
-            var newServer = await GameServer.CreateAsync(ipEndPoint.Address, gameWriter, serverInfo, _globalServices);
+            var newServer = await GameServer.CreateAsync(publicIpAddress, connectedIpAddress, gameWriter, serverInfo, _globalServices);
             _servers.TryAdd(key, newServer);
             return newServer;
         }
@@ -466,25 +467,38 @@ namespace BF2WebAdmin.Server
                     sleepDurationProvider: retryAttempt => retryAttempt < 10 ? TimeSpan.FromMinutes(1) : TimeSpan.FromMinutes(10),
                     onRetry: (exception, retryAttempt, timespan) =>
                     {
-                        Log.Warning(
-                            $"Failed attempt {retryAttempt} for {serverInfo.IpAddress}:{serverInfo.GamePort}. " +
-                            $"Retrying in {timespan}.\n{exception.Message} - {exception.StackTrace}"
-                        );
+                        if (exception.Message.Contains("Connection refused") || exception.Message.Contains("failed to respond"))
+                        {
+                            Log.Warning(
+                                "Failed attempt {RetryAttempt} for {ServerIpAddress}:{ServerGamePort}. Retrying in {Timespan} ({ExceptionMessage})", 
+                                retryAttempt, serverInfo.IpAddress, serverInfo.GamePort, timespan, exception.Message
+                            );
+                        }
+                        else
+                        {
+                            Log.Warning(
+                                exception,
+                                "Failed attempt {RetryAttempt} for {ServerIpAddress}:{ServerGamePort}. Retrying in {Timespan}", 
+                                retryAttempt, serverInfo.IpAddress, serverInfo.GamePort, timespan
+                            );
+                        }
                     }
                 ).ExecuteAsync(async () =>
                 {
                     // Check if server has already connected
                     var gameServerIp = await serverInfo.IpAddress.GetIpAddressAsync();
                     var matchingServer = _servers.Values.FirstOrDefault(s => s.IpAddress.Equals(gameServerIp) && s.GamePort == serverInfo.GamePort);
-                    if (matchingServer != null && matchingServer.SocketState == SocketState.Connected)
+                    if (matchingServer?.SocketState == SocketState.Connected)
                     {
-                        Log.Information("Server {ServerId} is already connected. Aborting connection retries.", matchingServer.Id);
+                        Log.Information("Server {ServerId} is already connected. Aborting connection retries", matchingServer.Id);
                         return;
                     }
 
-                    Log.Information("Sending reconnect command for {GameServerIp} to connect to {SelfIpAddress}", gameServerIp, ipAddress);
+                    // Log.Information("Sending reconnect command for {GameServerIp} to connect to {SelfIpAddress}", gameServerIp, ipAddress);
+                    Log.Information("Sending reconnect command for {GameServerIp} to connect to this server", gameServerIp);
                     using var client = new RconClient(gameServerIp, serverInfo.RconPort, serverInfo.RconPassword);
                     await client.SendAsync($"wa connect {ipAddress} {port}");
+                    // await client.SendAsync($"wa connectprivate {port}");
                 });
         }
     }

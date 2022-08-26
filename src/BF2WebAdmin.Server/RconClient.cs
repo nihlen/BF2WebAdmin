@@ -28,12 +28,13 @@ namespace BF2WebAdmin.Server
 
         public async Task<string> SendAsync(string command)
         {
+            Log.Information("RCON connecting to {IpAddress} {Port}", _ipAddress, _port);
             if (_client == null || !_client.Connected)
                 await AuthenticateClientAsync();
 
             _writer.Write(GetCommandBytes(command));
             var response = ReadCommandResponse(_stream);
-            Log.Debug("RCON reconnect response: {Response}", response);
+            Log.Debug("RCON response: {Response}", response);
             return response;
         }
 

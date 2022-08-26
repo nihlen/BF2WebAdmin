@@ -65,6 +65,7 @@ namespace BF2WebAdmin.Server
         public string ServerLogDirectory { get; set; }
         public bool PrintSendLog { get; set; }
         public bool PrintRecvLog { get; set; }
+        public bool ForceHttps { get; set; } = true;
     }
 
     public class ServerInfo

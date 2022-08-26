@@ -24,6 +24,7 @@ namespace BF2WebAdmin.Server.Entities
         public string Id => $"{IpAddress}:{GamePort}";
         public string Name { get; private set; }
         public IPAddress IpAddress { get; }
+        public IPAddress ConnectedIpAddress { get; }
         public int GamePort { get; private set; }
         public int QueryPort { get; private set; }
         public int RconPort { get; private set; }
@@ -32,7 +33,7 @@ namespace BF2WebAdmin.Server.Entities
         public GameState State { get; private set; }
         public SocketState SocketState { get; private set; } = SocketState.Disconnected;
 
-        public Map Map { get; private set; }
+        public Map? Map { get; private set; }
 
         public IEnumerable<Map> Maps => _maps.ToArray();
         private readonly IList<Map> _maps = new List<Map>();
@@ -58,18 +59,19 @@ namespace BF2WebAdmin.Server.Entities
         private bool _enablePositionUpdates = true;
         private readonly SemaphoreSlim _modManagerLock = new(1);
 
-        private GameServer(IPAddress ipAddress, IGameWriter writer, ServerInfo serverInfo, IServiceProvider globalServices)
+        private GameServer(IPAddress publicIpAddress, IPAddress connectedIpAddress, IGameWriter writer, ServerInfo serverInfo, IServiceProvider globalServices)
         {
-            IpAddress = ipAddress;
+            IpAddress = publicIpAddress;
+            ConnectedIpAddress = connectedIpAddress;
             _gameWriter = writer;
             _globalServices = globalServices;
             ServerInfo = serverInfo;
         }
 
-        public static async Task<GameServer> CreateAsync(IPAddress ipAddress, IGameWriter writer, ServerInfo serverInfo, IServiceProvider globalServices)
+        public static async Task<GameServer> CreateAsync(IPAddress publicIpAddress, IPAddress connectedIpAddress, IGameWriter writer, ServerInfo serverInfo, IServiceProvider globalServices)
         {
             // TODO: Pause everything until we receive data from the server (we don't know the gameport before so we cant tell serverId)
-            var gameServer = new GameServer(ipAddress, writer, serverInfo, globalServices);
+            var gameServer = new GameServer(publicIpAddress, connectedIpAddress, writer, serverInfo, globalServices);
             await gameServer.UpdateSocketStateAsync(SocketState.Connected, DateTimeOffset.UtcNow);
 
             // Init kill command, fast pad repairs, heli startup
@@ -346,13 +348,13 @@ namespace BF2WebAdmin.Server.Entities
             return vehicle;
         }
 
-        public Player GetPlayer(int index)
+        public Player? GetPlayer(int index)
         {
             // This can be null sometimes when connecting / reconnected player?
             return _players.FirstOrDefault(x => x.Index == index) ?? new Player();
         }
 
-        public Player GetPlayer(string namePart)
+        public Player? GetPlayer(string namePart)
         {
             return _players.FirstOrDefault(p => p.Name.ToLower().Contains(namePart));
         }
@@ -364,8 +366,7 @@ namespace BF2WebAdmin.Server.Entities
             {
                 var closestGunner = _players
                     .Where(p => p.Vehicle?.Template?.ToLower().Contains("ahe_") ?? false)
-                    .OrderBy(p => p.Position?.Distance(position) ?? double.MaxValue)
-                    .FirstOrDefault();
+                    .MinBy(p => p.Position?.Distance(position) ?? double.MaxValue);
 
                 projectile = new Projectile
                 {

@@ -1,6 +1,4 @@
-﻿using System;
-using System.Data;
-using BF2WebAdmin.Common.Entities.Game;
+﻿using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;

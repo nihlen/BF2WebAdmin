@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace BF2WebAdmin.Common.Entities.Game
+﻿namespace BF2WebAdmin.Common.Entities.Game
 {
     public class Message
     {

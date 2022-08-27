@@ -1,6 +1,5 @@
 ﻿using System;
 using MaxMind.GeoIP2;
-using MaxMind.GeoIP2.Exceptions;
 using MaxMind.GeoIP2.Responses;
 
 namespace BF2WebAdmin.Common

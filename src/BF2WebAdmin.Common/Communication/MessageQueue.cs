@@ -5,7 +5,6 @@ using System.Linq;
 using BF2WebAdmin.Common.Abstractions;
 using NetMQ;
 using NetMQ.Sockets;
-using ProtoBuf;
 
 namespace BF2WebAdmin.Common.Communication
 {

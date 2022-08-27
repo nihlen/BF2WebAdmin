@@ -515,6 +515,8 @@ namespace BF2WebAdmin.Server
                             // Used in most cases, unless connection fails during reconnection request
                             Log.Information("Sending reconnect command for {GameServerIp} to connect to this server", gameServerIp);
                             var response = await client.SendAsync($"wa connectprivate {port}");
+                            if (response?.Contains("Connected successfully") ?? false)
+                                return;
 
                             if (response?.Contains("Connection failed") ?? false)
                             {   
@@ -522,6 +524,8 @@ namespace BF2WebAdmin.Server
                                 // Used when the connecting IP is not open for connections the other way, but another IP for the same machine is (local dev)
                                 Log.Information("Sending reconnect command for {GameServerIp} to connect to {SelfIpAddress}", gameServerIp, ipAddress);
                                 response = await client.SendAsync($"wa connect {ipAddress} {port}");
+                                if (response?.Contains("Connected successfully") ?? false)
+                                    return;
                             }
                         }
                         catch (Exception ex)

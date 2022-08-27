@@ -1,53 +1,52 @@
-﻿namespace BF2WebAdmin.Data.Abstractions
-{
-    //public abstract class BaseRavenRepository<T> : IRepository<T>
-    //{
-    //    protected readonly IDocumentStore Store;
+﻿namespace BF2WebAdmin.Data.Abstractions;
 
-    //    protected BaseRavenRepository() : this(DocumentStoreHolder.Store) { }
-    //    protected BaseRavenRepository(IDocumentStore store) => Store = store;
+//public abstract class BaseRavenRepository<T> : IRepository<T>
+//{
+//    protected readonly IDocumentStore Store;
 
-    //    public IEnumerable<T> Get()
-    //    {
-    //        using (var session = Store.OpenSession())
-    //        {
-    //            return session.Query<T>();
-    //        }
-    //    }
+//    protected BaseRavenRepository() : this(DocumentStoreHolder.Store) { }
+//    protected BaseRavenRepository(IDocumentStore store) => Store = store;
 
-    //    public T Get(Guid id)
-    //    {
-    //        using (var session = Store.OpenSession())
-    //        {
-    //            return session.Load<T>(id);
-    //        }
-    //    }
+//    public IEnumerable<T> Get()
+//    {
+//        using (var session = Store.OpenSession())
+//        {
+//            return session.Query<T>();
+//        }
+//    }
 
-    //    public void Create(T entity)
-    //    {
-    //        using (var session = Store.OpenSession())
-    //        {
-    //            session.Store(entity);
-    //            session.SaveChanges();
-    //        }
-    //    }
+//    public T Get(Guid id)
+//    {
+//        using (var session = Store.OpenSession())
+//        {
+//            return session.Load<T>(id);
+//        }
+//    }
 
-    //    public void Update(T entity)
-    //    {
-    //        using (var session = Store.OpenSession())
-    //        {
-    //            session.Store(entity);
-    //            session.SaveChanges();
-    //        }
-    //    }
+//    public void Create(T entity)
+//    {
+//        using (var session = Store.OpenSession())
+//        {
+//            session.Store(entity);
+//            session.SaveChanges();
+//        }
+//    }
 
-    //    public void Delete(Guid id)
-    //    {
-    //        using (var session = Store.OpenSession())
-    //        {
-    //            session.Delete<T>(id);
-    //            session.SaveChanges();
-    //        }
-    //    }
-    //}
-}
+//    public void Update(T entity)
+//    {
+//        using (var session = Store.OpenSession())
+//        {
+//            session.Store(entity);
+//            session.SaveChanges();
+//        }
+//    }
+
+//    public void Delete(Guid id)
+//    {
+//        using (var session = Store.OpenSession())
+//        {
+//            session.Delete<T>(id);
+//            session.SaveChanges();
+//        }
+//    }
+//}

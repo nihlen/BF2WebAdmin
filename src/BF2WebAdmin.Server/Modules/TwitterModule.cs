@@ -7,96 +7,95 @@ using Tweetinvi.Events;
 using Tweetinvi.Models;
 using Tweetinvi.Streaming;
 
-namespace BF2WebAdmin.Server.Modules
+namespace BF2WebAdmin.Server.Modules;
+
+public class TwitterModule : IModule,
+    IHandleCommandAsync<TwitterFollowCommand>,
+    IHandleCommand<TwitterUnfollowCommand>
 {
-    public class TwitterModule : IModule,
-        IHandleCommandAsync<TwitterFollowCommand>,
-        IHandleCommand<TwitterUnfollowCommand>
+    private readonly IGameServer _gameServer;
+
+    private readonly ITwitterCredentials _credentials;
+    private IFilteredStream _activeStream;
+
+    private DateTime _lastMessage = DateTime.MinValue;
+    private readonly TimeSpan _messageDelay = new TimeSpan(0, 0, 10);
+
+    public TwitterModule(IGameServer server, IOptions<TwitterConfig> config)
     {
-        private readonly IGameServer _gameServer;
+        _gameServer = server;
+        _credentials = new TwitterCredentials(
+            config.Value.ConsumerKey,
+            config.Value.ConsumerSecret,
+            config.Value.AccessToken,
+            config.Value.AccessTokenSecret);
+    }
 
-        private readonly ITwitterCredentials _credentials;
-        private IFilteredStream _activeStream;
+    public async ValueTask HandleAsync(TwitterFollowCommand command)
+    {
+        if (command.Stream.StartsWith("#"))
+            await FollowHashTagAsync(command.Stream.Replace("#", string.Empty));
 
-        private DateTime _lastMessage = DateTime.MinValue;
-        private readonly TimeSpan _messageDelay = new TimeSpan(0, 0, 10);
+        else if (command.Stream.StartsWith("@"))
+            await FollowUser(command.Stream.Replace("@", string.Empty));
 
-        public TwitterModule(IGameServer server, IOptions<TwitterConfig> config)
-        {
-            _gameServer = server;
-            _credentials = new TwitterCredentials(
-                config.Value.ConsumerKey,
-                config.Value.ConsumerSecret,
-                config.Value.AccessToken,
-                config.Value.AccessTokenSecret);
-        }
+        else
+            await FollowKeywordAsync(command.Stream);
+    }
 
-        public async ValueTask HandleAsync(TwitterFollowCommand command)
-        {
-            if (command.Stream.StartsWith("#"))
-                await FollowHashTagAsync(command.Stream.Replace("#", string.Empty));
+    public void Handle(TwitterUnfollowCommand command)
+    {
+        _gameServer.GameWriter.SendText("Unfollowed Twitter stream");
+        _activeStream?.StopStream();
+    }
 
-            else if (command.Stream.StartsWith("@"))
-                await FollowUser(command.Stream.Replace("@", string.Empty));
+    private async Task FollowHashTagAsync(string hashTag)
+    {
+        _activeStream?.StopStream();
+        _gameServer.GameWriter.SendText($"Now following §C1001#{hashTag}");
+        _activeStream = Tweetinvi.Stream.CreateFilteredStream(_credentials);
+        _activeStream.AddTrack($"#{hashTag}");
+        _activeStream.MatchingTweetReceived += HandleTweet;
+        await _activeStream.StartStreamMatchingAllConditionsAsync();
+    }
 
-            else
-                await FollowKeywordAsync(command.Stream);
-        }
+    private async Task FollowKeywordAsync(string keyword)
+    {
+        _activeStream?.StopStream();
+        _gameServer.GameWriter.SendText($"Now following §C1001{keyword}");
+        _activeStream = Tweetinvi.Stream.CreateFilteredStream(_credentials);
+        _activeStream.AddTrack($"{keyword}");
+        _activeStream.MatchingTweetReceived += HandleTweet;
+        await _activeStream.StartStreamMatchingAllConditionsAsync();
+    }
 
-        public void Handle(TwitterUnfollowCommand command)
-        {
-            _gameServer.GameWriter.SendText("Unfollowed Twitter stream");
-            _activeStream?.StopStream();
-        }
+    private void HandleTweet(object sender, MatchedTweetReceivedEventArgs args)
+    {
+        if (DateTime.UtcNow - _lastMessage < _messageDelay)
+            return;
+        if (ContainsLink(args.Tweet.FullText) ||
+            args.Tweet.IsRetweet ||
+            args.Tweet.InReplyToUserId != null)
+            return;
 
-        private async Task FollowHashTagAsync(string hashTag)
-        {
-            _activeStream?.StopStream();
-            _gameServer.GameWriter.SendText($"Now following §C1001#{hashTag}");
-            _activeStream = Tweetinvi.Stream.CreateFilteredStream(_credentials);
-            _activeStream.AddTrack($"#{hashTag}");
-            _activeStream.MatchingTweetReceived += HandleTweet;
-            await _activeStream.StartStreamMatchingAllConditionsAsync();
-        }
+        Log.Information("Received tweet {TweetText}", args.Tweet.FullText);
+        _gameServer.GameWriter.SendText($"@{args.Tweet.CreatedBy.ScreenName} - {args.Tweet.FullText}");
+        _lastMessage = DateTime.UtcNow;
+    }
 
-        private async Task FollowKeywordAsync(string keyword)
-        {
-            _activeStream?.StopStream();
-            _gameServer.GameWriter.SendText($"Now following §C1001{keyword}");
-            _activeStream = Tweetinvi.Stream.CreateFilteredStream(_credentials);
-            _activeStream.AddTrack($"{keyword}");
-            _activeStream.MatchingTweetReceived += HandleTweet;
-            await _activeStream.StartStreamMatchingAllConditionsAsync();
-        }
+    private async Task FollowUser(string user)
+    {
+        // TODO: test
+        _activeStream?.StopStream();
+        _gameServer.GameWriter.SendText($"Now following §C1001@{user}");
+        _activeStream = Tweetinvi.Stream.CreateFilteredStream(_credentials);
+        _activeStream.AddTrack($"@{user}");
+        _activeStream.MatchingTweetReceived += HandleTweet;
+        await _activeStream.StartStreamMatchingAllConditionsAsync();
+    }
 
-        private void HandleTweet(object sender, MatchedTweetReceivedEventArgs args)
-        {
-            if (DateTime.UtcNow - _lastMessage < _messageDelay)
-                return;
-            if (ContainsLink(args.Tweet.FullText) ||
-                args.Tweet.IsRetweet ||
-                args.Tweet.InReplyToUserId != null)
-                return;
-
-            Log.Information("Received tweet {TweetText}", args.Tweet.FullText);
-            _gameServer.GameWriter.SendText($"@{args.Tweet.CreatedBy.ScreenName} - {args.Tweet.FullText}");
-            _lastMessage = DateTime.UtcNow;
-        }
-
-        private async Task FollowUser(string user)
-        {
-            // TODO: test
-            _activeStream?.StopStream();
-            _gameServer.GameWriter.SendText($"Now following §C1001@{user}");
-            _activeStream = Tweetinvi.Stream.CreateFilteredStream(_credentials);
-            _activeStream.AddTrack($"@{user}");
-            _activeStream.MatchingTweetReceived += HandleTweet;
-            await _activeStream.StartStreamMatchingAllConditionsAsync();
-        }
-
-        private bool ContainsLink(string text)
-        {
-            return text.Contains("http://") || text.Contains("https://");
-        }
+    private bool ContainsLink(string text)
+    {
+        return text.Contains("http://") || text.Contains("https://");
     }
 }

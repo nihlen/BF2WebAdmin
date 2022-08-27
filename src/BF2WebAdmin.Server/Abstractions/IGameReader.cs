@@ -1,8 +1,7 @@
-﻿namespace BF2WebAdmin.Server.Abstractions
+﻿namespace BF2WebAdmin.Server.Abstractions;
+
+public interface IGameReader
 {
-    public interface IGameReader
-    {
-        //Task ParseMessageAsync(string message);
-        void QueueMessage(string message);
-    }
+    //Task ParseMessageAsync(string message);
+    void QueueMessage(string message);
 }

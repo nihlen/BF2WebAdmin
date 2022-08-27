@@ -1,8 +1,7 @@
-﻿namespace BF2WebAdmin.Common.Abstractions
+﻿namespace BF2WebAdmin.Common.Abstractions;
+
+public interface IMessageSerializer
 {
-    public interface IMessageSerializer
-    {
-        byte[] Serialize<T>(T message);
-        T Deserialize<T>(byte[] source);
-    }
+    byte[] Serialize<T>(T message);
+    T Deserialize<T>(byte[] source);
 }

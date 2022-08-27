@@ -4,69 +4,68 @@ using BF2WebAdmin.Server.Configuration.Models;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 
-namespace BF2WebAdmin.Server.Modules
+namespace BF2WebAdmin.Server.Modules;
+
+public class QuoteModule : IModule,
+    IHandleCommandAsync<QuoteCommand>,
+    IHandleCommandAsync<QuoteCategoryCommand>
 {
-    public class QuoteModule : IModule,
-        IHandleCommandAsync<QuoteCommand>,
-        IHandleCommandAsync<QuoteCategoryCommand>
+    private readonly IGameServer _gameServer;
+    private readonly MashapeConfig _config;
+
+    public QuoteModule(IGameServer server, IOptions<MashapeConfig> config)
     {
-        private readonly IGameServer _gameServer;
-        private readonly MashapeConfig _config;
+        _gameServer = server;
+        _config = config.Value;
+    }
 
-        public QuoteModule(IGameServer server, IOptions<MashapeConfig> config)
+    public async ValueTask HandleAsync(QuoteCommand command)
+    {
+        var quote = await GetQuoteAsync("movies");
+        _gameServer.GameWriter.SendText(quote);
+    }
+
+    public async ValueTask HandleAsync(QuoteCategoryCommand command)
+    {
+        if (command.Category != "movies" && command.Category != "famous")
         {
-            _gameServer = server;
-            _config = config.Value;
+            _gameServer.GameWriter.SendText($"Unknown category '{command.Category}'");
+            return;
         }
 
-        public async ValueTask HandleAsync(QuoteCommand command)
-        {
-            var quote = await GetQuoteAsync("movies");
-            _gameServer.GameWriter.SendText(quote);
-        }
+        var quote = await GetQuoteAsync(command.Category);
+        _gameServer.GameWriter.SendText(quote);
+    }
 
-        public async ValueTask HandleAsync(QuoteCategoryCommand command)
-        {
-            if (command.Category != "movies" && command.Category != "famous")
-            {
-                _gameServer.GameWriter.SendText($"Unknown category '{command.Category}'");
-                return;
-            }
+    private async Task<string> GetQuoteAsync(string category)
+    {
+        category = Uri.EscapeDataString(category);
 
-            var quote = await GetQuoteAsync(command.Category);
-            _gameServer.GameWriter.SendText(quote);
-        }
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        client.DefaultRequestHeaders.Add("X-Mashape-Key", _config.Key);
 
-        private async Task<string> GetQuoteAsync(string category)
-        {
-            category = Uri.EscapeDataString(category);
+        var content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("cat", category) });
+        var response = await client.PostAsync("https://andruxnet-random-famous-quotes.p.mashape.com/", content);
 
-            var client = new HttpClient();
-            client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
-            client.DefaultRequestHeaders.Add("X-Mashape-Key", _config.Key);
+        var responseJson = await response.Content.ReadAsStringAsync();
+        var result = JsonConvert.DeserializeObject<QuoteResult>(responseJson);
 
-            var content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("cat", category) });
-            var response = await client.PostAsync("https://andruxnet-random-famous-quotes.p.mashape.com/", content);
+        return $"\"{result.Quote}\" - {result.Author}";
+    }
 
-            var responseJson = await response.Content.ReadAsStringAsync();
-            var result = JsonConvert.DeserializeObject<QuoteResult>(responseJson);
+    public class QuoteResult
+    {
+        [JsonProperty("quote")]
+        public string Quote { get; set; }
 
-            return $"\"{result.Quote}\" - {result.Author}";
-        }
+        [JsonProperty("author")]
+        public string Author { get; set; }
 
-        public class QuoteResult
-        {
-            [JsonProperty("quote")]
-            public string Quote { get; set; }
+        [JsonProperty("category")]
+        public string Category { get; set; }
 
-            [JsonProperty("author")]
-            public string Author { get; set; }
-
-            [JsonProperty("category")]
-            public string Category { get; set; }
-
-            [JsonProperty("cat")]
-            public string Cat { get; set; }
-        }
+        [JsonProperty("cat")]
+        public string Cat { get; set; }
     }
 }

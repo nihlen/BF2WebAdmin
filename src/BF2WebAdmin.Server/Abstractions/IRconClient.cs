@@ -1,7 +1,6 @@
-﻿namespace BF2WebAdmin.Server.Abstractions
+﻿namespace BF2WebAdmin.Server.Abstractions;
+
+public interface IRconClient
 {
-    public interface IRconClient
-    {
-        Task<string> SendAsync(string command);
-    }
+    Task<string> SendAsync(string command);
 }

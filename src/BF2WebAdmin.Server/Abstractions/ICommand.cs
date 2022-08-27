@@ -1,9 +1,8 @@
 using BF2WebAdmin.Common.Entities.Game;
 
-namespace BF2WebAdmin.Server.Abstractions
+namespace BF2WebAdmin.Server.Abstractions;
+
+public interface ICommand
 {
-    public interface ICommand
-    {
-        Message Message{ get; }
-    }
+    Message Message{ get; }
 }

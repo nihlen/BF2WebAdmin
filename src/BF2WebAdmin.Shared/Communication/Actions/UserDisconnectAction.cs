@@ -1,9 +1,8 @@
-﻿namespace BF2WebAdmin.Shared.Communication.Actions
+﻿namespace BF2WebAdmin.Shared.Communication.Actions;
+
+//[ProtoContract(ImplicitFields = ImplicitFields.AllPublic)]
+//[MessagePackObject(keyAsPropertyName: true)]
+public class UserDisconnectAction : IMessagePayload
 {
-    //[ProtoContract(ImplicitFields = ImplicitFields.AllPublic)]
-    //[MessagePackObject(keyAsPropertyName: true)]
-    public class UserDisconnectAction : IMessagePayload
-    {
-        public string Id { get; set; }
-    }
+    public string Id { get; set; }
 }

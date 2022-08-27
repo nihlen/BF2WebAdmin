@@ -1,9 +1,8 @@
 ﻿using BF2WebAdmin.Data.Entities;
 
-namespace BF2WebAdmin.Data.Abstractions
+namespace BF2WebAdmin.Data.Abstractions;
+
+public interface IMapRepository : IRepository<MapMod>
 {
-    public interface IMapRepository : IRepository<MapMod>
-    {
-        //MapMod Get(string name);
-    }
+    //MapMod Get(string name);
 }

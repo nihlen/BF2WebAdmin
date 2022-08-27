@@ -1,7 +1,6 @@
-﻿namespace BF2WebAdmin.Server.Configuration.Models
+﻿namespace BF2WebAdmin.Server.Configuration.Models;
+
+public class LogConfig
 {
-    public class LogConfig
-    {
-        public string ServerLogDirectory { get; set; }
-    }
+    public string ServerLogDirectory { get; set; }
 }

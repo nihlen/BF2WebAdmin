@@ -32,7 +32,7 @@
   <ItemGroup>
     <ProjectReference Include="..\BF2WebAdmin.Blazor\BF2WebAdmin.Blazor.csproj" />
     <ProjectReference Include="..\BF2WebAdmin.Common\BF2WebAdmin.Common.csproj" />
-    <ProjectReference Include="..\BF2WebAdmin.DAL\BF2WebAdmin.Data.csproj" />
+    <ProjectReference Include="..\BF2WebAdmin.Data\BF2WebAdmin.Data.csproj" />
     <ProjectReference Include="..\BF2WebAdmin.Shared\BF2WebAdmin.Shared.csproj" />
   </ItemGroup>
 

@@ -490,6 +490,8 @@ namespace BF2WebAdmin.Server
                     if (resolvedIpAddress.IsPrivate())
                     {
                         // If the first IP doesn't work we can try the public IP
+                        // NOTE: This could cause problems when the container port is not the same as the public port
+                        // In that case it could lead to a reconnect loop if it leads to another server on the host
                         gameServerIps.Add(ipAddress);
                     }
 

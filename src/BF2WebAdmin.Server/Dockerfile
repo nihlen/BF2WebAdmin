@@ -8,7 +8,7 @@ EXPOSE 80
 FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
 WORKDIR /src
 COPY ["src/BF2WebAdmin.Server/BF2WebAdmin.Server.csproj", "src/BF2WebAdmin.Server/"]
-COPY ["src/BF2WebAdmin.DAL/BF2WebAdmin.Data.csproj", "src/BF2WebAdmin.DAL/"]
+COPY ["src/BF2WebAdmin.Data/BF2WebAdmin.Data.csproj", "src/BF2WebAdmin.Data/"]
 COPY ["src/BF2WebAdmin.Common/BF2WebAdmin.Common.csproj", "src/BF2WebAdmin.Common/"]
 COPY ["src/BF2WebAdmin.Shared/BF2WebAdmin.Shared.csproj", "src/BF2WebAdmin.Shared/"]
 COPY ["src/BF2WebAdmin.Blazor/BF2WebAdmin.Blazor.csproj", "src/BF2WebAdmin.Blazor/"]

@@ -485,30 +485,54 @@ namespace BF2WebAdmin.Server
                     }
                 ).ExecuteAsync(async () =>
                 {
-                    // Check if server has already connected
-                    var gameServerIp = await serverInfo.IpAddress.GetIpAddressAsync();
-                    var matchingServer = _servers.Values.FirstOrDefault(s => s.IpAddress.Equals(gameServerIp) && s.GamePort == serverInfo.GamePort);
-                    if (matchingServer?.SocketState == SocketState.Connected)
+                    var resolvedIpAddress = await serverInfo.IpAddress.GetIpAddressAsync();
+                    var gameServerIps = new List<IPAddress> { resolvedIpAddress };
+                    if (resolvedIpAddress.IsPrivate())
                     {
-                        Log.Information("Server {ServerId} is already connected. Aborting connection retries", matchingServer.Id);
-                        return;
+                        // If the first IP doesn't work we can try the public IP
+                        gameServerIps.Add(ipAddress);
                     }
 
-                    // Log.Information("Sending reconnect command for {GameServerIp} to connect to {SelfIpAddress}", gameServerIp, ipAddress);
-                    Log.Information("Sending reconnect command for {GameServerIp} to connect to this server", gameServerIp);
-                    using var client = new RconClient(gameServerIp, serverInfo.RconPort, serverInfo.RconPassword);
-                    
-                    // Let mm_webadmin connect to this server using the IP from the RCON connection
-                    // Used in most cases, unless connection fails during reconnection request
-                    var response = await client.SendAsync($"wa connectprivate {port}");
+                    var exceptions = new List<Exception>();
+                    foreach (var gameServerIp in gameServerIps)
+                    {
+                        try
+                        {
+                            // Check if server has already connected
+                            var matchingServer = _servers.Values.FirstOrDefault(s => 
+                                (s.IpAddress.Equals(gameServerIp) || gameServerIp.IsPrivate() && s.IpAddress.Equals(ipAddress)) && s.GamePort == serverInfo.GamePort
+                            );
+                            
+                            if (matchingServer?.SocketState == SocketState.Connected)
+                            {
+                                Log.Information("Server {ServerId} is already connected. Aborting connection retries", matchingServer.Id);
+                                return;
+                            }
 
-                    if (response?.Contains("Connection failed") ?? false)
-                    {   
-                        // Let mm_webadmin connect to a server with a specific IP
-                        // Used when the connecting IP is not open for connections the other way, but another IP for the same machine is (local dev)
-                        Log.Debug("Using fallback connection for {GameServerIp}", gameServerIp);
-                        response = await client.SendAsync($"wa connect {ipAddress} {port}");
+                            using var client = new RconClient(gameServerIp, serverInfo.RconPort, serverInfo.RconPassword);
+
+                            // Let mm_webadmin connect to this server using the IP from the RCON connection
+                            // Used in most cases, unless connection fails during reconnection request
+                            Log.Information("Sending reconnect command for {GameServerIp} to connect to this server", gameServerIp);
+                            var response = await client.SendAsync($"wa connectprivate {port}");
+
+                            if (response?.Contains("Connection failed") ?? false)
+                            {   
+                                // Let mm_webadmin connect to a server with a specific IP
+                                // Used when the connecting IP is not open for connections the other way, but another IP for the same machine is (local dev)
+                                Log.Information("Sending reconnect command for {GameServerIp} to connect to {SelfIpAddress}", gameServerIp, ipAddress);
+                                response = await client.SendAsync($"wa connect {ipAddress} {port}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            exceptions.Add(ex);
+                        }
                     }
+
+                    // Only throw if all attempts failed
+                    if (exceptions.Count == gameServerIps.Count)
+                        throw exceptions.First();
                 });
         }
     }

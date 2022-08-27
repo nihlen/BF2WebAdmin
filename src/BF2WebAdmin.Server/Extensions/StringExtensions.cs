@@ -15,7 +15,7 @@ namespace BF2WebAdmin.Server.Extensions
             return sb.ToString();
         }
 
-        public static async Task<IPAddress?> GetIpAddressAsync(this string address)
+        public static async Task<IPAddress> GetIpAddressAsync(this string address)
         {
             var isIpAddress = IPAddress.TryParse(address, out var ipResult);
 

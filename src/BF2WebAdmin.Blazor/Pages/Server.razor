@@ -395,7 +395,7 @@
 
     private async Task RemoveListenersAsync(Exception? exception)
     {
-        await _adminService.DeselectServerAsync(ServerId);
+        await _adminService.DeselectServerAsync(_adminService.SelectedServerId);
 
         _adminService.HubConnection.Reconnected -= AddListenersAsync;
         _adminService.HubConnection.Reconnecting -= RemoveListenersAsync;

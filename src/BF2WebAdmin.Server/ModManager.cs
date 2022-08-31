@@ -157,9 +157,6 @@ public class ModManager : IModManager
     {
         var serviceCollection = new ServiceCollection();
 
-        // Raven
-        //serviceCollection.AddSingleton(DocumentStoreHolder.Store);
-
         // Options
         var geoipConfig = Configuration.GetSection("Geoip");
         serviceCollection.AddOptions();
@@ -196,9 +193,9 @@ public class ModManager : IModManager
         {
             // SQLite
             serviceCollection.AddDbContext<BF2Context>(o => o.UseSqlite(connectionString));
-            serviceCollection.AddScoped<IMapRepository>(c => new SqlMapRepository(connectionString));
+            serviceCollection.AddScoped<IMapRepository, MapRepository>();
             serviceCollection.AddScoped<IServerSettingsRepository, ServerSettingsRepository>();
-            serviceCollection.AddScoped<IMatchRepository>(c => new SqlMatchRepository(connectionString));
+            serviceCollection.AddScoped<IMatchRepository, MatchRepository>();
         }
         else
         {
@@ -221,7 +218,7 @@ public class ModManager : IModManager
     {
         var serverSettingsRepository = _services.GetService<IServerSettingsRepository>();
         var defaultModuleNames = new[] { nameof(BF2Module), nameof(LogModule), nameof(WebModule) };
-        var enabledModuleNames = await serverSettingsRepository.GetModsAsync(_gameServer.Id);
+        var enabledModuleNames = await serverSettingsRepository.GetModulesAsync(_gameServer.ModManager.ServerSettings.ServerGroup);
         var enabledModuleTypes = _moduleResolver.ModuleTypes.Where(t => defaultModuleNames.Contains(t.Name) || enabledModuleNames.Contains(t.Name));
 
         // Instantiate modules
@@ -249,7 +246,7 @@ public class ModManager : IModManager
     public async Task GetAuthPlayersAsync()
     {
         var serverSettingsRepository = _services.GetService<IServerSettingsRepository>();
-        var authPlayers = (await serverSettingsRepository.GetPlayerAuthAsync(_gameServer.Id)).ToList();
+        var authPlayers = (await serverSettingsRepository.GetPlayerAuthAsync(_gameServer.ModManager.ServerSettings.ServerGroup)).ToList();
 
             
         // Add dummy admins for each server group so we can send commands from Discord
@@ -286,6 +283,11 @@ public class ModManager : IModManager
             return HandleCommandAsync(message);
 
         return ValueTask.CompletedTask;
+    }
+
+    public IEnumerable<string> GetModules()
+    {
+        return _moduleResolver.Modules.Keys.Select(k => k.Name).ToList();
     }
 
     private async ValueTask HandleCommandAsync(Message message)

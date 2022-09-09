@@ -19,9 +19,17 @@ public class EventHandler : IEventHandler
      */
     public async ValueTask OnServerInfoAsync(string serverName, string maps, int gamePort, int queryPort, int maxPlayers, DateTimeOffset time)
     {
-        var mapNames = maps.Split(",").Select(l => l.Split("|").FirstOrDefault()).ToList();
+        var mapObjects = maps.Split(",")
+            .Select(l => l.Split("|"))
+            .Select((a, index) => new Map
+            {
+                Index = index, 
+                Name = a.FirstOrDefault(), 
+                Size = int.TryParse(a.LastOrDefault(), out var i) ? i : 0
+            }).ToList();
+        
         await _server.UpdateServerInfoAsync(serverName, gamePort, queryPort, maxPlayers, time);
-        await _server.UpdateMapsAsync(mapNames, time);
+        await _server.UpdateMapsAsync(mapObjects, time);
     }
 
     /*

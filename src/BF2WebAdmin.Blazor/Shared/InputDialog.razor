@@ -45,7 +45,9 @@
 
     private void Submit()
     {
-        Snackbar.Add(success, Severity.Success);
+        if (!string.IsNullOrWhiteSpace(success))
+            Snackbar.Add(success, Severity.Success);
+        
         MudDialog.Close(DialogResult.Ok(TextValue));
     }
 }

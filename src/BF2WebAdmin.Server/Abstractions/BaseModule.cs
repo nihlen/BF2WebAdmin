@@ -56,11 +56,11 @@ public abstract class BaseModule : IModule
         if (text.StartsWith("!m ")) return "map" + text[2..];
         if (text.StartsWith("!map ")) return "map" + text[4..];
         if (text.StartsWith("!w ")) return "iga warn" + text[2..];
-        if (text.StartsWith("!warn ")) return "iga warn" + text[2..];
+        if (text.StartsWith("!warn ")) return "iga warn" + text[5..];
         if (text.StartsWith("!k ")) return "iga kick" + text[2..];
-        if (text.StartsWith("!kick ")) return "iga kick" + text[2..];
+        if (text.StartsWith("!kick ")) return "iga kick" + text[5..];
         if (text.StartsWith("!b ")) return "iga ban" + text[2..];
-        if (text.StartsWith("!ban ")) return "iga ban" + text[2..];
+        if (text.StartsWith("!ban ")) return "iga ban" + text[4..];
         return text.TrimStart('!');
     }
 

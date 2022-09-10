@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.SignalR.Client
 @using System.Collections.Concurrent
+@using System.Xml.Serialization
 @using BF2WebAdmin.Shared
 @using BF2WebAdmin.Shared.Communication.Events
 @implements IAsyncDisposable
@@ -32,9 +33,9 @@
 </div>
 
 <MudButtonGroup Variant="Variant.Filled" Class="mb-8">
-    <MudButton OnClick="@(() => SendCustomCommand(".crash"))" StartIcon="@Icons.Material.Filled.Refresh" IconColor="Color.Error">Restart server</MudButton>
-    <MudButton OnClick="@(() => SendRconCommand("exec admin.restartMap"))" StartIcon="@Icons.Material.Filled.RestartAlt" IconColor="Color.Success">Restart map</MudButton>
-    <MudButton OnClick="@(() => SendRconCommand("exec gameLogic.togglePause"))" StartIcon="@Icons.Material.Filled.Pause" IconColor="Color.Warning">Toggle pause</MudButton>
+    <MudButton OnClick="@(() => _adminService.SendCustomCommandAsync(".crash"))" StartIcon="@Icons.Material.Filled.Refresh" IconColor="Color.Error">Restart server</MudButton>
+    <MudButton OnClick="@(() => _adminService.SendRconCommandAsync("exec admin.restartMap"))" StartIcon="@Icons.Material.Filled.RestartAlt" IconColor="Color.Success">Restart map</MudButton>
+    <MudButton OnClick="@(() => _adminService.SendRconCommandAsync("exec gameLogic.togglePause"))" StartIcon="@Icons.Material.Filled.Pause" IconColor="Color.Warning">Toggle pause</MudButton>
 </MudButtonGroup>
 
 <MudGrid Class="mb-8">
@@ -64,11 +65,11 @@
                     <MudTd DataLabel="P" Style="text-align:center">@context.Score.Ping</MudTd>
                     <MudTd DataLabel="">
                         <MudMenu Label="" Icon="@Icons.Material.Filled.MoreVert" Dense="true">
-                            <MudMenuItem OnClick="@(() => SendCustomCommand($".switchid {context.Index}"))">Switch team</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => SendCustomCommand($".killid {context.Index}"))">Kill player</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => ShowInputDialogAsync("Warn player", "Reason", "Player will be warned", (reason) => SendRconCommand($"iga warn {context.Index} {reason}")))">Warn player</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => ShowInputDialogAsync("Kick player", "Reason", "Player will be kicked", (reason) => SendRconCommand($"iga kick {context.Index} {reason}")))">Kick player</MudMenuItem>
-                            <MudMenuItem OnClick="@(() => ShowInputDialogAsync("Ban player", "Reason", "Player will be banned", (reason) => SendRconCommand($"iga ban {context.Index} {reason}")))">Ban player</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => _adminService.SendCustomCommandAsync($".switchid {context.Index}"))">Switch team</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => _adminService.SendCustomCommandAsync($".killid {context.Index}"))">Kill player</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => ShowInputDialogAsync("Warn player", "Reason", null, (reason) => _adminService.SendRconCommandAsync($"iga warn {context.Index} {reason}")))">Warn player</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => ShowInputDialogAsync("Kick player", "Reason", null, (reason) => _adminService.SendRconCommandAsync($"iga kick {context.Index} {reason}")))">Kick player</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => ShowInputDialogAsync("Ban player", "Reason", null, (reason) => _adminService.SendRconCommandAsync($"iga ban {context.Index} Perm {reason}")))">Ban player</MudMenuItem>
                         </MudMenu>
                     </MudTd>
                 </RowTemplate>
@@ -82,7 +83,7 @@
 
 <MudPaper>
 
-    <MudTabs Outlined="true" ActivePanelIndexChanged="ActiveTabIndexChanged">
+    <MudTabs Outlined="true" @bind-ActivePanelIndex="ActiveTabIndex">
 
         <MudTabPanel Text="Chat" Icon="@Icons.Material.Filled.Chat">
             <ul id="chatlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
@@ -90,11 +91,11 @@
                 {
                     @if (chat.Message.Type == "Server")
                     {
-                        <li @key="chat.Timestamp">@GetTimestamp(chat.Timestamp) &lt;@(chat.Message.Channel)&gt; @chat.Message.Text</li>
+                        <li @key="chat.Message.Id">@GetTimestamp(chat.Timestamp) &lt;@(chat.Message.Channel)&gt; @chat.Message.Text</li>
                     }
                     else
                     {
-                        <li @key="chat.Timestamp" class="@GetChatClass(chat.Message)">@GetTimestamp(chat.Timestamp) &lt;@(chat.Message.Channel)&gt; @chat.Message.PlayerName: @chat.Message.Text</li>
+                        <li @key="chat.Message.Id" class="@GetChatClass(chat.Message)">@GetTimestamp(chat.Timestamp) &lt;@(chat.Message.Channel)&gt; @chat.Message.PlayerName: @chat.Message.Text</li>
                     }
                 }
             </ul>
@@ -104,7 +105,7 @@
             <ul id="eventlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
                 @foreach (var gameEvent in _eventLog)
                 {
-                    <li @key="gameEvent.Timestamp">@GetTimestamp(gameEvent.Timestamp) @gameEvent.Message</li>
+                    <li @key="gameEvent.Id">@GetTimestamp(gameEvent.Timestamp) @gameEvent.Message</li>
                 }
             </ul>
         </MudTabPanel>
@@ -131,31 +132,70 @@
                         <MudListItem Value="@map.Index"
                                      Text="@(map.Index + " " + map.Name + " " + map.Size)"
                                      Icon="@Icons.Material.Filled.Map"
-                                     OnClick="@(() => SendRconCommand($"map {map.Name} gpm_cq 16"))" />
+                                     OnClick="@(() => _adminService.SendRconCommandAsync($"map {map.Name} gpm_cq 16"))" />
                     }
                 </MudList>
             </div>
         </MudTabPanel>
 
+        <MudTabPanel Text="Bans" Icon="@Icons.Material.Filled.Block">
+            <MudTable Items="@_bans" Hover="true" Breakpoint="Breakpoint.Sm">
+                <HeaderContent>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Period</MudTh>
+                    <MudTh>Method</MudTh>
+                    <MudTh>Identifier</MudTh>
+                    <MudTh>By</MudTh>
+                    <MudTh>Reason</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Date">@context.Datetime</MudTd>
+                    <MudTd DataLabel="Name">@context.Nick</MudTd>
+                    <MudTd DataLabel="Period">@context.Period</MudTd>
+                    <MudTd DataLabel="Method">@context.Method</MudTd>
+                    <MudTd DataLabel="Identifier">@(context.Method == "Key" ? context.Cdkeyhash : context.Address)</MudTd>
+                    <MudTd DataLabel="By">@context.By</MudTd>
+                    <MudTd DataLabel="Reason">@context.Reason</MudTd>
+                    <MudTh>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(async () => {
+                             await _adminService.SendRconCommandAsync("!unban " + (context.Method == "Key" ? context.Cdkeyhash : context.Address)); 
+                             await _adminService.SendRconCommandAsync("!banlist"); 
+                         })" />
+                    </MudTh>
+                </RowTemplate>
+            </MudTable>
+        </MudTabPanel>
+
     </MudTabs>
 
-    <MudTextField @bind-Value="TextValue"
+    @if (ActiveTabIndex == 0)
+    {   
+        <MudTextField @bind-Value="_textValue"
                   Immediate="true"
                   Placeholder="Enter message"
                   DisableUnderLine="true"
                   Variant="Variant.Outlined"
                   Margin="Margin.Dense"
                   OnKeyPress="OnKeyPress" />
+    }
 
 </MudPaper>
 
 @code {
-    // TODO: split into separate file
+    // TODO: split into separate file? or separate components?
     [Parameter]
     public string? ServerId { get; set; }
 
-    public string TextValue { get; set; }
-    public int ActiveTabIndex { get; set; }
+    private string _textValue = string.Empty;
+
+    private int _activeTabIndex;
+    private int ActiveTabIndex
+    {
+        get => _activeTabIndex;
+        set => ActiveTabIndexChanged(value);
+    }
 
     private bool _snapshotReceived = false;
     private bool _activeTabIndexChanged = false;
@@ -178,6 +218,8 @@
     private readonly List<TeamDto> _teams = new();
     private readonly List<MapDto> _maps = new();
     private readonly ConcurrentDictionary<int, PlayerDto> _players = new();
+    private List<Ban> _bans = new();
+    private readonly List<string> _rconCommandsForNotifications = new() { "!w", "!k", "!b", "iga warn", "iga kick", "iga ban", "!unban", "!clearbans" };
 
     //private Canvas2DContext _context;
     //protected BECanvasComponent _canvasReference;
@@ -188,8 +230,10 @@
 
         if (ServerId is null)
             return;
-
+        
         await AddListenersAsync(null);
+
+        _activeTabIndex = 0;
         // _serverData = await _adminService.GetServerAsync();
     }
 
@@ -324,6 +368,10 @@
             }),
             _adminService.HubConnection.On<ServerUpdateEvent>(nameof(ServerUpdateEvent), e =>
             {
+                // Server updates are sent for all servers to be used in the sidebar and dashboard. Ignore here
+                if (_adminService.SelectedServerId != e.Id)
+                    return;
+                
                 _serverName = e.Name;
                 _map = e.Map;
                 _gamePort = e.GamePort;
@@ -363,6 +411,8 @@
 
                 _maps.Clear();
                 _maps.AddRange(e.Maps);
+                
+                _bans.Clear();
 
                 _snapshotReceived = true;
 
@@ -371,6 +421,26 @@
             _adminService.HubConnection.On<RequestResponseEvent>(nameof(RequestResponseEvent), async e =>
             {
                 _requestResponses.Add(e);
+
+                if (e.Request.ToLower() == "!banlist")
+                {
+                    var serializer = new XmlSerializer(typeof(Banlist));
+                    using TextReader reader = new StringReader(e.Response);
+                    if (serializer.Deserialize(reader) is Banlist result)
+                        _bans = result.Bans?.ToList() ?? new List<Ban>();
+                }
+                else if (_rconCommandsForNotifications.Any(t => e.Request.ToLower().StartsWith(t)))
+                {
+                    _snackbar.Add(e.Response, Severity.Normal);
+                    
+                    // The ban is not applied immediately, the player is shown a message for a few seconds
+                    if (e.Request.StartsWith("iga ban"))
+                    {
+                        await Task.Delay(5000);
+                        await _adminService.SendRconCommandAsync("!banlist");
+                    }
+                }
+                
                 StateHasChanged();
                 var scrolled = await _jsRuntime.InvokeAsync<bool>("ScrollToBottom", "requestlog", true);
             })
@@ -427,11 +497,11 @@
         if (!isEnter)
             return;
 
-        if (string.IsNullOrWhiteSpace(TextValue))
+        if (string.IsNullOrWhiteSpace(_textValue))
             return;
 
-        var text = TextValue;
-        TextValue = string.Empty;
+        var text = _textValue;
+        _textValue = string.Empty;
         await _adminService.SendChatMessageAsync(text);
     }
 
@@ -443,17 +513,7 @@
         _snackbar.Add("Map is being changed", Severity.Success);
     }
 
-    private async void SendRconCommand(string cmd)
-    {
-        await _adminService.SendRconCommandAsync(cmd);
-    }
-
-    private async void SendCustomCommand(string cmd)
-    {
-        await _adminService.SendCustomCommandAsync(cmd);
-    }
-
-    private async Task ShowInputDialogAsync(string text, string placeholder, string success, Action<string> callback)
+    private async Task ShowInputDialogAsync(string text, string placeholder, string? success, Action<string> callback)
     {
         var parameters = new DialogParameters
             {
@@ -472,10 +532,15 @@
         }
     }
 
-    private void ActiveTabIndexChanged(int newTabId)
+    private async void ActiveTabIndexChanged(int newTabId)
     {
+        _activeTabIndex = newTabId;
         _activeTabIndexChanged = true;
-        ActiveTabIndex = newTabId;
+
+        if (newTabId == 4)
+        {
+            await _adminService.SendRconCommandAsync("!banlist");
+        }
     }
     
     private async void SetServerGroup(string group)

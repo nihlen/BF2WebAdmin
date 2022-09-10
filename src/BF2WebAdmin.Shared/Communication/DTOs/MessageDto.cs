@@ -4,6 +4,7 @@
 //[MessagePackObject(keyAsPropertyName: true)]
 public class MessageDto
 {
+    public Guid Id { get; set; } = Guid.NewGuid();
     public int? PlayerId { get; set; }
     public string? PlayerName { get; set; }
     public string? TeamName { get; set; }

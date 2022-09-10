@@ -6,8 +6,11 @@ namespace BF2WebAdmin.Data.Abstractions;
 
 public interface IServerSettingsRepository
 {
+    Task<IEnumerable<string>>GetServerGroupsAsync();
     Task<Server> GetServerAsync(string serverId);
-    Task<IEnumerable<string>> GetModsAsync(string serverId);
-    Task<IEnumerable<ServerPlayerAuth>> GetPlayerAuthAsync(string serverId);
-    Task SetPlayerAuthAsync(string serverId, string playerHash, int authLevel);
+    Task SetServerAsync(Server server);
+    Task<IEnumerable<string>> GetModulesAsync(string serverGroup);
+    Task SetModulesAsync(string serverGroup, IEnumerable<string> moduleNames);
+    Task<IEnumerable<ServerPlayerAuth>> GetPlayerAuthAsync(string serverGroup);
+    Task SetPlayerAuthAsync(string serverGroup, string playerHash, int authLevel);
 }

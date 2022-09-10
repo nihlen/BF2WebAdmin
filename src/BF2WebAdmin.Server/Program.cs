@@ -1,4 +1,6 @@
 ﻿using BF2WebAdmin.Data;
+using BF2WebAdmin.Data.Abstractions;
+using BF2WebAdmin.Data.Repositories;
 using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.Controllers;
 using BF2WebAdmin.Server.Extensions;
@@ -159,6 +161,11 @@ try
     {
         // SQLite
         builder.Services.AddDbContext<BF2Context>(o => o.UseSqlite(connectionString));
+        builder.Services.AddScoped<IServerSettingsRepository, ServerSettingsRepository>();
+    }
+    else
+    {
+        builder.Services.AddSingleton<IServerSettingsRepository>(c => new SqlServerSettingsRepository(connectionString));
     }
 
     var app = builder.Build();

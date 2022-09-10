@@ -27,6 +27,7 @@ namespace BF2WebAdmin.Server;
 public class ModManager : IModManager
 {
     private static readonly IReadOnlyPolicyRegistry<string> PolicyRegistry;
+    public static readonly string[] DefaultModuleNames = { nameof(BF2Module), nameof(LogModule), nameof(WebModule) };
 
     private const string CommandPrefix = ".";
 
@@ -216,10 +217,9 @@ public class ModManager : IModManager
 
     private async Task CreateModulesAsync()
     {
-        var serverSettingsRepository = _services.GetService<IServerSettingsRepository>();
-        var defaultModuleNames = new[] { nameof(BF2Module), nameof(LogModule), nameof(WebModule) };
-        var enabledModuleNames = await serverSettingsRepository.GetModulesAsync(_gameServer.ModManager.ServerSettings.ServerGroup);
-        var enabledModuleTypes = _moduleResolver.ModuleTypes.Where(t => defaultModuleNames.Contains(t.Name) || enabledModuleNames.Contains(t.Name));
+        var serverSettingsRepository = _services.GetRequiredService<IServerSettingsRepository>();
+        var enabledModuleNames = await serverSettingsRepository.GetModulesAsync(ServerSettings.ServerGroup);
+        var enabledModuleTypes = _moduleResolver.ModuleTypes.Where(t => DefaultModuleNames.Contains(t.Name) || enabledModuleNames.Contains(t.Name));
 
         // Instantiate modules
         foreach (var moduleType in enabledModuleTypes)
@@ -239,14 +239,18 @@ public class ModManager : IModManager
 
     private async Task GetServerSettingsAsync()
     {
-        var serverSettingsRepository = _services.GetService<IServerSettingsRepository>();
-        ServerSettings = await serverSettingsRepository.GetServerAsync(_gameServer.Id);
+        var serverSettingsRepository = _services.GetRequiredService<IServerSettingsRepository>();
+        ServerSettings = await serverSettingsRepository.GetServerAsync(_gameServer.Id) ?? new Data.Entities.Server
+        {
+            ServerId = _gameServer.Id,
+            ServerGroup = "default"
+        };
     }
 
     public async Task GetAuthPlayersAsync()
     {
         var serverSettingsRepository = _services.GetService<IServerSettingsRepository>();
-        var authPlayers = (await serverSettingsRepository.GetPlayerAuthAsync(_gameServer.ModManager.ServerSettings.ServerGroup)).ToList();
+        var authPlayers = (await serverSettingsRepository.GetPlayerAuthAsync(ServerSettings.ServerGroup)).ToList();
 
             
         // Add dummy admins for each server group so we can send commands from Discord

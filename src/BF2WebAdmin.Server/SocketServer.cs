@@ -14,6 +14,7 @@ public interface ISocketServer
 {
     IPAddress GetIpAddress();
     IGameServer? GetGameServer(string serverId);
+    IEnumerable<IGameServer> GetGameServers(string serverGroup);
     Task ListenAsync();
     Task RetryConnectionAsync(IPAddress ipAddress, int port, ServerInfo serverInfo);
 }
@@ -33,6 +34,7 @@ public class SocketServer : ISocketServer
 
     public IPAddress GetIpAddress() => _ipAddress;
     public IGameServer? GetGameServer(string serverId) => _servers.TryGetValue(serverId, out var server) ? server : null;
+    public IEnumerable<IGameServer> GetGameServers(string serverGroup) => _servers.Values.Where(s => s.ModManager?.ServerSettings?.ServerGroup == serverGroup).ToList();
 
     public SocketServer(IPAddress ipAddress, int port, IEnumerable<ServerInfo> serverInfo, IServiceProvider globalServices, bool logSend, bool logRecv)
     {

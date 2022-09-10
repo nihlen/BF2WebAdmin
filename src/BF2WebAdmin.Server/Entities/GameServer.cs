@@ -1,10 +1,12 @@
 ﻿using System.Net;
 using BF2WebAdmin.Common;
+using BF2WebAdmin.Common.Communication;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Shared;
+using BF2WebAdmin.Shared.Communication.DTOs;
 using Nihlen.Gamespy;
 using Serilog;
 
@@ -36,7 +38,7 @@ public class GameServer : IGameServer
     public Map? Map { get; private set; }
 
     public IEnumerable<Map> Maps => _maps.ToArray();
-    private readonly IList<Map> _maps = new List<Map>();
+    private readonly List<Map> _maps = new List<Map>();
 
     public IEnumerable<Team> Teams => _teams.ToArray();
     private readonly IList<Team> _teams = new List<Team>();
@@ -50,8 +52,8 @@ public class GameServer : IGameServer
     public IEnumerable<Projectile> Projectiles => _projectiles.ToArray();
     private readonly IList<Projectile> _projectiles = new List<Projectile>();
 
-    public IEnumerable<(Message Message, DateTimeOffset Time)> Messages => _chatBuffer.Get().Where(x => x.Message != null).OrderBy(x => x.Time);
-    private readonly CircularBuffer<(Message Message, DateTimeOffset Time)> _chatBuffer = new(500);
+    public IEnumerable<(MessageDto Message, DateTimeOffset Time)> Messages => _chatBuffer.Get().Where(x => x.Message != null).OrderBy(x => x.Time);
+    private readonly CircularBuffer<(MessageDto Message, DateTimeOffset Time)> _chatBuffer = new(500);
 
     public IEnumerable<(string Message, DateTimeOffset Time)> Events => _eventBuffer.Get().Where(x => x.Message != null).OrderBy(x => x.Time);
     private readonly CircularBuffer<(string Message, DateTimeOffset Time)> _eventBuffer = new(500);
@@ -107,7 +109,7 @@ public class GameServer : IGameServer
         await ModManager.Mediator.PublishAsync(new ServerUpdateEvent(name, gamePort, queryPort, maxPlayers, time));
     }
 
-    private async ValueTask CreateModManagerAsync()
+    public async ValueTask CreateModManagerAsync(bool forceReinitialize = false)
     {
         // TODO: don't run this here since errors are not logged/handled, and remove after running once so it doesn't create new ModManagers
         // Server has the correct id now, so we can load player/server settings and setup mods
@@ -117,7 +119,7 @@ public class GameServer : IGameServer
             await _modManagerLock.WaitAsync();
             try
             {
-                if (ModManager == null)
+                if (ModManager == null || forceReinitialize)
                 {
                     ModManager = await Server.ModManager.CreateAsync(this, _globalServices);
                     await ModManager.Mediator.PublishAsync(new SocketStateChangedEvent(SocketState, DateTimeOffset.UtcNow));
@@ -159,19 +161,10 @@ public class GameServer : IGameServer
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask UpdateMapsAsync(IList<string> maps, DateTimeOffset time)
+    public ValueTask UpdateMapsAsync(IList<Map> maps, DateTimeOffset time)
     {
         _maps.Clear();
-
-        for (var i = 0; i < maps.Count; i++)
-        {
-            _maps.Add(new Map
-            {
-                Index = i,
-                Name = maps[i],
-                Size = 0 // TODO: split
-            });
-        }
+        _maps.AddRange(maps);
 
         _eventBuffer.Add(($"{nameof(MapsChangedEvent)} {string.Join("|", _maps.Select(m => $"{m.Index},{m.Name},{m.Size}"))}", time));
         return PublishEventAsync(new MapsChangedEvent(Maps, time));
@@ -315,7 +308,7 @@ public class GameServer : IGameServer
 
     public async ValueTask AddMessageAsync(Message message, DateTimeOffset time)
     {
-        _chatBuffer.Add((message, time));
+        _chatBuffer.Add((message.ToDto(), time));
         await ModManager.HandleChatMessageAsync(message);
         await PublishEventAsync(new ChatMessageEvent(message, time));
     }

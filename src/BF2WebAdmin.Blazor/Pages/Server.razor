@@ -25,6 +25,10 @@
     <MudChip>@_ipAddress:@_gamePort (@_queryPort)</MudChip>
     <MudChip>@_map</MudChip>
     <MudChip>@_currentPlayers / @_maxPlayers players</MudChip>
+    <MudChip>
+        <MudLink Variant="Variant.Text" Color="Color.Info" Href="@("/servergroup/" + _serverGroup)">@_serverGroup</MudLink>
+        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => ShowInputDialogAsync("Set server group", "Group", "Server group has been saved", SetServerGroup))"/>
+    </MudChip>
 </div>
 
 <MudButtonGroup Variant="Variant.Filled" Class="mb-8">
@@ -84,8 +88,14 @@
             <ul id="chatlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
                 @foreach (var chat in _chatLog)
                 {
-                    var playerName = _players.TryGetValue(chat.Message.PlayerId, out var player) ? player.Name : "?";
-                    <li>@chat.Timestamp.ToShortDateTime() &lt;@(chat.Message.Channel)&gt; @playerName: @chat.Message.Text</li>
+                    @if (chat.Message.Type == "Server")
+                    {
+                        <li @key="chat.Timestamp">@GetTimestamp(chat.Timestamp) &lt;@(chat.Message.Channel)&gt; @chat.Message.Text</li>
+                    }
+                    else
+                    {
+                        <li @key="chat.Timestamp" class="@GetChatClass(chat.Message)">@GetTimestamp(chat.Timestamp) &lt;@(chat.Message.Channel)&gt; @chat.Message.PlayerName: @chat.Message.Text</li>
+                    }
                 }
             </ul>
         </MudTabPanel>
@@ -94,7 +104,7 @@
             <ul id="eventlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
                 @foreach (var gameEvent in _eventLog)
                 {
-                    <li>@gameEvent.Timestamp.ToShortDateTime() @gameEvent.Message</li>
+                    <li @key="gameEvent.Timestamp">@GetTimestamp(gameEvent.Timestamp) @gameEvent.Message</li>
                 }
             </ul>
         </MudTabPanel>
@@ -119,9 +129,9 @@
                     @foreach (var map in _maps)
                     {
                         <MudListItem Value="@map.Index"
-                                 Text="@(map.Index + " " + map.Name + " " + map.Size)"
-                                 Icon="@Icons.Material.Filled.Map"
-                                 OnClick="@(() => SendRconCommand($"map {map.Name} gpm_cq 16"))" />
+                                     Text="@(map.Index + " " + map.Name + " " + map.Size)"
+                                     Icon="@Icons.Material.Filled.Map"
+                                     OnClick="@(() => SendRconCommand($"map {map.Name} gpm_cq 16"))" />
                     }
                 </MudList>
             </div>
@@ -161,6 +171,7 @@
     private string? _ipAddress;
     private GameState? _gameState;
     private SocketState? _socketState;
+    private string? _serverGroup;
     private readonly List<ChatLogDto> _chatLog = new();
     private readonly List<EventLogDto> _eventLog = new();
     private readonly List<RequestResponseEvent> _requestResponses = new();
@@ -179,6 +190,7 @@
             return;
 
         await AddListenersAsync(null);
+        // _serverData = await _adminService.GetServerAsync();
     }
 
     protected override async Task OnInitializedAsync()
@@ -321,6 +333,7 @@
                 _ipAddress = e.IpAddress;
                 _gameState = e.GameState;
                 _socketState = e.SocketState;
+                _serverGroup = e.ServerGroup;
                 StateHasChanged();
             }),
             _adminService.HubConnection.On<ServerSnapshotEvent>(nameof(ServerSnapshotEvent), e =>
@@ -334,6 +347,7 @@
                 _ipAddress = e.Server.IpAddress;
                 _gameState = e.Server.GameState;
                 _socketState = e.Server.SocketState;
+                _serverGroup = e.Server.ServerGroup;
 
                 _players.Clear();
                 foreach (var player in e.Players) _players.TryAdd(player.Index, player);
@@ -423,7 +437,6 @@
 
     private async void ChangeMap(int index)
     {
-        // TODO: fix map size always being 0 + add som feedback that it actually worked
         var map = _maps.First(m => m.Index == index);
         var cmd = $"map {map.Name} gpm_cq 16";
         await _adminService.SendRconCommandAsync(cmd);
@@ -463,5 +476,27 @@
     {
         _activeTabIndexChanged = true;
         ActiveTabIndex = newTabId;
+    }
+    
+    private async void SetServerGroup(string group)
+    {
+        await _adminService.SetServerAsync(group);
+        // _serverData.ServerGroup = group;
+        StateHasChanged();
+    }
+
+    private static string GetChatClass(MessageDto message)
+    {
+        return message.Channel switch
+        {
+            "Team" => message.TeamName == "US" ? "blue-text text-lighten-1" : "red-text text-lighten-1",
+            "Squad" => "green-text text-lighten-1",
+            _ => string.Empty
+        };
+    }
+
+    private static string GetTimestamp(DateTimeOffset timestamp)
+    {
+        return timestamp.Date == DateTimeOffset.Now.Date ? timestamp.ToLocalTime().ToShortDateTime() : timestamp.ToLocalTime().ToShortTime();
     }
 }

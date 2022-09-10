@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using BF2WebAdmin.Shared.Communication.DTOs;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.SignalR.Client;
 
@@ -97,6 +98,37 @@ public class AdminService : IAsyncDisposable
     public async Task SendCustomCommandAsync(string text)
     {
         await HubConnection.SendAsync("SendCustomCommand", SelectedServerId, text);
+    }
+
+    public async Task<ServerDataDto> GetServerAsync()
+    {
+        // TODO: new ServerData type? should we send it in an event instead so it works for many active users?
+        return await HubConnection.InvokeAsync<ServerDataDto>("GetServer", SelectedServerId);
+    }
+    
+    public async Task SetServerAsync(string serverGroup)
+    {
+        await HubConnection.SendAsync("SetServer", SelectedServerId, serverGroup);
+    }
+
+    public async Task<IEnumerable<string>> GetServerGroupModulesAsync(string serverGroup)
+    {
+        return await HubConnection.InvokeAsync<IEnumerable<string>>("GetServerGroupModules", SelectedServerId, serverGroup);
+    }
+
+    public async Task SetServerGroupModulesAsync(string serverGroup, IEnumerable<string> moduleNames)
+    {
+        await HubConnection.SendAsync("SetServerGroupModules", SelectedServerId, serverGroup, moduleNames);
+    }
+
+    public async Task ReloadServerGroupModulesAsync(string serverGroup)
+    {
+        await HubConnection.SendAsync("ReloadServerGroupModules", serverGroup);
+    }
+
+    public async Task<IEnumerable<string>> GetAllModulesAsync()
+    {
+        return await HubConnection.InvokeAsync<IEnumerable<string>>("GetAllModules");
     }
 
     public async ValueTask DisposeAsync()

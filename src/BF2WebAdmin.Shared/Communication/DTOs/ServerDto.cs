@@ -12,4 +12,5 @@ public class ServerDto
     public int MaxPlayers { get; set; }
     public GameState GameState { get; set; }
     public SocketState SocketState { get; set; }
+    public string ServerGroup { get; set; }
 }

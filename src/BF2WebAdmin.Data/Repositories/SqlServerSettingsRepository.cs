@@ -21,54 +21,88 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
         _connectionString = connectionString;
     }
 
+    public async Task<IEnumerable<string>> GetServerGroupsAsync()
+    {
+        using var connection = NewConnection;
+        return await connection.QueryAsync<string>(@"SELECT DISTINCT [ServerGroup] FROM [dbo].[Server]");
+    }
+
     public async Task<Server> GetServerAsync(string serverId)
     {
         using var connection = NewConnection;
         return await connection.QueryFirstOrDefaultAsync<Server>(
             @"SELECT TOP 1 s.[ServerId], s.[ServerGroup]
-                    FROM dbo.[Server] s
-                    WHERE s.[ServerId] = @ServerId",
+            FROM dbo.[Server] s
+            WHERE s.[ServerId] = @ServerId",
             new { ServerId = serverId }
         );
     }
 
-    public async Task<IEnumerable<string>> GetModsAsync(string serverId)
+    public async Task SetServerAsync(Server server)
+    {
+        using var connection = NewConnection;
+        var existingServer = await GetServerAsync(server.ServerId);
+        if (existingServer is null)
+        {
+            await connection.ExecuteAsync(
+                @"INSERT INTO [dbo].[Server] ([ServerId], [ServerGroup]) VALUES (@ServerId, @ServerGroup)",
+                new { ServerId = server.ServerId, ServerGroup = server.ServerGroup }
+            );
+        }
+        else
+        {
+            await connection.ExecuteAsync(
+                @"UPDATE [dbo].[Server] SET [ServerGroup] = @ServerGroup WHERE [ServerId] = @ServerId",
+                new { ServerId = server.ServerId, ServerGroup = server.ServerGroup }
+            );
+        }
+    }
+
+    public async Task<IEnumerable<string>> GetModulesAsync(string serverGroup)
     {
         using var connection = NewConnection;
         var serverModules = await connection.QueryAsync<ServerModule>(
             @"SELECT sm.[ServerGroup], sm.[Module], sm.[IsEnabled]
-                    FROM dbo.[ServerModule] sm
-                    INNER JOIN dbo.[Server] s ON s.[ServerGroup] = sm.[ServerGroup]
-                    WHERE s.[ServerId] = @ServerId AND sm.[IsEnabled] = 1",
-            new { ServerId = serverId }
+            FROM dbo.[ServerModule] sm
+            WHERE sm.[ServerGroup] = @ServerGroup AND sm.[IsEnabled] = 1",
+            new { ServerGroup = serverGroup }
         );
 
         return serverModules.Select(m => m.Module).ToList();
     }
 
-    public async Task<IEnumerable<ServerPlayerAuth>> GetPlayerAuthAsync(string serverId)
+    public async Task SetModulesAsync(string serverGroup, IEnumerable<string> moduleNames)
+    {
+        using var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
+        using var connection = NewConnection;
+        
+        await connection.ExecuteAsync(@"DELETE FROM [dbo].[ServerModule] WHERE [ServerGroup] = @ServerGroup", new { ServerGroup = serverGroup });
+        await connection.InsertAsync(moduleNames.Select(m => new ServerModule { ServerGroup = serverGroup, Module = m, IsEnabled = true }));
+        
+        transaction.Complete();
+    }
+
+    public async Task<IEnumerable<ServerPlayerAuth>> GetPlayerAuthAsync(string serverGroup)
     {
         using var connection = NewConnection;
         return await connection.QueryAsync<ServerPlayerAuth>(
             @"SELECT spa.[ServerGroup], spa.[PlayerHash], spa.[AuthLevel] 
-                    FROM dbo.[ServerPlayerAuth] spa
-                    INNER JOIN dbo.[Server] s ON s.[ServerGroup] = spa.[ServerGroup]
-                    WHERE s.[ServerId] = @ServerId",
-            new { ServerId = serverId }
+            FROM dbo.[ServerPlayerAuth] spa
+            WHERE spa.[ServerGroup] = @ServerGroup",
+            new { ServerGroup = serverGroup }
         );
     }
 
-    public async Task SetPlayerAuthAsync(string serverId, string playerHash, int authLevel)
+    public async Task SetPlayerAuthAsync(string serverGroup, string playerHash, int authLevel)
     {
         using var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
         using var connection = NewConnection;
 
         var existingPlayerAuth = await connection.QueryFirstOrDefaultAsync<ServerPlayerAuth>(
             @"SELECT TOP 1 spa.[ServerGroup], spa.[PlayerHash], spa.[AuthLevel] 
-                    FROM dbo.[ServerPlayerAuth] spa
-                    INNER JOIN dbo.[Server] s WITH (NOLOCK) ON s.[ServerGroup] = spa.[ServerGroup]
-                    WHERE s.[ServerId] = @ServerId AND spa.[PlayerHash] = @PlayerHash",
-            new { ServerId = serverId, PlayerHash = playerHash }
+            FROM dbo.[ServerPlayerAuth] spa
+            WHERE spa.[ServerGroup] = @ServerGroup AND spa.[PlayerHash] = @PlayerHash",
+            new { ServerGroup = serverGroup, PlayerHash = playerHash }
         );
 
         if (existingPlayerAuth != null)
@@ -78,10 +112,9 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
         }
         else
         {
-            var server = await connection.GetAsync<Server>(serverId);
             await connection.InsertAsync(new ServerPlayerAuth
             {
-                ServerGroup = server.ServerGroup,
+                ServerGroup = serverGroup,
                 PlayerHash = playerHash,
                 AuthLevel = authLevel
             });

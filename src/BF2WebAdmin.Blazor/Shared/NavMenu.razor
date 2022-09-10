@@ -7,18 +7,38 @@
 @using BF2WebAdmin.Shared.Communication.Events
 @implements IAsyncDisposable
 
-<MudNavMenu>
-    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
-    <MudNavGroup Title="Servers" Expanded="true" Icon="@Icons.Material.Filled.List">
-        @foreach (var server in _servers.Values)
+<MudNavMenu Color="Color.Success">
+    <MudNavLink Href="" Match="NavLinkMatch.All">Dashboard</MudNavLink>
+    @* <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink> *@
+    <MudDivider/>
+    <MudNavGroup Title="Servers" Expanded="true">
+        @* <MudNavGroup Title="Servers" Expanded="true" Icon="@Icons.Material.Filled.List"> *@
+        @foreach (var grouping in _servers.Values.GroupBy(s => s.ServerGroup).OrderBy((g => g.Key)))
         {
-            <MudNavLink Href="@("/server/" + AdminService.UrlEncodeServerId(server.Id))"
-                    Match="NavLinkMatch.Prefix"
-                    Icon="@(server.SocketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
-                    IconColor="@(server.SocketState == SocketState.Connected ? Color.Success : Color.Error)">
-                @server.Name (@server.Players / @server.MaxPlayers)
+            <MudNavLink Href="@("/servergroup/" + grouping.Key)"
+                        Match="NavLinkMatch.Prefix">
+                @grouping.Key
             </MudNavLink>
+            @* <MudNavLink Href="@("/servergroup/" + grouping.Key)" *@
+            @*             Match="NavLinkMatch.Prefix" *@
+            @*             Icon="@Icons.Material.Filled.Group" *@
+            @*             IconColor="@Color.Info"> *@
+            @*     @grouping.Key *@
+            @* </MudNavLink> *@
+
+            @foreach (var server in grouping.OrderBy(s => s.Name))
+            {
+                <MudNavLink Href="@("/server/" + AdminService.UrlEncodeServerId(server.Id))"
+                            Match="NavLinkMatch.Prefix"
+                            Icon="@(server.SocketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
+                            IconColor="@(server.SocketState == SocketState.Connected ? Color.Success : Color.Error)">
+                    @server.Name (@server.Players / @server.MaxPlayers)
+                </MudNavLink>
+            }
+
+            <MudDivider/>
         }
+
     </MudNavGroup>
 </MudNavMenu>
 

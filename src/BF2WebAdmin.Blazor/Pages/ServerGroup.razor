@@ -1,0 +1,84 @@
+﻿@page "/servergroup/{serverGroupName}"
+
+<PageTitle>BF2 Web Admin - @ServerGroupName</PageTitle>
+
+<MudText Typo="Typo.h3" Class="mb-8">@ServerGroupName</MudText>
+
+@if (ServerGroupName == "default")
+{
+    <MudText>The default server group cannot be modified. Set a new group for your server to select modules.</MudText>
+}
+else
+{
+    <MudButtonGroup Variant="Variant.Filled" Class="mb-8">
+        <MudButton OnClick="SetModulesAsync" StartIcon="@Icons.Material.Filled.Save" IconColor="Color.Success">Save</MudButton>
+        <MudButton OnClick="ReloadModulesAsync" StartIcon="@Icons.Material.Filled.Refresh" IconColor="Color.Success">Reload modules for all servers</MudButton>
+    </MudButtonGroup>
+}
+
+<MudText Typo="Typo.h5" Class="mb-8">Modules</MudText>
+
+<MudPaper MaxWidth="500px">
+    <MudList Clickable="true">
+        @foreach (var moduleName in _allModuleNames)
+        {
+            <MudListItem OnClick="() => ToggleModule(moduleName)" Disabled="@(_defaultModuleNames.Contains(moduleName))" IconColor="Color.Success" Icon="@(_activeModuleNames.Contains(moduleName) ? Icons.Filled.CheckBox : Icons.Filled.CheckBoxOutlineBlank)" Text="@moduleName">
+                @* <MudIcon Icon="@(_activeModuleNames.Contains(moduleName) ? Icons.Filled.Check : Icons.Filled.CheckBox)" Color="Color.Success"/> *@
+                @* <MudText>@moduleName</MudText> *@
+                @* <MudCheckBox OnClick="() => ToggleModule(moduleName)" Checked="_activeModuleNames.Contains(moduleName)" Style="display: inline-block" Label="@moduleName" StopClickPropagation="false"></MudCheckBox> *@
+            </MudListItem>
+        }
+    </MudList>
+</MudPaper>
+
+@* <MudDivider DividerType="DividerType.Middle"/> *@
+@* *@
+@* <MudText Typo="Typo.h5" Class="mb-8">Servers</MudText> *@
+
+@code {
+
+    [Parameter]
+    public string? ServerGroupName { get; set; }
+
+    private IList<string> _activeModuleNames = new List<string>();
+    private IList<string> _defaultModuleNames = new List<string>();
+    private IList<string> _allModuleNames = new List<string>();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+
+        if (ServerGroupName is null)
+            return;
+
+        _activeModuleNames = (await _adminService.GetServerGroupModulesAsync(ServerGroupName)).ToList();
+        _defaultModuleNames = (await _adminService.GetServerGroupModulesAsync("default")).ToList();
+        _allModuleNames = (await _adminService.GetAllModulesAsync()).OrderBy(m => m).ToList();
+    }
+
+    private void ToggleModule(string moduleName)
+    {
+        if (_activeModuleNames.Contains(moduleName))
+        {
+            _activeModuleNames.Remove(moduleName);
+        }
+        else
+        {
+            _activeModuleNames.Add(moduleName);
+        }
+
+        StateHasChanged();
+    }
+
+    private async void SetModulesAsync()
+    {
+        await _adminService.SetServerGroupModulesAsync(ServerGroupName!, _activeModuleNames.ToList());
+        _snackbar.Add("Modules have been saved", Severity.Success);
+    }
+
+    private async void ReloadModulesAsync()
+    {
+        await _adminService.ReloadServerGroupModulesAsync(ServerGroupName!);
+        _snackbar.Add("Modules are being reloaded", Severity.Success);
+    }
+}

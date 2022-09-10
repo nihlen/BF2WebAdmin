@@ -9,7 +9,9 @@ public static class MessageExtensions
     {
         return new MessageDto
         {
-            PlayerId = message.Player?.Index ?? 0,
+            PlayerId = message.Player?.Index,
+            PlayerName = message.Player?.Name,
+            TeamName = message.Player?.Team?.Name,
             Type = message.Type.ToString(),
             Channel = message.Channel,
             Flags = message.Flags,

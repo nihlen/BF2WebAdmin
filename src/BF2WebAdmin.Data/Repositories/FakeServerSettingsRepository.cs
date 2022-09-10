@@ -7,12 +7,22 @@ namespace BF2WebAdmin.Data.Repositories;
 
 public class FakeServerSettingsRepository : IServerSettingsRepository
 {
+    public Task<IEnumerable<string>> GetServerGroupsAsync()
+    {
+        throw new System.NotImplementedException();
+    }
+
     public Task<Server> GetServerAsync(string serverId)
     {
         return Task.FromResult(new Server { ServerId = serverId, ServerGroup = serverId });
     }
 
-    public Task<IEnumerable<string>> GetModsAsync(string serverId)
+    public Task SetServerAsync(Server server)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task<IEnumerable<string>> GetModulesAsync(string serverGroup)
     {
         return Task.FromResult((IEnumerable<string>)new[]
         {
@@ -27,7 +37,12 @@ public class FakeServerSettingsRepository : IServerSettingsRepository
         });
     }
 
-    public Task<IEnumerable<ServerPlayerAuth>> GetPlayerAuthAsync(string serverId)
+    public Task SetModulesAsync(string serverGroup, IEnumerable<string> moduleNames)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task<IEnumerable<ServerPlayerAuth>> GetPlayerAuthAsync(string serverGroup)
     {
         return Task.FromResult((IEnumerable<ServerPlayerAuth>)new[]
         {
@@ -39,8 +54,8 @@ public class FakeServerSettingsRepository : IServerSettingsRepository
         });
     }
 
-    public Task SetPlayerAuthAsync(string serverId, string playerHash, int authLevel)
+    public Task SetPlayerAuthAsync(string serverGroup, string playerHash, int authLevel)
     {
-        throw new System.NotImplementedException();
+        return Task.CompletedTask;
     }
 }

@@ -494,7 +494,7 @@ public class BF2Module : BaseModule,
             return;
         }
 
-        await _serverSettingsRepository.SetPlayerAuthAsync(_gameServer.Id, target.Hash, command.Level);
+        await _serverSettingsRepository.SetPlayerAuthAsync(_gameServer.ModManager.ServerSettings.ServerGroup, target.Hash, command.Level);
         await _gameServer.ModManager.GetAuthPlayersAsync();
         _gameServer.GameWriter.SendText($"Player {command.Name} auth level set to {command.Level}");
     }

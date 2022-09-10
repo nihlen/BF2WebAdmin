@@ -1,5 +1,6 @@
 ﻿using BF2WebAdmin.Common.Communication;
 using BF2WebAdmin.Common.Entities.Game;
+using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Shared.Communication.DTOs;
@@ -29,15 +30,17 @@ public class WebModule : BaseModule,
 
     private readonly IGameServer _gameServer;
     private readonly IHubContext<ServerHub, IServerHubClient> _serverHub;
+    private readonly IServerSettingsRepository _serverSettingsRepository;
 
     private IServerHubClient ClientsAll => _serverHub.Clients.All;
     private IServerHubClient ClientsGroup => _serverHub.Clients.Group(_gameServer.Id);
     private IServerHubClient ClientsUser(string userId) => _serverHub.Clients.All; // TODO: fix user messaging - doesn't send anything?
 
-    public WebModule(IGameServer server, IHubContext<ServerHub, IServerHubClient> serverHub) : base(server)
+    public WebModule(IGameServer server, IHubContext<ServerHub, IServerHubClient> serverHub, IServerSettingsRepository serverSettingsRepository) : base(server)
     {
         _gameServer = server;
         _serverHub = serverHub;
+        _serverSettingsRepository = serverSettingsRepository;
 
         ServerHub.UserConnectEvent += async (_, userId) => await SendServerInfo(userId, false);
         ServerHub.UserSelectServerEvent += async (_, data) => { if (data.Item2 == _gameServer.Id) await SendServerInfo(data.Item1, true); };
@@ -58,7 +61,8 @@ public class WebModule : BaseModule,
                 Players = _gameServer.Players.Count(),
                 MaxPlayers = _gameServer.MaxPlayers,
                 GameState = _gameServer.State,
-                SocketState = _gameServer.SocketState
+                SocketState = _gameServer.SocketState,
+                ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup
             }
         );
 
@@ -79,13 +83,14 @@ public class WebModule : BaseModule,
                     Players = _gameServer.Players.Count(),
                     MaxPlayers = _gameServer.MaxPlayers,
                     GameState = _gameServer.State,
-                    SocketState = _gameServer.SocketState
+                    SocketState = _gameServer.SocketState,
+                    ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup
                 },
                 Maps = _gameServer.Maps.Select(m => m.ToDto()),
                 Teams = _gameServer.Teams.Select(t => t.ToDto()),
                 Players = _gameServer.Players.Select(p => p.ToDto()).ToList(),
                 EventLog = _gameServer.Events.Select(e => new EventLogDto { Message = e.Message, Timestamp = e.Time }),
-                ChatLog = _gameServer.Messages.Select(m => new ChatLogDto { Message = m.Message.ToDto(), Timestamp = m.Time })
+                ChatLog = _gameServer.Messages.Select(m => new ChatLogDto { Message = m.Message, Timestamp = m.Time })
             }
         );
     }
@@ -104,6 +109,7 @@ public class WebModule : BaseModule,
             MaxPlayers = e.MaxPlayers,
             GameState = _gameServer.State,
             SocketState = _gameServer.SocketState,
+            ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup,
             TimeStamp = e.TimeStamp
         });
     }
@@ -144,6 +150,7 @@ public class WebModule : BaseModule,
                 MaxPlayers = _gameServer.MaxPlayers,
                 GameState = _gameServer.State,
                 SocketState = _gameServer.SocketState,
+                ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup,
                 TimeStamp = e.TimeStamp
             }
         );
@@ -170,6 +177,7 @@ public class WebModule : BaseModule,
                 MaxPlayers = _gameServer.MaxPlayers,
                 GameState = _gameServer.State,
                 SocketState = _gameServer.SocketState,
+                ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup,
                 TimeStamp = e.TimeStamp
             }
         );
@@ -285,6 +293,7 @@ public class WebModule : BaseModule,
                 MaxPlayers = _gameServer.MaxPlayers,
                 GameState = _gameServer.State,
                 SocketState = _gameServer.SocketState,
+                ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup,
                 TimeStamp = e.TimeStamp
             }
         );
@@ -314,6 +323,7 @@ public class WebModule : BaseModule,
                 MaxPlayers = _gameServer.MaxPlayers,
                 GameState = _gameServer.State,
                 SocketState = _gameServer.SocketState,
+                ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup,
                 TimeStamp = e.TimeStamp
             }
         );

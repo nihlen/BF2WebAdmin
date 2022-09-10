@@ -13,6 +13,7 @@ public class ModuleResolver : IModuleResolver
 
     private static readonly StringBuilder CommandDocumentation;
 
+    public static IEnumerable<string> AllModuleNames => _moduleTypes.Select(t => t.Name);
     public IEnumerable<Type> ModuleTypes => _moduleTypes;
     private static IEnumerable<Type> _moduleTypes;
 
@@ -30,11 +31,11 @@ public class ModuleResolver : IModuleResolver
 
     // Invokes the handler module instance(s) with a command of the given Type
     public IDictionary<Type, IList<Func<ICommand, ValueTask>>> CommandHandlers => GetCommandHandlers();
-    private IDictionary<Type, IList<Func<ICommand, ValueTask>>> _commandHandlers;
+    private IDictionary<Type, IList<Func<ICommand, ValueTask>>>? _commandHandlers;
 
-    // Invokes the handler module instance(s) with a command of the given Type
+    // Invokes the handler module instance(s) with an event of the given Type
     public IDictionary<Type, IList<Func<IEvent, ValueTask>>> EventHandlers => GetEventHandlers();
-    private IDictionary<Type, IList<Func<IEvent, ValueTask>>> _eventHandlers;
+    private IDictionary<Type, IList<Func<IEvent, ValueTask>>>? _eventHandlers;
 
     // Module instances
     public IDictionary<Type, IModule> Modules { get; } = new Dictionary<Type, IModule>();
@@ -61,7 +62,7 @@ public class ModuleResolver : IModuleResolver
     {
         foreach (var commandType in _commandTypes)
         {
-            Action create = CreateCommandHandler<ICommand>;
+            var create = CreateCommandHandler<ICommand>;
             var method = create.GetMethodInfo().GetGenericMethodDefinition();
             var generic = method.MakeGenericMethod(commandType);
             generic.Invoke(this, null);
@@ -127,7 +128,7 @@ public class ModuleResolver : IModuleResolver
                         }
                         catch (Exception e)
                         {
-                            Log.Error(e, "Command handling failed for {message} (async)", matchedCommand.Message);
+                            Log.Error(e, "Command handling failed for {Message} (async)", matchedCommand.Message.Text);
                         }
                     }
                 });
@@ -138,7 +139,7 @@ public class ModuleResolver : IModuleResolver
         }
 
         if (handlerCount == 0)
-            Log.Verbose("No command handlers registered for {commandName}", typeof(TCommand).Name);
+            Log.Verbose("No command handlers registered for {CommandName}", typeof(TCommand).Name);
     }
 
     private IDictionary<Type, IList<Func<IEvent, ValueTask>>> GetEventHandlers()
@@ -156,7 +157,7 @@ public class ModuleResolver : IModuleResolver
     {
         foreach (var eventType in _eventTypes)
         {
-            Action create = CreateEventHandler<IEvent>;
+            var create = CreateEventHandler<IEvent>;
             var method = create.GetMethodInfo().GetGenericMethodDefinition();
             var generic = method.MakeGenericMethod(eventType);
             generic.Invoke(this, null);

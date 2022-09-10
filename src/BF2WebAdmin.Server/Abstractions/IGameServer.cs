@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Shared;
+using BF2WebAdmin.Shared.Communication.DTOs;
 
 namespace BF2WebAdmin.Server.Abstractions;
 
@@ -29,14 +30,15 @@ public interface IGameServer
     IEnumerable<Player> Players { get; }
     IEnumerable<Vehicle> Vehicles { get; }
     IEnumerable<Projectile> Projectiles { get; }
-    IEnumerable<(Message Message, DateTimeOffset Time)> Messages { get; }
+    IEnumerable<(MessageDto Message, DateTimeOffset Time)> Messages { get; }
     IEnumerable<(string Message, DateTimeOffset Time)> Events { get; }
 
+    ValueTask CreateModManagerAsync(bool forceReinitialize = false);
     ValueTask UpdateServerInfoAsync(string name, int gamePort, int queryPort, int maxPlayers, DateTimeOffset time);
     ValueTask UpdateGameStateAsync(GameState state, DateTimeOffset time);
     ValueTask UpdateSocketStateAsync(SocketState state, DateTimeOffset time);
     ValueTask SetReconnectedAsync(IGameWriter gameWriter, DateTimeOffset time);
-    ValueTask UpdateMapsAsync(IList<string> maps, DateTimeOffset time);
+    ValueTask UpdateMapsAsync(IList<Map> maps, DateTimeOffset time);
     ValueTask UpdateMapAsync(string mapName, string team1Name, string team2Name, DateTimeOffset time);
     ValueTask AddPlayerAsync(Player player, DateTimeOffset time);
     ValueTask UpdatePlayerAsync(Player player, Position position, Rotation rotation, int ping, DateTimeOffset time);

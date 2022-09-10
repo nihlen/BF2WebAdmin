@@ -13,4 +13,5 @@ public interface IModManager
     Task GetAuthPlayersAsync();
     Task HandleFakeChatMessageAsync(Message message);
     ValueTask HandleChatMessageAsync(Message message);
+    IEnumerable<string> GetModules();
 }

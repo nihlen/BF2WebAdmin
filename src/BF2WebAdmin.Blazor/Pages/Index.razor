@@ -27,7 +27,7 @@
                 </MudCardHeader>
                 <MudCardContent>
                     <MudChip Icon="@(server.SocketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
-                         IconColor="@(server.SocketState == SocketState.Connected ? Color.Success : Color.Error)">
+                             IconColor="@(server.SocketState == SocketState.Connected ? Color.Success : Color.Error)">
                         @server.SocketState
                     </MudChip>
                     <MudChip>@server.GameState</MudChip>

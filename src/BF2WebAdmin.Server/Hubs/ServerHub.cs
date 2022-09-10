@@ -1,4 +1,7 @@
-﻿using BF2WebAdmin.Server.Modules.BF2;
+﻿using BF2WebAdmin.Data.Abstractions;
+using BF2WebAdmin.Server.Abstractions;
+using BF2WebAdmin.Server.Modules.BF2;
+using BF2WebAdmin.Shared.Communication.DTOs;
 using BF2WebAdmin.Shared.Communication.Events;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
@@ -30,10 +33,14 @@ public interface IServerHubClient
 public class ServerHub : Hub<IServerHubClient>
 {
     private readonly ISocketServer _socketServer;
+    private readonly IServerSettingsRepository _serverSettingsRepository;
+    private readonly IServiceProvider _serviceProvider;
 
-    public ServerHub(ISocketServer socketServer)
+    public ServerHub(ISocketServer socketServer, IServerSettingsRepository serverSettingsRepository, IServiceProvider serviceProvider)
     {
         _socketServer = socketServer;
+        _serverSettingsRepository = serverSettingsRepository;
+        _serviceProvider = serviceProvider;
     }
 
     // Events used to send to all servers' WebModules (TODO: change to some GetModule loop instead)
@@ -66,6 +73,12 @@ public class ServerHub : Hub<IServerHubClient>
         return module;
     }
 
+    private IEnumerable<WebModule> GetWebModules(string serverGroup)
+    {
+        // TODO: send new event type via mediator instead like GameStreamConsumer?
+        return _socketServer.GetGameServers(serverGroup).Select(s => s.ModManager.GetModule<WebModule>());
+    }
+
     private string GetUserId()
     {
         //return Context.ConnectionId ?? "";
@@ -85,5 +98,65 @@ public class ServerHub : Hub<IServerHubClient>
     public async Task SendCustomCommand(string serverId, string message)
     {
         await GetWebModule(serverId).HandleCustomCommandAsync(GetUserId(), message);
+    }
+
+    public async Task<ServerDataDto> GetServer(string serverId)
+    {
+        // return await GetWebModule(serverId).GetServerAsync(serverId);
+        var server = await _serverSettingsRepository.GetServerAsync(serverId) ?? new Data.Entities.Server
+        {
+            ServerId = serverId,
+            ServerGroup = "default"
+        };
+        
+        return new ServerDataDto
+        {
+            ServerId = server.ServerId,
+            ServerGroup = server.ServerGroup
+        };
+    }
+
+    public async Task SetServer(string serverId, string serverGroup)
+    {
+        await _serverSettingsRepository.SetServerAsync(new Data.Entities.Server { ServerId = serverId, ServerGroup = serverGroup });
+        var gameServer = _socketServer.GetGameServer(serverId);
+        if (gameServer is not null)
+        {
+            await ReloadModulesAsync(gameServer);
+        }
+    }
+
+    private static async Task ReloadModulesAsync(IGameServer gameServer)
+    {
+        // TODO: disable whatever the old modmanager is doing, dispose and finish all long-running tasks
+        // gameServer.ModManager.dispose?
+        await gameServer.CreateModManagerAsync(true);
+    }
+
+    public async Task<IEnumerable<string>> GetServerGroupModules(string serverId, string serverGroup)
+    {
+        // return await GetWebModule(serverId).GetServerGroupModulesAsync(serverGroup);
+        var modules = await _serverSettingsRepository.GetModulesAsync(serverGroup);
+        return modules.Concat(ModManager.DefaultModuleNames).Distinct();
+    }
+
+    public IEnumerable<string> GetAllModules()
+    {
+        return ModuleResolver.AllModuleNames;
+    }
+
+    public async Task SetServerGroupModules(string serverId, string serverGroup, IEnumerable<string> moduleNames)
+    {
+        // await GetWebModule(serverId).SetServerGroupModulesAsync(serverGroup, moduleNames);
+        await _serverSettingsRepository.SetModulesAsync(serverGroup, moduleNames);
+    }
+
+    public async Task ReloadServerGroupModules(string serverGroup)
+    {
+        var gameServers = _socketServer.GetGameServers(serverGroup);
+        foreach (var gameServer in gameServers)
+        {
+            await ReloadModulesAsync(gameServer);
+        }
     }
 }

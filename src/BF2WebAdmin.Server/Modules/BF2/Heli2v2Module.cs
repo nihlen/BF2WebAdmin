@@ -76,7 +76,7 @@ public class Heli2v2Module : BaseModule,
     private Player _stalker;
     private Player _stalked;
 
-    public Heli2v2Module(IGameServer server, IMatchRepository matchRepository, IReadOnlyPolicyRegistry<string> policyRegistry) : base(server)
+    public Heli2v2Module(IGameServer server, IMatchRepository matchRepository, IReadOnlyPolicyRegistry<string> policyRegistry, CancellationTokenSource cts) : base(server, cts)
     {
         _gameServer = server;
         _matchRepository = matchRepository;
@@ -842,6 +842,9 @@ public class Heli2v2Module : BaseModule,
         var sw = Stopwatch.StartNew();
         foreach (var snapshot in _playerRecordingPositions)
         {
+            if (ModuleCancellationToken.IsCancellationRequested)
+                return;
+            
             //await MultimediaTimer.Delay((int)(snapshot.Item1 - previousTime));
             SpinWait.SpinUntil(() => sw.ElapsedMilliseconds > snapshot.Item1, 1000);
             Log.Error("Variance: {VarianceMs}", (sw.ElapsedMilliseconds - snapshot.Item1));

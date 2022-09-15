@@ -3,7 +3,7 @@ using BF2WebAdmin.Data.Entities;
 
 namespace BF2WebAdmin.Server.Abstractions;
 
-public interface IModManager
+public interface IModManager : IDisposable
 {
     Data.Entities.Server ServerSettings { get; }
     ILookup<string, ServerPlayerAuth> AuthPlayers { get; }

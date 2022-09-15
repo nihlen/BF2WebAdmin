@@ -10,18 +10,20 @@ public class GameReader : IGameReader
 {
     private readonly IGameServer _gameServer;
     private readonly string _gameLogPath;
+    private readonly CancellationToken _cancellationToken;
     private readonly DateTime _startTime;
     private readonly Dictionary<string, Func<string[], DateTimeOffset, ValueTask>> _eventHandlers;
     private readonly Stopwatch _messageStopWatch;
     private readonly Channel<(string, DateTimeOffset)> _gameEventChannel;
 
-    public GameReader(IGameServer gameServer, string gameLogPath = null)
+    public GameReader(IGameServer gameServer, string gameLogPath = null, CancellationToken? cancellationToken = null)
     {
         var eventHandler = new EventHandler(gameServer);
         _eventHandlers = GetEventsHandlers(eventHandler);
         _startTime = DateTime.UtcNow;
         _gameServer = gameServer;
         _gameLogPath = gameLogPath;
+        _cancellationToken = cancellationToken ?? CancellationToken.None;
         _messageStopWatch = new Stopwatch();
         _gameEventChannel = Channel.CreateUnbounded<(string, DateTimeOffset)>(new UnboundedChannelOptions
         {
@@ -44,7 +46,7 @@ public class GameReader : IGameReader
     private async Task ParseAllMessagesAsync()
     {
         // Parse all messages written to the channel asynchronously
-        await foreach (var (message, time) in _gameEventChannel.Reader.ReadAllAsync())
+        await foreach (var (message, time) in _gameEventChannel.Reader.ReadAllAsync(_cancellationToken))
         {
             try
             {
@@ -76,14 +78,14 @@ public class GameReader : IGameReader
             var elapsedMs = _messageStopWatch.ElapsedMilliseconds;
             if (elapsedMs > 400)
             {
-                Log.Warning("Event {EventType} took {ElapsedMilliseconds} ms ({message})", eventType, _messageStopWatch.ElapsedMilliseconds, message);
+                Log.Warning("Event {EventType} took {ElapsedMilliseconds} ms ({Message})", eventType, _messageStopWatch.ElapsedMilliseconds, message);
             }
         }
         else if (eventType.Length > 0)
         {
             if (eventType != "Unknown object or method!" && !eventType.StartsWith("id") && !eventType.StartsWith("0x"))
             {
-                Log.Error($"Unknown server event: '{eventType}'");
+                Log.Error("Unknown server event: '{EventType}'", eventType);
             }
         }
     }

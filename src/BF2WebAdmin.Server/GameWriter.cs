@@ -17,6 +17,7 @@ public class GameWriter : IGameWriter
     private readonly BinaryWriter _writer;
     private readonly Channel<string> _gameMessageChannel;
     private readonly bool _logSend;
+    private readonly CancellationToken _cancellationToken;
     private int _responseCounter;
 
     private readonly Encoding _encoding;
@@ -26,10 +27,11 @@ public class GameWriter : IGameWriter
 
     public double CurrentTrackerInterval { get; private set; } = 300;
 
-    public GameWriter(BinaryWriter writer, bool logSend)
+    public GameWriter(BinaryWriter writer, bool logSend, CancellationToken cancellationToken)
     {
         _writer = writer;
         _logSend = logSend;
+        _cancellationToken = cancellationToken;
 
         // Battlefield 2 does not support UTF-8, only what seems like Windows-1252
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -49,7 +51,7 @@ public class GameWriter : IGameWriter
             SingleWriter = true
         });
 
-        _ = Task.Run(SendAllMessagesAsync);
+        _ = Task.Run(SendAllMessagesAsync, cancellationToken);
     }
 
     private void Send(string message)
@@ -64,13 +66,13 @@ public class GameWriter : IGameWriter
     {
         // TODO: Batch send?
         // Parse all messages written to the channel asynchronously
-        await foreach (var message in _gameMessageChannel.Reader.ReadAllAsync())
+        await foreach (var message in _gameMessageChannel.Reader.ReadAllAsync(_cancellationToken))
         {
             try
             {
                 if (_logSend)
                 {
-                    Log.Debug("send: {message}", message);
+                    Log.Debug("send: {Message}", message);
                 }
 
                 // Easy method
@@ -101,7 +103,7 @@ public class GameWriter : IGameWriter
             Send($"rcon {command}");
     }
 
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _pendingRconResponses = new ConcurrentDictionary<string, TaskCompletionSource<string>>();
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _pendingRconResponses = new();
 
     /// <summary>
     /// Run RCon command and get response

@@ -65,7 +65,7 @@ public class BF2Module : BaseModule,
     // TODO: does this need to be static for all servers to get it?
     public event Action<string, string> ServerGroupMessage;
 
-    public BF2Module(IGameServer server, ICountryResolver countryResolver, IServerSettingsRepository serverSettingsRepository, IChatLogger chatLogger) : base(server)
+    public BF2Module(IGameServer server, ICountryResolver countryResolver, IServerSettingsRepository serverSettingsRepository, IChatLogger chatLogger, CancellationTokenSource cts) : base(server, cts)
     {
         _gameServer = server;
         _countryResolver = countryResolver;

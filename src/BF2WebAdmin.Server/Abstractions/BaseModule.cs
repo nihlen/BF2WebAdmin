@@ -9,11 +9,13 @@ namespace BF2WebAdmin.Server.Abstractions;
 public abstract class BaseModule : IModule
 {
     protected readonly IGameServer GameServer;
+    protected readonly CancellationToken ModuleCancellationToken;
     protected IMediator Mediator => GameServer.ModManager.Mediator;
 
-    protected BaseModule(IGameServer gameServer)
+    protected BaseModule(IGameServer gameServer, CancellationTokenSource moduleCancellationTokenSource)
     {
         GameServer = gameServer;
+        ModuleCancellationToken = moduleCancellationTokenSource.Token;
     }
 
     protected virtual void SpawnObject(string template, Position position, Rotation rotation, bool showMessage = false, int count = 0)
@@ -94,6 +96,6 @@ public abstract class BaseModule : IModule
             {
                 Log.Error(ex, "Failed to complete background task: {Description}", description);
             }
-        });
+        }, ModuleCancellationToken);
     }
 }

@@ -19,8 +19,7 @@ public class BF2WebAdminService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // TODO: shutdown gracefully with cancellationtokens? D:
-        var listenTask = _server.ListenAsync();
+        var listenTask = _server.ListenAsync(stoppingToken);
 
         // Create a fake game server that connects
         var fakeGameServerTask = Task.CompletedTask;
@@ -32,8 +31,9 @@ public class BF2WebAdminService : BackgroundService
                 _settings.Port,
                 _settings.GameServers[0].RconPort,
                 @"C:\Projects\DotNet\BF2WebAdmin\src\BF2WebAdmin.Server\bin\Debug\netcoreapp2.0\gameevents-31-220-7-51-0-1515868847.txt",
-                0
+                0,
                 //475_617
+                stoppingToken
             ); // 2v2 start?
             fakeGameServerTask = fakeGameServer.ConnectAsync();
         }

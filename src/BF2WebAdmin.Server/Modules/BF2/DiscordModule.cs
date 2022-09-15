@@ -225,12 +225,12 @@ public class DiscordModule : BaseModule,
 # Execute a console command
 !exec```";
 
-    public DiscordModule(IGameServer game, IGameStreamService gameStreamService) : base(game)
+    public DiscordModule(IGameServer server, IGameStreamService gameStreamService, CancellationTokenSource cts) : base(server, cts)
     {
-        _game = game;
+        _game = server;
         _gameStreamService = gameStreamService;
 
-        var discordBot = game.ServerInfo.DiscordBot;
+        var discordBot = server.ServerInfo.DiscordBot;
         if (discordBot == null)
             return;
 
@@ -257,7 +257,7 @@ public class DiscordModule : BaseModule,
         await _discord.StartAsync();
 
         // Send all queued Discord messages
-        await foreach (var (channel, text, embed) in _discordMessageChannel.Reader.ReadAllAsync())
+        await foreach (var (channel, text, embed) in _discordMessageChannel.Reader.ReadAllAsync(ModuleCancellationToken))
         {
             try
             {

@@ -81,7 +81,7 @@ public class ChopperMayhemModule : BaseModule,
 
     private readonly double _altitudeOffset = 140;
 
-    public ChopperMayhemModule(IGameServer gameServer) : base(gameServer)
+    public ChopperMayhemModule(IGameServer server, CancellationTokenSource cts) : base(server, cts)
     {
     }
         

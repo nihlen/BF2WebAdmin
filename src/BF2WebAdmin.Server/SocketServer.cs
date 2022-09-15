@@ -15,7 +15,7 @@ public interface ISocketServer
     IPAddress GetIpAddress();
     IGameServer? GetGameServer(string serverId);
     IEnumerable<IGameServer> GetGameServers(string serverGroup);
-    Task ListenAsync();
+    Task ListenAsync(CancellationToken cancellationToken);
     Task RetryConnectionAsync(IPAddress ipAddress, int port, ServerInfo serverInfo);
 }
 
@@ -48,7 +48,7 @@ public class SocketServer : ISocketServer
         _servers = new ConcurrentDictionary<string, IGameServer>();
     }
 
-    public async Task ListenAsync()
+    public async Task ListenAsync(CancellationToken cancellationToken)
     {
         var server = StartTcpListener();
         Log.Information("Server started");
@@ -58,7 +58,7 @@ public class SocketServer : ISocketServer
         {
             try
             {
-                var client = await server.AcceptTcpClientAsync();
+                var client = await server.AcceptTcpClientAsync(cancellationToken);
                 var ipEndPoint = GetIpEndPoint(client);
                 var ipv4 = ipEndPoint.Address.MapToIPv4();
                 var isPrivateIp = ipv4.IsPrivate();
@@ -71,8 +71,8 @@ public class SocketServer : ISocketServer
 
                 _connections.TryAdd(ipEndPoint, client);
 
-                var task = HandleConnectionLegacyAsync(client);
-                //var task = HandleConnectionAsync(client);
+                var task = HandleConnectionLegacyAsync(client, cancellationToken);
+                //var task = HandleConnectionAsync(client, cancellationToken);
                 tasks.Add(task);
             }
             catch (Exception ex)
@@ -101,7 +101,7 @@ public class SocketServer : ISocketServer
         return server;
     }
 
-    private async Task HandleConnectionLegacyAsync(TcpClient client)
+    private async Task HandleConnectionLegacyAsync(TcpClient client, CancellationToken cancellationToken)
     {
         var ipEndPoint = GetIpEndPoint(client);
 
@@ -117,7 +117,7 @@ public class SocketServer : ISocketServer
             using var reader = new StreamReader(stream);
 
             await using var writer = new BinaryWriter(stream);
-            IGameWriter gameWriter = new GameWriter(writer, _logSend);
+            IGameWriter gameWriter = new GameWriter(writer, _logSend, cancellationToken);
             IGameReader gameReader = null;
 
             while (client.Connected && stream.CanRead)
@@ -125,7 +125,8 @@ public class SocketServer : ISocketServer
                 try
                 {
                     // TODO: use pipe
-                    var message = await reader.ReadLineAsync();
+                    // TODO: switch to .ReadLineAsync(cancellationToken) in .NET 7
+                    var message = await reader.ReadLineAsync().WaitAsync(cancellationToken);
                     if (message == null)
                     {
                         // BF2 server returns NULL when disconnecting
@@ -146,7 +147,7 @@ public class SocketServer : ISocketServer
                     if (gameServer == null || gameReader == null)
                     {
                         // Server is currently pending - wait for serverInfo event so we can get id
-                        var result = await GetGameServerFromInitialMessageAsync(message, ipEndPoint, gameWriter);
+                        var result = await GetGameServerFromInitialMessageAsync(message, ipEndPoint, gameWriter, cancellationToken);
                         gameServer = result.GameServer;
                         gameReader = result.GameReader;
                     }
@@ -196,7 +197,7 @@ public class SocketServer : ISocketServer
             return;
         }
 
-        await Task.Delay(TimeSpan.FromMinutes(1));
+        await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
         await RetryConnectionAsync(_ipAddress, _port, matchingServerInfo);
     }
 
@@ -416,7 +417,12 @@ public class SocketServer : ISocketServer
         return result;
     }
 
-    private async Task<(IGameServer? GameServer, IGameReader? GameReader)> GetGameServerFromInitialMessageAsync(string message, IPEndPoint ipEndPoint, IGameWriter gameWriter)
+    private async Task<(IGameServer? GameServer, IGameReader? GameReader)> GetGameServerFromInitialMessageAsync(
+        string message, 
+        IPEndPoint ipEndPoint, 
+        IGameWriter gameWriter, 
+        CancellationToken cancellationToken
+    )
     {
         var parts = message.Split('\t');
         var eventType = parts[0];
@@ -436,12 +442,19 @@ public class SocketServer : ISocketServer
 
         var publicIpAddress = ipEndPoint.Address.IsPrivate() ? _ipAddress : ipEndPoint.Address;
         var key = $"{publicIpAddress}:{gamePort}";
-        var gameServer = await GetGameServerAsync(publicIpAddress, ipEndPoint.Address, gameWriter, key, serverInfo);
-        var gameReader = new GameReader(gameServer);
+        var gameServer = await GetGameServerAsync(publicIpAddress, ipEndPoint.Address, gameWriter, key, serverInfo, cancellationToken);
+        var gameReader = new GameReader(gameServer, cancellationToken: cancellationToken);
         return (gameServer, gameReader);
     }
 
-    private async Task<IGameServer> GetGameServerAsync(IPAddress publicIpAddress, IPAddress connectedIpAddress, IGameWriter gameWriter, string key, ServerInfo serverInfo)
+    private async Task<IGameServer> GetGameServerAsync(
+        IPAddress publicIpAddress, 
+        IPAddress connectedIpAddress,
+        IGameWriter gameWriter, 
+        string key, 
+        ServerInfo serverInfo, 
+        CancellationToken cancellationToken
+    )
     {
         if (_servers.ContainsKey(key))
         {
@@ -452,7 +465,7 @@ public class SocketServer : ISocketServer
         }
 
         Log.Information("Created new GameServer instance {ServerKey}", key);
-        var newServer = await GameServer.CreateAsync(publicIpAddress, connectedIpAddress, gameWriter, serverInfo, _globalServices);
+        var newServer = await GameServer.CreateAsync(publicIpAddress, connectedIpAddress, gameWriter, serverInfo, _globalServices, cancellationToken);
         _servers.TryAdd(key, newServer);
         return newServer;
     }

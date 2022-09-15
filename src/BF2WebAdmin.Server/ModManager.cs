@@ -34,6 +34,7 @@ public class ModManager : IModManager
     private readonly IModuleResolver _moduleResolver;
     private readonly IGameServer _gameServer;
     private readonly IServiceProvider _globalServices;
+    private readonly CancellationTokenSource _cancellationTokenSource;
 
     private IConfiguration Configuration { get; set; }
     private IServiceProvider _services;
@@ -98,10 +99,11 @@ public class ModManager : IModManager
         };
     }
 
-    private ModManager(IGameServer gameServer, IServiceProvider globalServices)
+    private ModManager(IGameServer gameServer, IServiceProvider globalServices, CancellationToken cancellationToken)
     {
         _gameServer = gameServer;
         _globalServices = globalServices;
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _moduleResolver = new ModuleResolver();
         Mediator = new Mediator(_moduleResolver);
 
@@ -109,9 +111,9 @@ public class ModManager : IModManager
         ConfigureDependencies();
     }
 
-    public static async Task<ModManager> CreateAsync(IGameServer gameServer, IServiceProvider globalServices)
+    public static async Task<ModManager> CreateAsync(IGameServer gameServer, IServiceProvider globalServices, CancellationToken cancellationToken)
     {
-        var modManager = new ModManager(gameServer, globalServices);
+        var modManager = new ModManager(gameServer, globalServices, cancellationToken);
 
         // EF Core queries can't run on the same DBContext in parallel
         // await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(() => Task.WhenAll(
@@ -170,6 +172,7 @@ public class ModManager : IModManager
         // Services
         //var connectionString = Configuration.GetValue<DatabaseConfig>("Database").ConnectionStrings.BF2DB;
         serviceCollection.AddSingleton(_gameServer);
+        serviceCollection.AddSingleton(_cancellationTokenSource);
         serviceCollection.AddSingleton<ICountryResolver>(c => new CountryResolver(geoipConfig["DatabasePath"]));
         serviceCollection.AddSingleton<IReadOnlyPolicyRegistry<string>>(PolicyRegistry);
         serviceCollection.AddSingleton<IMediator>(c => Mediator);
@@ -354,5 +357,12 @@ public class ModManager : IModManager
         {
             _gameServer.GameWriter.SendText("Insufficient permissions");
         }
+    }
+
+    public void Dispose()
+    {
+        _cancellationTokenSource.Cancel();
+        _cancellationTokenSource.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

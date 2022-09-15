@@ -19,6 +19,7 @@ public class GameServer : IGameServer
 
     private IGameWriter _gameWriter;
     private readonly IServiceProvider _globalServices;
+    private readonly CancellationToken _cancellationToken;
     public ServerInfo ServerInfo { get; private set; }
     public IGameWriter GameWriter => _gameWriter;
     public IModManager? ModManager { get; private set; }
@@ -61,19 +62,27 @@ public class GameServer : IGameServer
     private bool _enablePositionUpdates = true;
     private readonly SemaphoreSlim _modManagerLock = new(1);
 
-    private GameServer(IPAddress publicIpAddress, IPAddress connectedIpAddress, IGameWriter writer, ServerInfo serverInfo, IServiceProvider globalServices)
+    private GameServer(IPAddress publicIpAddress, IPAddress connectedIpAddress, IGameWriter writer, ServerInfo serverInfo, IServiceProvider globalServices, CancellationToken cancellationToken)
     {
         IpAddress = publicIpAddress;
         ConnectedIpAddress = connectedIpAddress;
         _gameWriter = writer;
         _globalServices = globalServices;
+        _cancellationToken = cancellationToken;
         ServerInfo = serverInfo;
     }
 
-    public static async Task<GameServer> CreateAsync(IPAddress publicIpAddress, IPAddress connectedIpAddress, IGameWriter writer, ServerInfo serverInfo, IServiceProvider globalServices)
+    public static async Task<GameServer> CreateAsync(
+        IPAddress publicIpAddress, 
+        IPAddress connectedIpAddress,
+        IGameWriter writer, 
+        ServerInfo serverInfo, 
+        IServiceProvider globalServices, 
+        CancellationToken cancellationToken
+    )
     {
         // TODO: Pause everything until we receive data from the server (we don't know the gameport before so we cant tell serverId)
-        var gameServer = new GameServer(publicIpAddress, connectedIpAddress, writer, serverInfo, globalServices);
+        var gameServer = new GameServer(publicIpAddress, connectedIpAddress, writer, serverInfo, globalServices, cancellationToken);
         await gameServer.UpdateSocketStateAsync(SocketState.Connected, DateTimeOffset.UtcNow);
 
         // Init kill command, fast pad repairs, heli startup
@@ -116,12 +125,13 @@ public class GameServer : IGameServer
         try
         {
             // Avoid creating multiple modmanagers if called at the same time
-            await _modManagerLock.WaitAsync();
+            await _modManagerLock.WaitAsync(_cancellationToken);
             try
             {
                 if (ModManager == null || forceReinitialize)
                 {
-                    ModManager = await Server.ModManager.CreateAsync(this, _globalServices);
+                    ModManager?.Dispose();
+                    ModManager = await Server.ModManager.CreateAsync(this, _globalServices, _cancellationToken);
                     await ModManager.Mediator.PublishAsync(new SocketStateChangedEvent(SocketState, DateTimeOffset.UtcNow));
                 }
             }

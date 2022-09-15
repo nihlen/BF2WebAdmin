@@ -15,18 +15,20 @@ public class FakeGameServer
     private readonly int _rconPort;
     private readonly string _gameLogPath;
     private readonly int _skip;
+    private readonly CancellationToken _cancellationToken;
     private bool _run;
 
     private StreamReader _reader;
     private StreamWriter _writer;
 
-    public FakeGameServer(IPAddress ipAddress, int port, int rconPort, string gameLogPath, int skip = 0)
+    public FakeGameServer(IPAddress ipAddress, int port, int rconPort, string gameLogPath, int skip = 0, CancellationToken? cancellationToken = null)
     {
         _ipAddress = ipAddress;
         _port = port;
         _rconPort = rconPort;
         _gameLogPath = gameLogPath;
         _skip = skip;
+        _cancellationToken = cancellationToken ?? CancellationToken.None;
         _run = true;
     }
 
@@ -40,7 +42,7 @@ public class FakeGameServer
                 rconListener.Start();
                 while (rconListener.Server.IsBound)
                 {
-                    var client = await rconListener.AcceptTcpClientAsync();
+                    var client = await rconListener.AcceptTcpClientAsync(_cancellationToken);
                     _ = Task.Run(async () =>
                     {
                         try
@@ -51,7 +53,8 @@ public class FakeGameServer
                             writer.Write(Encoding.UTF8.GetBytes(RconClient.RconResponses.AuthenticationSuccessResponse + "\n"));
                             while (client.Connected && stream.CanRead)
                             {
-                                var message = await reader.ReadLineAsync();
+                                // TODO: switch to .ReadLineAsync(_cancellationToken) in .NET 7
+                                var message = await reader.ReadLineAsync().WaitAsync(_cancellationToken);
                                 writer.Write(new byte[] { 0x04 });
                             }
                         }
@@ -59,14 +62,14 @@ public class FakeGameServer
                         {
                             Log.Error(e, "Rcon message read failed");
                         }
-                    });
+                    }, _cancellationToken);
                 }
             }
             catch (Exception e)
             {
                 Log.Error(e, "Rcon listener failed");
             }
-        });
+        }, _cancellationToken);
 
         // Wait for the listening server to start up
         await Task.Delay(5000);
@@ -76,7 +79,7 @@ public class FakeGameServer
             try
             {
                 using var client = new TcpClient();
-                await client.ConnectAsync(_ipAddress, _port);
+                await client.ConnectAsync(_ipAddress, _port, _cancellationToken);
 
                 await using var stream = client.GetStream();
                 using (_reader = new StreamReader(stream))
@@ -90,8 +93,9 @@ public class FakeGameServer
 
                     while (stream.CanRead)
                     {
-                        var message = await _reader.ReadLineAsync();
-                        Log.Information("Received: {message}", message);
+                        // TODO: switch to .ReadLineAsync(_cancellationToken) in .NET 7
+                        var message = await _reader.ReadLineAsync().WaitAsync(_cancellationToken);
+                        Log.Information("Received: {Message}", message);
                     }
 
                     await writeTask;
@@ -102,7 +106,7 @@ public class FakeGameServer
             {
                 Log.Error(e, "Fake game server failed");
             }
-        });
+        }, _cancellationToken);
     }
 
     private bool skipFinished = false;
@@ -112,8 +116,8 @@ public class FakeGameServer
     private async Task SendGameEvents()
     {
         DiscordModule.IsEnabled = false;
-        var lines = await File.ReadAllLinesAsync(_gameLogPath);
-        Log.Information("Read {lines} game events from file", lines.Length);
+        var lines = await File.ReadAllLinesAsync(_gameLogPath, _cancellationToken);
+        Log.Information("Read {Lines} game events from file", lines.Length);
 
         //lines = lines.Skip(7445).ToArray(); // skip until 2v2 action - there will be mismatch though
 
@@ -123,6 +127,9 @@ public class FakeGameServer
             var lineNumber = 1;
             foreach (var line in lines)
             {
+                if (_cancellationToken.IsCancellationRequested)
+                    return;
+                
                 //if (line.Contains("playerPositionUpdate") || line.Contains("projectilePositionUpdate"))
                 //    continue;
 

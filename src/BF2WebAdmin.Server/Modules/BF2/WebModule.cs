@@ -36,7 +36,7 @@ public class WebModule : BaseModule,
     private IServerHubClient ClientsGroup => _serverHub.Clients.Group(_gameServer.Id);
     private IServerHubClient ClientsUser(string userId) => _serverHub.Clients.All; // TODO: fix user messaging - doesn't send anything?
 
-    public WebModule(IGameServer server, IHubContext<ServerHub, IServerHubClient> serverHub, IServerSettingsRepository serverSettingsRepository) : base(server)
+    public WebModule(IGameServer server, IHubContext<ServerHub, IServerHubClient> serverHub, IServerSettingsRepository serverSettingsRepository, CancellationTokenSource cts) : base(server, cts)
     {
         _gameServer = server;
         _serverHub = serverHub;

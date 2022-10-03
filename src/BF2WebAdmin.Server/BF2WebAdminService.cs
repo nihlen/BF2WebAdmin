@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using BF2WebAdmin.Server.Extensions;
 using Microsoft.Extensions.Options;
+using Nihlen.Common.Telemetry;
 using Serilog;
 
 namespace BF2WebAdmin.Server;
@@ -19,6 +20,8 @@ public class BF2WebAdminService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        using var activity = Telemetry.ActivitySource.StartActivity(nameof(BF2WebAdminService));
+
         var listenTask = _server.ListenAsync(stoppingToken);
 
         // Create a fake game server that connects

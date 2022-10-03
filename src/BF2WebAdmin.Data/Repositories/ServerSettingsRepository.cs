@@ -67,7 +67,7 @@ public class ServerSettingsRepository : IServerSettingsRepository
             Module = m,
             IsEnabled = true
         }));
-        
+
         await _context.SaveChangesAsync();
     }
 
@@ -80,13 +80,22 @@ public class ServerSettingsRepository : IServerSettingsRepository
 
     public async Task SetPlayerAuthAsync(string serverGroup, string playerHash, int authLevel)
     {
-        var entity = new ServerPlayerAuth
+        var existingPlayerAuth = await _context.ServerPlayerAuths.FindAsync(serverGroup, playerHash);
+        if (existingPlayerAuth is not null)
         {
-            ServerGroup = serverGroup,
-            PlayerHash = playerHash,
-            AuthLevel = authLevel
-        };
-        _context.ServerPlayerAuths.Update(entity);
+            existingPlayerAuth.AuthLevel = authLevel;
+            _context.ServerPlayerAuths.Update(existingPlayerAuth);
+        }
+        else
+        {
+            _context.ServerPlayerAuths.Add(new()
+            {
+                ServerGroup = serverGroup,
+                PlayerHash = playerHash,
+                AuthLevel = authLevel
+            });
+        }
+
         await _context.SaveChangesAsync();
     }
 }

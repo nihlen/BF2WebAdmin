@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using System.Text;
 using System.Threading.Channels;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
@@ -8,6 +10,7 @@ using BF2WebAdmin.Server.Services;
 using BF2WebAdmin.Shared;
 using Discord;
 using Discord.WebSocket;
+using Nihlen.Common.Telemetry;
 using Serilog;
 using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;
 
@@ -242,6 +245,12 @@ public class DiscordModule : BaseModule,
             SingleReader = true,
             SingleWriter = true
         });
+
+        if (_discordMessageChannel.Reader.CanCount)
+        {
+            var tagList = new TagList { { "serverid", GameServer.Id } };
+            _ = Telemetry.Meter.CreateObservableGauge("bf2wa.discord.queue.count", () => new Measurement<int>(_discordMessageChannel.Reader.Count, tagList), description: "Length of the discord channel queue");
+        }
 
         // TODO: Start async in an event callback - proper?
         RunBackgroundTask("Discord Bot", StartBotAsync);

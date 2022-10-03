@@ -1,7 +1,9 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.Diagnostics;
+using System.Text.RegularExpressions;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
+using Nihlen.Common.Telemetry;
 using Serilog;
 
 namespace BF2WebAdmin.Server.Abstractions;
@@ -22,9 +24,9 @@ public abstract class BaseModule : IModule
     {
         var replacements = new Dictionary<string, string>
         {
-            {"{TEMPLATE}", template},
-            {"{POSITION}", position.ToString()},
-            {"{ROTATION}", rotation.ToString()}
+            { "{TEMPLATE}", template },
+            { "{POSITION}", position.ToString() },
+            { "{ROTATION}", rotation.ToString() }
         };
 
         var script = RconScript.AddObject.Select(line => line.ReplacePlaceholders(replacements));
@@ -38,7 +40,7 @@ public abstract class BaseModule : IModule
     {
         GameServer.GameWriter.SendHealth(player, 1);
     }
-        
+
     protected void SwitchAll()
     {
         GameServer.GameWriter.SendText("Switching teams");
@@ -63,6 +65,7 @@ public abstract class BaseModule : IModule
         if (text.StartsWith("!kick ")) return "iga kick" + text[5..];
         if (text.StartsWith("!b ")) return "iga ban" + text[2..];
         if (text.StartsWith("!ban ")) return "iga ban" + text[4..];
+
         return text.TrimStart('!');
     }
 
@@ -88,6 +91,9 @@ public abstract class BaseModule : IModule
     {
         _ = Task.Run(async () =>
         {
+            using var activity = Telemetry.ActivitySource.StartActivity("BackgroundTask");
+            activity?.SetTag("bf2wa.task-description", description);
+
             try
             {
                 await func();
@@ -95,6 +101,7 @@ public abstract class BaseModule : IModule
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to complete background task: {Description}", description);
+                activity?.SetStatus(ActivityStatusCode.Error, $"Background task failed: {ex.Message}");
             }
         }, ModuleCancellationToken);
     }

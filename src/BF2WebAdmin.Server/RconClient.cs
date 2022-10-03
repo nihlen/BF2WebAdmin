@@ -1,8 +1,10 @@
-﻿using System.Net;
+﻿using System.Diagnostics;
+using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using BF2WebAdmin.Server.Abstractions;
+using Nihlen.Common.Telemetry;
 using Serilog;
 
 namespace BF2WebAdmin.Server;
@@ -28,10 +30,16 @@ public class RconClient : IRconClient, IDisposable
 
     public async Task<string> SendAsync(string command)
     {
+        using var activity = Telemetry.ActivitySource.StartActivity("SendRconCommand");
+        activity?.SetTag("bf2wa.rcon-endpoint", $"{_ipAddress}:{_port}");
+        activity?.SetTag("bf2wa.rcon-command", command);
+
         Log.Debug("RCON connecting to {IpAddress} {Port} with command {Command}", _ipAddress, _port, command);
         if (_client?.Connected != true)
             await AuthenticateClientAsync();
 
+        activity?.AddEvent(new("Authenticated successfully", DateTimeOffset.UtcNow));
+        
         _writer?.Write(GetCommandBytes(command));
         var response = ReadCommandResponse(_stream!);
         Log.Debug("RCON response: {Response}", response);
@@ -43,6 +51,8 @@ public class RconClient : IRconClient, IDisposable
         // Use IPv4 or BF2 RCON fails
         _client = new TcpClient(AddressFamily.InterNetwork);
         await _client.ConnectAsync(_ipAddress, _port);
+
+        Activity.Current?.AddEvent(new("Connected", DateTimeOffset.UtcNow));
 
         _stream = _client.GetStream();
         _reader = new StreamReader(_stream);

@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Threading.Channels;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
+using Nihlen.Common.Telemetry;
 using Serilog;
 
 namespace BF2WebAdmin.Server;
@@ -31,6 +33,12 @@ public class GameReader : IGameReader
             SingleReader = true,
             SingleWriter = true
         });
+        
+        if (_gameEventChannel.Reader.CanCount)
+        {
+            var tagList = new TagList { { "serverid", _gameServer.Id } };
+            _ = Telemetry.Meter.CreateObservableGauge("bf2wa.reader.queue.count", () => new Measurement<int>(_gameEventChannel.Reader.Count, tagList), description: "Length of the game reader channel queue");
+        }
 
         if (_gameLogPath != null)
             Log.Debug("Logging game events to {gameLogPath}", _gameLogPath);
@@ -48,15 +56,29 @@ public class GameReader : IGameReader
         // Parse all messages written to the channel asynchronously
         await foreach (var (message, time) in _gameEventChannel.Reader.ReadAllAsync(_cancellationToken))
         {
+            var startTime = DateTimeOffset.UtcNow;
+            if (string.IsNullOrWhiteSpace(message))
+                continue;
+
+            var eventType = message.Split('\t').FirstOrDefault();
+            using var activity = TraceEventType(eventType) ? Telemetry.ActivitySource.StartActivity("ReceiveGameMessage:" + eventType) : null;
+            activity?.SetTag("bf2wa.server-id", _gameServer.Id);
+            activity?.SetTag("bf2wa.game-message", message);
+
             try
             {
                 await ParseMessageAsync(message, time);
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Failed to parse message {message}", message);
+                Log.Error(ex, "Failed to parse message {Message}", message);
+                activity?.SetStatus(ActivityStatusCode.Error, $"Game message parse failed: {ex.Message}");
             }
+            
+            AppDiagnostics.TrackMessageReceive(startTime, _gameServer.Id);
         }
+
+        static bool TraceEventType(string? eventType) => eventType != "playerPositionUpdate" && eventType != "projectilePositionUpdate";
     }
 
     private async Task ParseMessageAsync(string message, DateTimeOffset time)
@@ -64,6 +86,8 @@ public class GameReader : IGameReader
         var parts = message.Split('\t');
         var eventType = parts[0];
 
+        Activity.Current?.SetTag("bf2wa.game-event-type", eventType);
+        
         if (eventType == "response")
         {
             _gameServer.SetRconResponse(parts[1], parts[2]);
@@ -86,6 +110,7 @@ public class GameReader : IGameReader
             if (eventType != "Unknown object or method!" && !eventType.StartsWith("id") && !eventType.StartsWith("0x"))
             {
                 Log.Error("Unknown server event: '{EventType}'", eventType);
+                Activity.Current?.SetTag("bf2wa.game-event-unknown", true);
             }
         }
     }

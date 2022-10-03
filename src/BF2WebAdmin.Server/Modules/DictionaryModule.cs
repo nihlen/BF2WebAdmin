@@ -18,13 +18,13 @@ public class DictionaryModule : IModule,
     {
         var term = Uri.EscapeDataString(command.Term);
         var client = new HttpClient();
-        var response = await client.GetStringAsync($"http://api.urbandictionary.com/v0/define?term={term}");
+        var response = await client.GetStringAsync($"https://api.urbandictionary.com/v0/define?term={term}");
         var result = JsonConvert.DeserializeObject<UrbanDictionaryResult>(response);
         var definition = result.List.FirstOrDefault();
         if (definition != null)
             _gameServer.GameWriter.SendText($"§C1001{definition.Word}: §C1001{definition.Definition}");
         else
-            _gameServer.GameWriter.SendText($"No definition found for §C1001{command.Term}");
+            _gameServer.GameWriter.SendText($"No definition found");
     }
 
     public class UrbanDictionaryResult

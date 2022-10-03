@@ -1,12 +1,15 @@
 ﻿using System.Collections.Concurrent;
+using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Sockets;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Shared;
+using Nihlen.Common.Telemetry;
 using Polly;
 using Serilog;
+using Serilog.Context;
 
 namespace BF2WebAdmin.Server;
 
@@ -46,6 +49,10 @@ public class SocketServer : ISocketServer
         _logRecv = logRecv;
         _connections = new ConcurrentDictionary<IPEndPoint, TcpClient>();
         _servers = new ConcurrentDictionary<string, IGameServer>();
+        
+        // TODO: Move to BF2WebAdminMeter.cs? How to access servers?
+        _ = Telemetry.Meter.CreateObservableGauge("bf2wa.server.connected.count", () => _servers.Values.Count(s => s.SocketState == SocketState.Connected), description: "Connected game servers");
+        _ = Telemetry.Meter.CreateObservableGauge("bf2wa.player.count", () => _servers.Values.Sum(s => s.Players.Count()), description: "Players on all servers");
     }
 
     public async Task ListenAsync(CancellationToken cancellationToken)
@@ -59,6 +66,8 @@ public class SocketServer : ISocketServer
             try
             {
                 var client = await server.AcceptTcpClientAsync(cancellationToken);
+                AppDiagnostics.ConnectedClientsCounter.Add(1);
+                
                 var ipEndPoint = GetIpEndPoint(client);
                 var ipv4 = ipEndPoint.Address.MapToIPv4();
                 var isPrivateIp = ipv4.IsPrivate();
@@ -66,9 +75,11 @@ public class SocketServer : ISocketServer
                 {
                     Log.Warning("Unauthorized connection from {IpAddress} - closing socket", ipEndPoint.Address);
                     client.Close();
+                    AppDiagnostics.RejectedClientsCounter.Add(1);
                     continue;
                 }
 
+                AppDiagnostics.AcceptedClientsCounter.Add(1);
                 _connections.TryAdd(ipEndPoint, client);
 
                 var task = HandleConnectionLegacyAsync(client, cancellationToken);
@@ -120,7 +131,8 @@ public class SocketServer : ISocketServer
             IGameWriter gameWriter = new GameWriter(writer, _logSend, cancellationToken);
             IGameReader gameReader = null;
 
-            while (client.Connected && stream.CanRead)
+            
+            while (client.Connected && stream.CanRead && !cancellationToken.IsCancellationRequested)
             {
                 try
                 {
@@ -131,9 +143,11 @@ public class SocketServer : ISocketServer
                     {
                         // BF2 server returns NULL when disconnecting
                         // Happens when restarting or connecting to a different instance
-                        Log.Error("Null message received");
+                        Log.Error("Null message received for {ServerId}", gameServer?.Id);
                         break;
                     }
+                    
+                    AppDiagnostics.ReceivedMessagesCounter.Add(1);
 
                     // TODO: temp ignore spam
                     //if (!message.StartsWith("playerPos") && !message.StartsWith("projectilePos"))
@@ -175,6 +189,7 @@ public class SocketServer : ISocketServer
                 catch (Exception ex)
                 {
                     Log.Error(ex, "Error while handling server message");
+                    AppDiagnostics.ErrorMessagesCounter.Add(1);
                 }
             }
 
@@ -508,6 +523,8 @@ public class SocketServer : ISocketServer
                 var exceptions = new List<Exception>();
                 foreach (var gameServerIp in gameServerIps)
                 {
+                    AppDiagnostics.ServerConnectRetryCounter.Add(1, new KeyValuePair<string, object?>("server-address", $"{ipAddress}:{port}"));
+                    
                     try
                     {
                         // Check if server has already connected

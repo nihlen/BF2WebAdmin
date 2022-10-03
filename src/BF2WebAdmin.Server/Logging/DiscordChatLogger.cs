@@ -1,5 +1,7 @@
-﻿using BF2WebAdmin.Server.Configuration.Models;
+﻿using System.Diagnostics;
+using BF2WebAdmin.Server.Configuration.Models;
 using Microsoft.Extensions.Options;
+using Nihlen.Common.Telemetry;
 using Serilog;
 
 namespace BF2WebAdmin.Server.Logging;
@@ -28,6 +30,8 @@ public class DiscordChatLogger : IChatLogger
 
     public async Task SendAsync(string message, string serverGroup, string messageType)
     {
+        using var activity = Telemetry.ActivitySource.StartActivity("SendDiscordMessage");
+        
         try
         {
             var tasks = _discordClients
@@ -36,9 +40,10 @@ public class DiscordChatLogger : IChatLogger
 
             await Task.WhenAll(tasks);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Log.Error(e, "Failed logging to Discord {Message}", message);
+            Log.Error(ex, "Failed logging to Discord {Message}", message);
+            activity?.SetStatus(ActivityStatusCode.Error, $"Discord message failed: {ex.Message}");
         }
     }
 

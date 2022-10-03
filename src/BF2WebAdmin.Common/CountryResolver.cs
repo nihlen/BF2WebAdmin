@@ -1,6 +1,7 @@
 ﻿using System;
 using MaxMind.GeoIP2;
 using MaxMind.GeoIP2.Responses;
+using Nihlen.Common.Telemetry;
 
 namespace BF2WebAdmin.Common;
 
@@ -20,6 +21,8 @@ public class CountryResolver : ICountryResolver
 
     public CountryResponse GetCountryResponse(string ipAddress)
     {
+        using var _ = Telemetry.ActivitySource.StartActivity("GetCountryForIp");
+        
         var cached = CacheManager.Get<CountryResponse>(ipAddress);
         if (cached != null)
             return cached;

@@ -1,8 +1,10 @@
-﻿using System.Reflection;
+﻿using System.Diagnostics;
+using System.Reflection;
 using System.Text;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Extensions;
+using Nihlen.Common.Telemetry;
 using Serilog;
 
 namespace BF2WebAdmin.Server;
@@ -97,14 +99,24 @@ public class ModuleResolver : IModuleResolver
                     // Check command type since alias can map to different commands depending on parameters
                     if (command is TCommand matchedCommand)
                     {
+                        // TODO: add GameServer to command context so we can add the serverid to metrics
+                        var startTime = DateTimeOffset.UtcNow;
+                        var moduleType = syncHandler.GetType().Name;
+                        using var activity = Telemetry.ActivitySource.StartActivity("SyncCommandHandler:" + moduleType);
+                        activity?.SetTag("bf2wa.command-type", commandType.Name);
+                        activity?.SetTag("bf2wa.module-type", moduleType);
+
                         try
                         {
                             syncHandler.Handle(matchedCommand);
                         }
                         catch (Exception e)
                         {
-                            Log.Error(e, "Command handling failed for {message} (sync)", matchedCommand.Message);
+                            Log.Error(e, "Command handling failed for {Message} (sync)", matchedCommand.Message.Text);
+                            activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text}");
                         }
+                             
+                        AppDiagnostics.TrackCommand(commandType.Name, moduleType, startTime);
                     }
 
                     return ValueTask.CompletedTask;
@@ -122,14 +134,23 @@ public class ModuleResolver : IModuleResolver
                     // Check command type since alias can map to different commands depending on parameters
                     if (command is TCommand matchedCommand)
                     {
+                        var startTime = DateTimeOffset.UtcNow;
+                        var moduleType = asyncHandler.GetType().Name;
+                        using var activity = Telemetry.ActivitySource.StartActivity("AsyncCommandHandler:" + moduleType);
+                        activity?.SetTag("bf2wa.command-type", commandType.Name);
+                        activity?.SetTag("bf2wa.module-type", moduleType);
+
                         try
                         {
                             await asyncHandler.HandleAsync(matchedCommand);
                         }
-                        catch (Exception e)
+                        catch (Exception ex)
                         {
-                            Log.Error(e, "Command handling failed for {Message} (async)", matchedCommand.Message.Text);
+                            Log.Error(ex, "Command handling failed for {Message} (async)", matchedCommand.Message.Text);
+                            activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text} {ex.Message}");
                         }
+                                             
+                        AppDiagnostics.TrackCommand(commandType.Name, moduleType, startTime);
                     }
                 });
 
@@ -193,14 +214,23 @@ public class ModuleResolver : IModuleResolver
                     // Check command type since alias can map to different commands depending on parameters
                     if (gameEvent is TEvent matchedEvent)
                     {
+                        var startTime = DateTimeOffset.UtcNow;
+                        var moduleType = asyncHandler.GetType().Name;
+                        using var activity = TraceEventType(eventType.Name) ? Telemetry.ActivitySource.StartActivity("AsyncEventHandler:" + moduleType) : null;
+                        activity?.SetTag("bf2wa.event-type", eventType.Name);
+                        activity?.SetTag("bf2wa.module-type", moduleType);
+                        
                         try
                         {
                             await asyncHandler.HandleAsync(matchedEvent);
                         }
-                        catch (Exception e)
+                        catch (Exception ex)
                         {
-                            Log.Error(e, "Event handling failed for {Event} (async)", matchedEvent);
+                            Log.Error(ex, "Event handling failed for {Event} (async)", matchedEvent);
+                            activity?.SetStatus(ActivityStatusCode.Error, $"Event failed: {eventType.Name}, {ex.Message}");
                         }
+                                                          
+                        AppDiagnostics.TrackEvent(eventType.Name, moduleType, startTime);
                     }
                 });
 
@@ -211,6 +241,8 @@ public class ModuleResolver : IModuleResolver
 
         if (handlerCount == 0)
             Log.Verbose("No event handlers registered for {EventName}", typeof(TEvent).Name);
+        
+        static bool TraceEventType(string? eventType) => eventType != nameof(PlayerPositionEvent) && eventType != nameof(ProjectilePositionEvent);
     }
 
     private static void ScanAssembly()

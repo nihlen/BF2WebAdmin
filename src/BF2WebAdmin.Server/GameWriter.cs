@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -8,6 +9,7 @@ using System.Threading.Channels;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
+using Nihlen.Common.Telemetry;
 using Serilog;
 
 namespace BF2WebAdmin.Server;
@@ -51,6 +53,13 @@ public class GameWriter : IGameWriter
             SingleWriter = true
         });
 
+        if (_gameMessageChannel.Reader.CanCount)
+        {
+            // TODO: get server id somehow
+            var tagList = new TagList { { "serverid", "Unknown" } };
+            _ = Telemetry.Meter.CreateObservableGauge("bf2wa.writer.queue.count", () => new Measurement<int>(_gameMessageChannel.Reader.Count, tagList), description: "Length of the game writer channel queue");
+        }
+
         _ = Task.Run(SendAllMessagesAsync, cancellationToken);
     }
 
@@ -68,6 +77,10 @@ public class GameWriter : IGameWriter
         // Parse all messages written to the channel asynchronously
         await foreach (var message in _gameMessageChannel.Reader.ReadAllAsync(_cancellationToken))
         {
+            var startTime = DateTimeOffset.UtcNow;
+            using var activity = Telemetry.ActivitySource.StartActivity("SendGameMessage:" + message.Split(' ').FirstOrDefault());
+            activity?.SetTag("bf2wa.game-message", message);
+
             try
             {
                 if (_logSend)
@@ -89,7 +102,10 @@ public class GameWriter : IGameWriter
             catch (Exception ex)
             {
                 Log.Error(ex, "Write error for server");
+                activity?.SetStatus(ActivityStatusCode.Error, $"Failed to send game message: {ex.Message}");
             }
+
+            AppDiagnostics.TrackMessageSend(startTime, "?");
         }
     }
 

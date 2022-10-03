@@ -5,6 +5,7 @@ using BF2WebAdmin.Shared.Communication.DTOs;
 using BF2WebAdmin.Shared.Communication.Events;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Nihlen.Common.Telemetry;
 
 namespace BF2WebAdmin.Server.Hubs;
 
@@ -87,21 +88,34 @@ public class ServerHub : Hub<IServerHubClient>
 
     public async Task SendChatMessage(string serverId, string message)
     {
+        using var activity = Telemetry.ActivitySource.StartActivity($"{nameof(SendChatMessage)}:{message}");
+        activity?.SetTag("bf2wa.server-id", serverId);
+        activity?.SetTag("bf2wa.custom-command", message);
+        
         await GetWebModule(serverId).HandleAdminChatAsync(GetUserId(), message);
     }
 
     public async Task SendRconCommand(string serverId, string message)
     {
+        using var activity = Telemetry.ActivitySource.StartActivity($"{nameof(SendRconCommand)}:{message}");
+        activity?.SetTag("bf2wa.server-id", serverId);
+        activity?.SetTag("bf2wa.custom-command", message);
+        
         await GetWebModule(serverId).HandleRconCommandAsync(GetUserId(), message);
     }
 
     public async Task SendCustomCommand(string serverId, string message)
     {
+        using var activity = Telemetry.ActivitySource.StartActivity($"{nameof(SendCustomCommand)}:{message}");
+        activity?.SetTag("bf2wa.server-id", serverId);
+        activity?.SetTag("bf2wa.custom-command", message);
+        
         await GetWebModule(serverId).HandleCustomCommandAsync(GetUserId(), message);
     }
 
     public async Task<ServerDataDto> GetServer(string serverId)
     {
+        using var _ = Telemetry.ActivitySource.StartActivity();
         // return await GetWebModule(serverId).GetServerAsync(serverId);
         var server = await _serverSettingsRepository.GetServerAsync(serverId) ?? new Data.Entities.Server
         {
@@ -118,6 +132,7 @@ public class ServerHub : Hub<IServerHubClient>
 
     public async Task SetServer(string serverId, string serverGroup)
     {
+        using var _ = Telemetry.ActivitySource.StartActivity();
         await _serverSettingsRepository.SetServerAsync(new Data.Entities.Server { ServerId = serverId, ServerGroup = serverGroup });
         var gameServer = _socketServer.GetGameServer(serverId);
         if (gameServer is not null)
@@ -128,6 +143,7 @@ public class ServerHub : Hub<IServerHubClient>
 
     private static async Task ReloadModulesAsync(IGameServer gameServer)
     {
+        using var _ = Telemetry.ActivitySource.StartActivity();
         // TODO: disable whatever the old modmanager is doing, dispose and finish all long-running tasks
         // gameServer.ModManager.dispose?
         await gameServer.CreateModManagerAsync(true);
@@ -135,6 +151,7 @@ public class ServerHub : Hub<IServerHubClient>
 
     public async Task<IEnumerable<string>> GetServerGroupModules(string serverId, string serverGroup)
     {
+        using var _ = Telemetry.ActivitySource.StartActivity();
         // return await GetWebModule(serverId).GetServerGroupModulesAsync(serverGroup);
         var modules = await _serverSettingsRepository.GetModulesAsync(serverGroup);
         return modules.Concat(ModManager.DefaultModuleNames).Distinct();
@@ -142,17 +159,20 @@ public class ServerHub : Hub<IServerHubClient>
 
     public IEnumerable<string> GetAllModules()
     {
+        using var _ = Telemetry.ActivitySource.StartActivity();
         return ModuleResolver.AllModuleNames;
     }
 
     public async Task SetServerGroupModules(string serverId, string serverGroup, IEnumerable<string> moduleNames)
     {
+        using var _ = Telemetry.ActivitySource.StartActivity();
         // await GetWebModule(serverId).SetServerGroupModulesAsync(serverGroup, moduleNames);
         await _serverSettingsRepository.SetModulesAsync(serverGroup, moduleNames);
     }
 
     public async Task ReloadServerGroupModules(string serverGroup)
     {
+        using var _ = Telemetry.ActivitySource.StartActivity();
         var gameServers = _socketServer.GetGameServers(serverGroup);
         foreach (var gameServer in gameServers)
         {

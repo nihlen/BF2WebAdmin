@@ -17,6 +17,7 @@ using BF2WebAdmin.Server.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Nihlen.Common.Telemetry;
 using Polly;
 using Polly.Registry;
 using Serilog;
@@ -113,7 +114,11 @@ public class ModManager : IModManager
 
     public static async Task<ModManager> CreateAsync(IGameServer gameServer, IServiceProvider globalServices, CancellationToken cancellationToken)
     {
+        using var activity = Telemetry.ActivitySource.StartActivity();
+        
         var modManager = new ModManager(gameServer, globalServices, cancellationToken);
+        
+        activity?.AddEvent(new ("Created Modmanager"));
 
         // EF Core queries can't run on the same DBContext in parallel
         // await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(() => Task.WhenAll(

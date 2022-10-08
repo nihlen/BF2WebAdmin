@@ -78,7 +78,9 @@ public class GameWriter : IGameWriter
         await foreach (var message in _gameMessageChannel.Reader.ReadAllAsync(_cancellationToken))
         {
             var startTime = DateTimeOffset.UtcNow;
-            using var activity = Telemetry.ActivitySource.StartActivity("SendGameMessage:" + message.Split(' ').FirstOrDefault());
+            // Root activity only containing writes to a stream is not very interesting...
+            // using var activity = Telemetry.StartRootActivity("SendGameMessage:" + message.Split(' ').FirstOrDefault());
+            Activity? activity = null;
             activity?.SetTag("bf2wa.game-message", message);
 
             try

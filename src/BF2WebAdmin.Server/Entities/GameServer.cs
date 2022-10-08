@@ -7,6 +7,7 @@ using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Shared;
 using BF2WebAdmin.Shared.Communication.DTOs;
+using Nihlen.Common.Telemetry;
 using Nihlen.Gamespy;
 using Serilog;
 
@@ -122,10 +123,14 @@ public class GameServer : IGameServer
     {
         // TODO: don't run this here since errors are not logged/handled, and remove after running once so it doesn't create new ModManagers
         // Server has the correct id now, so we can load player/server settings and setup mods
+        using var activity = Telemetry.ActivitySource.StartActivity();
+        
         try
         {
             // Avoid creating multiple modmanagers if called at the same time
             await _modManagerLock.WaitAsync(_cancellationToken);
+            activity?.AddEvent(new ("Received lock"));
+            
             try
             {
                 if (ModManager == null || forceReinitialize)

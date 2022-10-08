@@ -61,7 +61,7 @@ public class GameReader : IGameReader
                 continue;
 
             var eventType = message.Split('\t').FirstOrDefault();
-            using var activity = TraceEventType(eventType) ? Telemetry.ActivitySource.StartActivity("ReceiveGameMessage:" + eventType) : null;
+            using var activity = TraceEventType(eventType) ? Telemetry.StartRootActivity("ReceiveGameMessage:" + eventType) : null;
             activity?.SetTag("bf2wa.server-id", _gameServer.Id);
             activity?.SetTag("bf2wa.game-message", message);
 
@@ -102,7 +102,7 @@ public class GameReader : IGameReader
             var elapsedMs = _messageStopWatch.ElapsedMilliseconds;
             if (elapsedMs > 400)
             {
-                Log.Warning("Event {EventType} took {ElapsedMilliseconds} ms ({Message})", eventType, _messageStopWatch.ElapsedMilliseconds, message);
+                Log.Warning("Event {EventType} took {ElapsedMilliseconds} ms ({Message}) Activity: {ActivityDuration} ticks", eventType, _messageStopWatch.ElapsedMilliseconds, message, Activity.Current?.Duration.Ticks);
             }
         }
         else if (eventType.Length > 0)

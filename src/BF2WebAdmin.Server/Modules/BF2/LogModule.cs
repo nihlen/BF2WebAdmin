@@ -62,43 +62,43 @@ public class LogModule : IModule,
         var channel = e.Message.Channel;
         var time = e.TimeStamp.ToShortDateTime();
         var text = e.Message.Text;
-        _serverChatLogger.Information($"{playerId}\t{playerName}\t{team}\t{channel}\t[{time}]\t{text}");
+        _serverChatLogger.Information("{PlayerId}\t{PlayerName}\t{Team}\t{Channel}\t[{Time}]\t{Text}", playerId, playerName, team, channel, time, text);
         return ValueTask.CompletedTask;
     }
 
     public ValueTask HandleAsync(SocketStateChangedEvent e)
     {
-        _serverEventLogger.Information($"[{TimeString}]\tSocketState\t{e.SocketState}");
+        _serverEventLogger.Information("[{TimeString}]\tSocketState\t{SocketState}", TimeString, e.SocketState);
         return ValueTask.CompletedTask;
     }
 
     public ValueTask HandleAsync(PlayerJoinEvent e)
     {
-        _serverEventLogger.Information($"[{TimeString}]\tPlayerJoin\t{e.Player.Hash}\t{e.Player.Name}\t{e.Player.IpAddress}\t{e.Player.Country?.Code}\t{_gameServer.Players.Count()}");
-        return ValueTask.CompletedTask;
+        _serverEventLogger.Information("[{TimeString}]\tPlayerJoin\t{PlayerHash}\t{PlayerName}\t{PlayerIpAddress}\t{CountryCode}\t{Count}", TimeString, e.Player.Hash, e.Player.Name, e.Player.IpAddress, e.Player.Country?.Code, _gameServer.Players.Count());
+       return ValueTask.CompletedTask;
     }
 
     public ValueTask HandleAsync(PlayerLeftEvent e)
     {
-        _serverEventLogger.Information($"[{TimeString}]\tPlayerLeft\t{e.Player.Hash}\t{e.Player.Name}\t{e.Player.IpAddress}\t{e.Player.Country?.Code}\t{_gameServer.Players.Count()}");
-        return ValueTask.CompletedTask;
+        _serverEventLogger.Information("[{TimeString}]\tPlayerLeft\t{PlayerHash}\t{PlayerName}\t{PlayerIpAddress}\t{CountryCode}\t{Count}", TimeString, e.Player.Hash, e.Player.Name, e.Player.IpAddress, e.Player.Country?.Code, _gameServer.Players.Count());
+       return ValueTask.CompletedTask;
     }
 
     public ValueTask HandleAsync(GameStateChangedEvent e)
     {
-        _serverEventLogger.Information($"[{TimeString}]\tGameState\t{e.GameState}");
+        _serverEventLogger.Information("[{TimeString}]\tGameState\t{EGameState}", TimeString, e.GameState);
         return ValueTask.CompletedTask;
     }
 
     public ValueTask HandleAsync(MapChangedEvent e)
     {
-        _serverEventLogger.Information($"[{TimeString}]\tMapChanged\t{e.Map?.Index}\t{e.Map?.Name}\t{e.Map?.Size}");
+        _serverEventLogger.Information("[{TimeString}]\tMapChanged\t{MapIndex}\t{MapName}\t{MapSize}", TimeString, e.Map?.Index, e.Map?.Name, e.Map?.Size);
         return ValueTask.CompletedTask;
     }
 
     public ValueTask HandleAsync(ServerUpdateEvent e)
     {
-        _serverEventLogger.Information($"[{TimeString}]\tServerUpdate\t{e.Name}\t{e.GamePort}\t{e.QueryPort}\t{e.MaxPlayers}");
+        _serverEventLogger.Information("[{TimeString}]\tServerUpdate\t{EName}\t{EGamePort}\t{EQueryPort}\t{EMaxPlayers}", TimeString, e.Name, e.GamePort, e.QueryPort, e.MaxPlayers);
         return ValueTask.CompletedTask;
     }
 }

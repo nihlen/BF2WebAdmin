@@ -9,17 +9,20 @@ namespace BF2WebAdmin.Server;
 public class BF2WebAdminService : BackgroundService
 {
     private readonly ISocketServer _server;
-
+    private readonly IHostApplicationLifetime _applicationLifetime;
     private readonly ServerSettings _settings;
 
-    public BF2WebAdminService(IOptions<ServerSettings> settings, ISocketServer server)
+    public BF2WebAdminService(IOptions<ServerSettings> settings, ISocketServer server, IHostApplicationLifetime applicationLifetime)
     {
         _server = server;
+        _applicationLifetime = applicationLifetime;
         _settings = settings.Value;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await WaitForActivityListenersAsync(stoppingToken);
+
         using var activity = Telemetry.ActivitySource.StartActivity(nameof(BF2WebAdminService));
 
         var listenTask = _server.ListenAsync(stoppingToken);
@@ -34,10 +37,10 @@ public class BF2WebAdminService : BackgroundService
                 _settings.Port,
                 _settings.GameServers[0].RconPort,
                 @"C:\Projects\DotNet\BF2WebAdmin\src\BF2WebAdmin.Server\bin\Debug\netcoreapp2.0\gameevents-31-220-7-51-0-1515868847.txt",
-                0,
-                //475_617
+                0, //475_617
                 stoppingToken
             ); // 2v2 start?
+
             fakeGameServerTask = fakeGameServer.ConnectAsync();
         }
 
@@ -49,12 +52,28 @@ public class BF2WebAdminService : BackgroundService
 
         try
         {
-            // TODO: exit when the listenTask fails/finishes so container will restart?
             await Task.WhenAll(listenTask, fakeGameServerTask, connectToGameServersTask);
         }
         catch (Exception ex)
         {
-            Log.Error(ex.Message);
+            // Stop the application if the main service fails
+            // The container will restart automatically if configured
+            Log.Fatal(ex, "Service failed");
+            _applicationLifetime.StopApplication();
+        }
+
+        static async Task WaitForActivityListenersAsync(CancellationToken cancellationToken)
+        {
+            // The activity listeners take around 300 ms to be added in debug mode
+            // We want to delay server connections until this is done to get the initial traces
+            // There should be a better way to do this though...
+            for (var i = 0; i < 20 && !Telemetry.ActivitySource.HasListeners(); i++)
+            {
+                await Task.Delay(100, cancellationToken);
+            }
+
+            if (!Telemetry.ActivitySource.HasListeners())
+                Log.Warning("No activity listeners found after waiting 2 s");
         }
     }
 }

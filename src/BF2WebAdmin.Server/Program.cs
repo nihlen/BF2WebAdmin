@@ -145,9 +145,6 @@ try
         await context.Database.MigrateAsync();
     }
 
-    // Set ServerHub static for use in WebModule
-    //ServerHub.Current = app.Services.GetRequiredService<IHubContext<ServerHub, IServerHubClient>>();
-
     app.UseResponseCompression();
 
     // Configure the HTTP request pipeline.
@@ -178,13 +175,6 @@ try
     app.MapControllers();
     app.MapHub<ServerHub>("/hubs/server");
     app.MapFallbackToFile("index.html");
-
-    //var myActivitySource = new ActivitySource("BF2WA");
-    //using (var activity = myActivitySource.StartActivity("SayHello"))
-    //{
-    //    activity?.SetTag("foo", 1);
-    //    Log.Information("activity done");
-    //}
 
     app.Run();
 }

@@ -56,6 +56,11 @@ public static class TelemetryExtensions
                     o.EnableConnectionLevelAttributes = true;
                     o.RecordException = true;
                 })
+                .AddEntityFrameworkCoreInstrumentation(o =>
+                {
+                    o.SetDbStatementForText = true;
+                    o.SetDbStatementForStoredProcedure = true;
+                })
                 // .SetSampler(new ParentBasedSampler(new TraceIdRatioBasedSampler(0.1))) // sample 10 % of root spans fully
             );
 
@@ -73,6 +78,7 @@ public static class TelemetryExtensions
                 {
                     options.RefreshIntervalSecs = 10;
                 })
+                .AddRuntimeInstrumentation()
             );
         }
         catch (Exception ex)

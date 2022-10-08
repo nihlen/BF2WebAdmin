@@ -509,20 +509,15 @@ public class BF2Module : BaseModule,
 
         var rconClient = new RconClient(_gameServer.ConnectedIpAddress, _gameServer.ServerInfo.RconPort, _gameServer.ServerInfo.RconPassword);
 
-        // Delete existing admins
+        // Delete existing admins and add new admins from DB
         var ingameAdminResponse = await rconClient.SendAsync("iga listAdmins");
         var ingameAdmins = ingameAdminResponse.Split("\n").Where(l => l.Length > 40).Select(l => l.Substring(7, 32));
-        foreach (var ingameAdmin in ingameAdmins)
-        {
-            var removeAdminResponse = await rconClient.SendAsync($"iga delAdmin {ingameAdmin}");
-        }
-
-        // Add new admins from DB
         var admins = _gameServer.ModManager.AuthPlayers.SelectMany(p => p.ToList());
-        foreach (var admin in admins)
-        {
-            var addAdminResponse = await rconClient.SendAsync($"iga addAdmin {admin.PlayerHash} all");
-        }
+        
+        var commands = new List<string>();
+        commands.AddRange(ingameAdmins.Select(a => $"iga delAdmin {a}"));
+        commands.AddRange(admins.Select(a => $"iga addAdmin {a.PlayerHash} all"));
+        var response = await rconClient.SendAsync(commands);
     }
 
     public async ValueTask HandleAsync(PlayerJoinEvent e)

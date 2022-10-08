@@ -28,22 +28,31 @@ public class RconClient : IRconClient, IDisposable
         _password = password;
     }
 
-    public async Task<string> SendAsync(string command)
+    public async Task<string> SendAsync(string command) => await SendAsync(new[] { command });
+
+    public async Task<string> SendAsync(IEnumerable<string> commands)
     {
         using var activity = Telemetry.ActivitySource.StartActivity("SendRconCommand");
         activity?.SetTag("bf2wa.rcon-endpoint", $"{_ipAddress}:{_port}");
-        activity?.SetTag("bf2wa.rcon-command", command);
+        // activity?.SetTag("bf2wa.rcon-command", string.Join("|", commands));
 
-        Log.Debug("RCON connecting to {IpAddress} {Port} with command {Command}", _ipAddress, _port, command);
+        Log.Debug("RCON connecting to {IpAddress} {Port}", _ipAddress, _port);
         if (_client?.Connected != true)
             await AuthenticateClientAsync();
 
         activity?.AddEvent(new("Authenticated successfully", DateTimeOffset.UtcNow));
+
+        // Send and and read command responses one at a time, otherwise only the first response is written
+        var sb = new StringBuilder();
+        foreach (var command in commands)
+        {
+            _writer?.Write(GetCommandBytes(command));
+            var response = ReadCommandResponse(_stream!);
+            sb.Append(response);
+            Log.Debug("RCON response: {Response}", response);
+        }
         
-        _writer?.Write(GetCommandBytes(command));
-        var response = ReadCommandResponse(_stream!);
-        Log.Debug("RCON response: {Response}", response);
-        return response;
+        return sb.ToString();
     }
 
     private async Task AuthenticateClientAsync()

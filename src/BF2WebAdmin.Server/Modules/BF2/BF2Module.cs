@@ -104,7 +104,7 @@ public class BF2Module : BaseModule,
         if (!validRank)
             return;
 
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -113,7 +113,7 @@ public class BF2Module : BaseModule,
 
     public void Handle(FlipCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -123,7 +123,7 @@ public class BF2Module : BaseModule,
 
     public void Handle(RepairCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -140,7 +140,7 @@ public class BF2Module : BaseModule,
 
     public void Handle(KillCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -158,7 +158,7 @@ public class BF2Module : BaseModule,
 
     public void Handle(ScoreCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -178,7 +178,7 @@ public class BF2Module : BaseModule,
 
     public void Handle(TeleportLocationCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -187,7 +187,7 @@ public class BF2Module : BaseModule,
 
     public void Handle(TeleportCoordinatesCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -217,7 +217,7 @@ public class BF2Module : BaseModule,
 
     public void Handle(PositionCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -232,7 +232,7 @@ public class BF2Module : BaseModule,
 
     public void Handle(PingCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -317,7 +317,7 @@ public class BF2Module : BaseModule,
 
     public async ValueTask HandleAsync(DanceCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -354,7 +354,7 @@ public class BF2Module : BaseModule,
 
     public async ValueTask HandleAsync(FreezeCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -407,7 +407,7 @@ public class BF2Module : BaseModule,
 
     public async ValueTask HandleAsync(BlurCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -458,7 +458,7 @@ public class BF2Module : BaseModule,
     {
         if (command.Name.Contains(" "))
             return;
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
         {
             _gameServer.GameWriter.SendText("No matching player found");
@@ -479,7 +479,7 @@ public class BF2Module : BaseModule,
     public async ValueTask HandleAsync(SetAuthCommand command)
     {
         var player = command.Message.Player;
-        var target = _gameServer.GetPlayer(command.Name);
+        var target = _gameServer.GetPlayerByName(command.Name);
         if (target == null)
         {
             _gameServer.GameWriter.SendText("Player not found");
@@ -592,7 +592,7 @@ public class BF2Module : BaseModule,
         
     public void Handle(SwitchCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 

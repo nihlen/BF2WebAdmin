@@ -523,9 +523,13 @@ public class Heli2v2Module : BaseModule,
         return ValueTask.CompletedTask;
     }
 
-    private static string GetTeamHash(Player p1, Player p2)
+    private static string GetTeamHash(Player p1, Player p2) => GetTeamHash(p1.Hash, p2.Hash);
+
+    private static string GetTeamHash(IEnumerable<string> playerHashes) => GetTeamHash(playerHashes.First(), playerHashes.Last());
+
+    private static string GetTeamHash(string hash1, string hash2)
     {
-        return string.Compare(p1.Hash, p2.Hash, StringComparison.Ordinal) <= 0 ? p1.Hash + p2.Hash : p2.Hash + p1.Hash;
+        return string.Compare(hash1, hash2, StringComparison.Ordinal) <= 0 ? hash1 + hash2 : hash2 + hash1;
     }
 
     public void Handle(SwitchLaterCommand command)
@@ -557,7 +561,7 @@ public class Heli2v2Module : BaseModule,
 
     public void Handle(NoclipCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
             return;
 
@@ -599,7 +603,7 @@ public class Heli2v2Module : BaseModule,
     public void Handle(StalkCommand command)
     {
         _stalker = command.Message.Player;
-        _stalked = _gameServer.GetPlayer(command.Name);
+        _stalked = _gameServer.GetPlayerByName(command.Name);
         if (_stalked == null)
             return;
 
@@ -678,7 +682,7 @@ public class Heli2v2Module : BaseModule,
             return ValueTask.CompletedTask;
         }
 
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
         {
             _gameServer.GameWriter.SendText("Player not found");
@@ -973,7 +977,7 @@ public class Heli2v2Module : BaseModule,
 
     public void Handle(ToggleTvLogCommand command)
     {
-        var player = _gameServer.GetPlayer(command.Name);
+        var player = _gameServer.GetPlayerByName(command.Name);
         if (player == null)
         {
             _gameServer.GameWriter.SendText("Player not found");
@@ -1179,39 +1183,7 @@ public class Heli2v2Module : BaseModule,
 
             if (_pendingRound.MatchId == null)
             {
-                var teamHashes = _pendingRound.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
-                var match = _matches.FirstOrDefault(m => m.IsActive && m.TeamHashes.Contains(teamHashes[0]) && m.TeamHashes.Contains(teamHashes[1]));
-                if (match == null)
-                {
-                    var previousMatch = GetActiveMatch();
-                    if (previousMatch != null)
-                    {
-                        previousMatch.MatchEnd = previousMatch.Rounds.LastOrDefault()?.RoundEnd ?? DateTime.UtcNow;
-                        await Mediator.PublishAsync(new MatchEndEvent(previousMatch, DateTimeOffset.UtcNow));
-                    }
-
-                    match = new Match
-                    {
-                        Id = Guid.NewGuid(),
-                        MatchStart = _pendingRound.RoundStart.Value,
-                        Map = _gameServer.Map.Name,
-                        ServerId = _gameServer.Id,
-                        ServerName = _gameServer.Name,
-                        TeamHashes = teamHashes,
-                        Type = "HELI_2V2",
-                    };
-                    _matches.Add(match);
-
-                    match.Rounds.Add(_pendingRound);
-                    _pendingRound.MatchId = match.Id;
-
-                    await Mediator.PublishAsync(new MatchStartEvent(match, DateTimeOffset.UtcNow));
-                }
-                else
-                {
-                    match.Rounds.Add(_pendingRound);
-                    _pendingRound.MatchId = match.Id;
-                }
+                await SetCurrentMatchAsync();
             }
 
             await Mediator.PublishAsync(new RoundStartEvent(_pendingRound, DateTimeOffset.UtcNow));
@@ -1221,6 +1193,111 @@ public class Heli2v2Module : BaseModule,
         else if (newReady)
         {
             await SendDiscordMessageAsync($"{e.Message.Player.Team?.Name} READY");
+        }
+
+        async Task SetCurrentMatchAsync()
+        {
+            if (_matches.Count == 0)
+            {
+                await TryResumePreviousMatchAsync();
+            }
+            
+            var teamHashes = _pendingRound.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
+            var match = _matches.FirstOrDefault(m => m.IsActive && m.TeamHashes.Contains(teamHashes[0]) && m.TeamHashes.Contains(teamHashes[1]));
+            if (match == null)
+            {
+                var previousMatch = GetActiveMatch();
+                if (previousMatch != null)
+                {
+                    previousMatch.MatchEnd = previousMatch.Rounds.LastOrDefault()?.RoundEnd ?? DateTime.UtcNow;
+                    await Mediator.PublishAsync(new MatchEndEvent(previousMatch, DateTimeOffset.UtcNow));
+                }
+
+                match = new Match
+                {
+                    Id = Guid.NewGuid(),
+                    MatchStart = _pendingRound.RoundStart.Value,
+                    Map = _gameServer.Map.Name,
+                    ServerId = _gameServer.Id,
+                    ServerName = _gameServer.Name,
+                    TeamHashes = teamHashes,
+                    Type = "HELI_2V2",
+                };
+                _matches.Add(match);
+
+                match.Rounds.Add(_pendingRound);
+                _pendingRound.MatchId = match.Id;
+
+                await Mediator.PublishAsync(new MatchStartEvent(match, DateTimeOffset.UtcNow));
+            }
+            else
+            {
+                match.Rounds.Add(_pendingRound);
+                _pendingRound.MatchId = match.Id;
+            }
+        }
+
+        async Task TryResumePreviousMatchAsync()
+        {
+            // Try to resume the previous unfinished match from the database if it has the same players, server, map and is within 10 minutes (BF2WA restarted)
+            var teamHashes = _pendingRound.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
+            var previousMatchDb = (await _matchRepository.GetMatchesByNewestAsync(0, 1)).FirstOrDefault();
+            if (previousMatchDb is { MatchEnd: null })
+            {
+                previousMatchDb = await _matchRepository.GetMatchAsync(previousMatchDb.Id);
+                var previousTeamHashesUnsorted = new []{ previousMatchDb.TeamAHash, previousMatchDb.TeamBHash };
+                var previousMatch = new Match
+                {
+                    Id = previousMatchDb.Id,
+                    MatchStart = previousMatchDb.MatchStart,
+                    Map = previousMatchDb.Map,
+                    ServerId = previousMatchDb.ServerId,
+                    ServerName = previousMatchDb.ServerName,
+                    TeamHashes = previousTeamHashesUnsorted,
+                    Type = previousMatchDb.Type,
+                    Rounds = previousMatchDb.MatchRounds?.Select(r => new Round
+                    {
+                        Id = r.Id,
+                        MatchId = r.MatchId,
+                        RoundStart = r.RoundStart,
+                        RoundEnd = r.RoundEnd,
+                        WinningTeamId = r.WinningTeamId,
+                        WinningTeamHash = GetTeamHash(r.MatchRoundPlayers.Where(p => p.TeamId == r.WinningTeamId).Select(p => p.PlayerHash)),
+                        LosingTeamHash = GetTeamHash(r.MatchRoundPlayers.Where(p => p.TeamId != r.WinningTeamId).Select(p => p.PlayerHash)),
+                        PositionTrackerInterval = r.PositionTrackerInterval,
+                        Players = r.MatchRoundPlayers?.Select(p =>
+                        {
+                            var player = _gameServer.GetPlayerByHash(p.PlayerHash);
+                            return new RoundPlayer(player, previousTeamHashesUnsorted.FirstOrDefault(h => h.Contains(player.Hash)), r.Id)
+                            {
+                                SaidGo = p.SaidGo,
+                                DeathPosition = p.DeathPosition,
+                                DeathTime = p.DeathTime,
+                                KillerHash = p.KillerHash,
+                                KillerWeapon = p.KillerWeapon,
+                                KillerPosition = p.KillerPosition,
+                                StartPosition = p.StartPosition
+                            };
+                        }).ToList() ?? new List<RoundPlayer>()
+                    }).ToList() ?? new List<Round>()
+                };
+
+                var previousTeamHashes = previousMatch.Rounds.FirstOrDefault()?.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
+                var previousMatchHasSameTeams = teamHashes.All(hash => previousTeamHashes?.Any(oldHash => oldHash == hash) ?? false);
+                var mostRecentRoundEnd = previousMatch.Rounds.MaxBy(r => r.RoundEnd)?.RoundEnd ?? DateTime.UtcNow;
+                var shouldResumePreviousMatch = previousMatchHasSameTeams &&
+                    (_pendingRound.RoundStart - mostRecentRoundEnd) < TimeSpan.FromMinutes(10) &&
+                    previousMatch.Map == _gameServer.Map.Name &&
+                    previousMatch.ServerId == _gameServer.Id;
+
+                if (shouldResumePreviousMatch)
+                {
+                    _matches.Add(previousMatch);
+                    previousMatch.Rounds.Add(_pendingRound);
+                    _pendingRound.MatchId = previousMatch.Id;
+                    _gameServer.GameWriter.SendText("Previous 2v2 match has been resumed");
+                }
+            }
         }
     }
 
@@ -1617,7 +1694,7 @@ public class RoundPlayer
     public string TeamHash { get; set; }
     public bool IsAlive { get; set; }
     public bool IsReady { get; set; }
-    public IList<RoundPosition> LastProjectilePath => ProjectilePaths.LastOrDefault();
+    public IList<RoundPosition> LastProjectilePath => ProjectilePaths.LastOrDefault() ?? new List<RoundPosition>();
     public IList<RoundPosition> MovementPath { get; set; } = new List<RoundPosition>();
     public IList<IList<RoundPosition>> ProjectilePaths { get; set; } = new List<IList<RoundPosition>>();
     public int LastProjectileId { get; set; }

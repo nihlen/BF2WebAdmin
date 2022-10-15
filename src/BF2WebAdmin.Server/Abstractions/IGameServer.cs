@@ -54,7 +54,8 @@ public interface IGameServer
     void SetRconResponse(string responseCode, string value);
     Vehicle GetVehicle(Player player, int rootVehicleId, string rootVehicleName, string vehicleName);
     Player GetPlayer(int index);
-    Player? GetPlayer(string namePart);
+    Player? GetPlayerByName(string namePart);
+    Player? GetPlayerByHash(string playerHash);
     Projectile GetProjectile(int id, string templateName, Position position);
     Task<bool> FixTeamMismatchAsync(IEnumerable<Player> players);
 }

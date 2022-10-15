@@ -362,9 +362,14 @@ public class GameServer : IGameServer
         return _players.FirstOrDefault(x => x.Index == index) ?? new Player();
     }
 
-    public Player? GetPlayer(string namePart)
+    public Player? GetPlayerByName(string namePart)
     {
         return _players.FirstOrDefault(p => p.Name.ToLower().Contains(namePart));
+    }
+
+    public Player? GetPlayerByHash(string playerHash)
+    {
+        return _players.FirstOrDefault(p => p.Hash == playerHash);
     }
 
     public Projectile GetProjectile(int id, string templateName, Position position)

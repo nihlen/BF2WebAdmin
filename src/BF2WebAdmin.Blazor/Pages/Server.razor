@@ -562,6 +562,6 @@
 
     private static string GetTimestamp(DateTimeOffset timestamp)
     {
-        return timestamp.Date == DateTimeOffset.Now.Date ? timestamp.ToLocalTime().ToShortDateTime() : timestamp.ToLocalTime().ToShortTime();
+        return timestamp.Date == DateTimeOffset.Now.Date ? timestamp.ToLocalTime().ToShortTime() : timestamp.ToLocalTime().ToShortDateTime();
     }
 }

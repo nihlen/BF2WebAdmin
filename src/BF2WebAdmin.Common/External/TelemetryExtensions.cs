@@ -74,10 +74,11 @@ public static class TelemetryExtensions
                 })
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
-                .AddEventCounterMetrics(options =>
-                {
-                    options.RefreshIntervalSecs = 10;
-                })
+                // Not stable yet, seems to cause some memory leaks
+                // .AddEventCounterMetrics(options =>
+                // {
+                //     options.RefreshIntervalSecs = 10;
+                // })
                 .AddRuntimeInstrumentation()
             );
         }

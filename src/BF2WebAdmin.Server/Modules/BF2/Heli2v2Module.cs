@@ -1240,63 +1240,70 @@ public class Heli2v2Module : BaseModule,
         async Task TryResumePreviousMatchAsync()
         {
             // Try to resume the previous unfinished match from the database if it has the same players, server, map and is within 10 minutes (BF2WA restarted)
-            var teamHashes = _pendingRound.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
-            var previousMatchDb = (await _matchRepository.GetMatchesByNewestAsync(0, 1)).FirstOrDefault();
-            if (previousMatchDb is { MatchEnd: null })
+            try
             {
-                previousMatchDb = await _matchRepository.GetMatchAsync(previousMatchDb.Id);
-                var previousTeamHashesUnsorted = new []{ previousMatchDb.TeamAHash, previousMatchDb.TeamBHash };
-                var previousMatch = new Match
+                var teamHashes = _pendingRound.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
+                var previousMatchDb = (await _matchRepository.GetMatchesByNewestAsync(0, 1)).FirstOrDefault();
+                if (previousMatchDb is { MatchEnd: null })
                 {
-                    Id = previousMatchDb.Id,
-                    MatchStart = previousMatchDb.MatchStart,
-                    Map = previousMatchDb.Map,
-                    ServerId = previousMatchDb.ServerId,
-                    ServerName = previousMatchDb.ServerName,
-                    TeamHashes = previousTeamHashesUnsorted,
-                    Type = previousMatchDb.Type,
-                    Rounds = previousMatchDb.MatchRounds?.Select(r => new Round
+                    previousMatchDb = await _matchRepository.GetMatchAsync(previousMatchDb.Id);
+                    var previousTeamHashesUnsorted = new []{ previousMatchDb.TeamAHash, previousMatchDb.TeamBHash };
+                    var previousMatch = new Match
                     {
-                        Id = r.Id,
-                        MatchId = r.MatchId,
-                        RoundStart = r.RoundStart,
-                        RoundEnd = r.RoundEnd,
-                        WinningTeamId = r.WinningTeamId,
-                        WinningTeamHash = GetTeamHash(r.MatchRoundPlayers.Where(p => p.TeamId == r.WinningTeamId).Select(p => p.PlayerHash)),
-                        LosingTeamHash = GetTeamHash(r.MatchRoundPlayers.Where(p => p.TeamId != r.WinningTeamId).Select(p => p.PlayerHash)),
-                        PositionTrackerInterval = r.PositionTrackerInterval,
-                        Players = r.MatchRoundPlayers?.Select(p =>
+                        Id = previousMatchDb.Id,
+                        MatchStart = previousMatchDb.MatchStart,
+                        Map = previousMatchDb.Map,
+                        ServerId = previousMatchDb.ServerId,
+                        ServerName = previousMatchDb.ServerName,
+                        TeamHashes = previousTeamHashesUnsorted,
+                        Type = previousMatchDb.Type,
+                        Rounds = previousMatchDb.MatchRounds?.Select(r => new Round
                         {
-                            var player = _gameServer.GetPlayerByHash(p.PlayerHash);
-                            return new RoundPlayer(player, previousTeamHashesUnsorted.FirstOrDefault(h => h.Contains(player.Hash)), r.Id)
+                            Id = r.Id,
+                            MatchId = r.MatchId,
+                            RoundStart = r.RoundStart,
+                            RoundEnd = r.RoundEnd,
+                            WinningTeamId = r.WinningTeamId,
+                            WinningTeamHash = GetTeamHash(r.MatchRoundPlayers.Where(p => p.TeamId == r.WinningTeamId).Select(p => p.PlayerHash)),
+                            LosingTeamHash = GetTeamHash(r.MatchRoundPlayers.Where(p => p.TeamId != r.WinningTeamId).Select(p => p.PlayerHash)),
+                            PositionTrackerInterval = r.PositionTrackerInterval,
+                            Players = r.MatchRoundPlayers?.Select(p =>
                             {
-                                SaidGo = p.SaidGo,
-                                DeathPosition = p.DeathPosition,
-                                DeathTime = p.DeathTime,
-                                KillerHash = p.KillerHash,
-                                KillerWeapon = p.KillerWeapon,
-                                KillerPosition = p.KillerPosition,
-                                StartPosition = p.StartPosition
-                            };
-                        }).ToList() ?? new List<RoundPlayer>()
-                    }).ToList() ?? new List<Round>()
-                };
+                                var player = _gameServer.GetPlayerByHash(p.PlayerHash);
+                                return new RoundPlayer(player, previousTeamHashesUnsorted.FirstOrDefault(h => h.Contains(player.Hash)), r.Id)
+                                {
+                                    SaidGo = p.SaidGo,
+                                    DeathPosition = p.DeathPosition,
+                                    DeathTime = p.DeathTime,
+                                    KillerHash = p.KillerHash,
+                                    KillerWeapon = p.KillerWeapon,
+                                    KillerPosition = p.KillerPosition,
+                                    StartPosition = p.StartPosition
+                                };
+                            }).ToList() ?? new List<RoundPlayer>()
+                        }).ToList() ?? new List<Round>()
+                    };
 
-                var previousTeamHashes = previousMatch.Rounds.FirstOrDefault()?.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
-                var previousMatchHasSameTeams = teamHashes.All(hash => previousTeamHashes?.Any(oldHash => oldHash == hash) ?? false);
-                var mostRecentRoundEnd = previousMatch.Rounds.MaxBy(r => r.RoundEnd)?.RoundEnd ?? DateTime.UtcNow;
-                var shouldResumePreviousMatch = previousMatchHasSameTeams &&
-                    (_pendingRound.RoundStart - mostRecentRoundEnd) < TimeSpan.FromMinutes(10) &&
-                    previousMatch.Map == _gameServer.Map.Name &&
-                    previousMatch.ServerId == _gameServer.Id;
+                    var previousTeamHashes = previousMatch.Rounds.FirstOrDefault()?.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
+                    var previousMatchHasSameTeams = teamHashes.All(hash => previousTeamHashes?.Any(oldHash => oldHash == hash) ?? false);
+                    var mostRecentRoundEnd = previousMatch.Rounds.MaxBy(r => r.RoundEnd)?.RoundEnd ?? DateTime.UtcNow;
+                    var shouldResumePreviousMatch = previousMatchHasSameTeams &&
+                        (_pendingRound.RoundStart - mostRecentRoundEnd) < TimeSpan.FromMinutes(10) &&
+                        previousMatch.Map == _gameServer.Map.Name &&
+                        previousMatch.ServerId == _gameServer.Id;
 
-                if (shouldResumePreviousMatch)
-                {
-                    _matches.Add(previousMatch);
-                    previousMatch.Rounds.Add(_pendingRound);
-                    _pendingRound.MatchId = previousMatch.Id;
-                    _gameServer.GameWriter.SendText("Previous 2v2 match has been resumed");
+                    if (shouldResumePreviousMatch)
+                    {
+                        _matches.Add(previousMatch);
+                        previousMatch.Rounds.Add(_pendingRound);
+                        _pendingRound.MatchId = previousMatch.Id;
+                        _gameServer.GameWriter.SendText("Previous 2v2 match has been resumed");
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to resume previous match");
             }
         }
     }

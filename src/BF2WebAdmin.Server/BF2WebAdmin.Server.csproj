@@ -12,7 +12,7 @@
     <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <DockerfileFile>bf2-webadmin</DockerfileFile>
+    <DockerfileTag>bf2-webadmin</DockerfileTag>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
   </PropertyGroup>
 

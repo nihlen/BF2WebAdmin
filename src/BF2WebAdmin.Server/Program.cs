@@ -29,8 +29,8 @@ try
         .AddJsonFile($"appsettings.{profile}.json", optional: true, reloadOnChange: false)
         .AddJsonFile("appsecrets.json", optional: false, reloadOnChange: false)
         .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false);
-
-    builder.Host.ConfigureLogging(logging => logging.AddCustomTelemetry("bf2-webadmin", otlpEndpoint: builder.Configuration["Telemetry:OtlpEndpoint"]));
+    
+    builder.Services.AddCustomTelemetry("bf2-webadmin", otlpEndpoint: builder.Configuration["Telemetry:OtlpEndpoint"]);
     
     // builder.Host.UseSerilog((context, services, configuration) =>
     // {
@@ -114,8 +114,6 @@ try
     {
         opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[] { "application/octet-stream" });
     });
-
-    builder.Services.AddCustomTelemetry("bf2-webadmin", otlpEndpoint: builder.Configuration["Telemetry:OtlpEndpoint"]);
     
     var connectionString = builder.Configuration.GetConnectionString("BF2DB");
     if (connectionString.Contains(".sqlite"))

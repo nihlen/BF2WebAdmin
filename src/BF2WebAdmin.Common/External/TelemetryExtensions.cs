@@ -91,6 +91,14 @@ public static class TelemetryExtensions
     {
         if (logging is null)
             return null;
+        
+        logging.ClearProviders();
+        logging.Configure(options =>
+        {
+            options.ActivityTrackingOptions = ActivityTrackingOptions.SpanId | ActivityTrackingOptions.TraceId | ActivityTrackingOptions.ParentId | ActivityTrackingOptions.Baggage | ActivityTrackingOptions.Tags;
+        });
+        logging.AddFilter("Microsoft.AspNetCore.*", LogLevel.Warning);
+        logging.AddConsole();
 
         var resourceBuilder = Telemetry.GetResourceBuilder(ref serviceName, ref serviceVersion, ref otlpEndpoint);
 
@@ -100,7 +108,7 @@ public static class TelemetryExtensions
             options.IncludeFormattedMessage = true;
             options.ParseStateValues = true;
             // options.AttachLogsToActivityEvent();
-            
+
             options.SetResourceBuilder(resourceBuilder);
             options.AddOtlpExporter(o =>
             {

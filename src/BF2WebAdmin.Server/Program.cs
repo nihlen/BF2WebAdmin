@@ -30,18 +30,7 @@ try
         .AddJsonFile("appsecrets.json", optional: false, reloadOnChange: false)
         .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false);
 
-    builder.Host.ConfigureLogging((context, logging) =>
-    {
-        logging.ClearProviders();
-        logging.Configure(options =>
-        {
-            options.ActivityTrackingOptions = ActivityTrackingOptions.SpanId | ActivityTrackingOptions.TraceId | ActivityTrackingOptions.ParentId | ActivityTrackingOptions.Baggage | ActivityTrackingOptions.Tags; 
-        });
-        logging.AddConsole();
-        logging.AddCustomTelemetry("BF2WA", otlpEndpoint: builder.Configuration["Telemetry:OtlpEndpoint"]);
-        // logging.AddSerilog(dispose: true);
-        logging.AddFilter("Microsoft.AspNetCore.*", LogLevel.Warning);
-    });
+    builder.Host.ConfigureLogging(logging => logging.AddCustomTelemetry("bf2-webadmin", otlpEndpoint: builder.Configuration["Telemetry:OtlpEndpoint"]));
     
     // builder.Host.UseSerilog((context, services, configuration) =>
     // {
@@ -126,7 +115,7 @@ try
         opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[] { "application/octet-stream" });
     });
 
-    builder.Services.AddCustomTelemetry("BF2WA", otlpEndpoint: builder.Configuration["Telemetry:OtlpEndpoint"]);
+    builder.Services.AddCustomTelemetry("bf2-webadmin", otlpEndpoint: builder.Configuration["Telemetry:OtlpEndpoint"]);
     
     var connectionString = builder.Configuration.GetConnectionString("BF2DB");
     if (connectionString.Contains(".sqlite"))

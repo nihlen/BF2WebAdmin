@@ -10,15 +10,11 @@ using MassTransit;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Nihlen.Common.Telemetry;
-using Serilog;
-using Serilog.Core;
-using Serilog.Events;
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateBootstrapLogger();
+// Log.Logger = new LoggerConfiguration()
+//     .WriteTo.Console()
+//     .CreateBootstrapLogger();
 
 try
 {
@@ -26,7 +22,7 @@ try
 
     var configPath = Path.Combine(ProjectContext.GetDirectory(), "Configuration");
     var profile = ProjectContext.GetEnvironmentName();
-
+    
     builder.Configuration
         .SetBasePath(configPath)
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
@@ -34,21 +30,34 @@ try
         .AddJsonFile("appsecrets.json", optional: false, reloadOnChange: false)
         .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false);
 
-    builder.Host.UseSerilog((context, services, configuration) =>
+    builder.Host.ConfigureLogging((context, logging) =>
     {
-        configuration
-            .MinimumLevel.Debug()
-            .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-            .Enrich.FromLogContext()
-            .WriteTo.Console()
-            .WriteTo.File(@"Logs/server-.log", LogEventLevel.Verbose, "{Timestamp:HH:mm:ss} [{Level}] [{SourceContext}] {Message}{NewLine}{Exception}", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 31);
-
-        var seqSettings = services.GetService<IOptions<SeqSettings>>()?.Value;
-        if (!string.IsNullOrWhiteSpace(seqSettings?.ServerUrl))
+        logging.ClearProviders();
+        logging.Configure(options =>
         {
-            configuration.WriteTo.Seq(seqSettings.ServerUrl, apiKey: seqSettings.ApiKey, controlLevelSwitch: new LoggingLevelSwitch());
-        }
+            options.ActivityTrackingOptions = ActivityTrackingOptions.SpanId | ActivityTrackingOptions.TraceId | ActivityTrackingOptions.ParentId | ActivityTrackingOptions.Baggage | ActivityTrackingOptions.Tags; 
+        });
+        logging.AddConsole();
+        logging.AddCustomTelemetry("BF2WA", otlpEndpoint: builder.Configuration["Telemetry:OtlpEndpoint"]);
+        // logging.AddSerilog(dispose: true);
+        logging.AddFilter("Microsoft.AspNetCore.*", LogLevel.Warning);
     });
+    
+    // builder.Host.UseSerilog((context, services, configuration) =>
+    // {
+    //     configuration
+    //         .MinimumLevel.Debug()
+    //         .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    //         .Enrich.FromLogContext()
+    //         .WriteTo.Console()
+    //         .WriteTo.File(@"Logs/server-.log", LogEventLevel.Verbose, "{Timestamp:HH:mm:ss} [{Level}] [{SourceContext}] {Message}{NewLine}{Exception}", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 31);
+    //
+    //     var seqSettings = services.GetService<IOptions<SeqSettings>>()?.Value;
+    //     if (!string.IsNullOrWhiteSpace(seqSettings?.ServerUrl))
+    //     {
+    //         configuration.WriteTo.Seq(seqSettings.ServerUrl, apiKey: seqSettings.ApiKey, controlLevelSwitch: new LoggingLevelSwitch());
+    //     }
+    // });
 
     // Add services to the container.
 
@@ -133,13 +142,13 @@ try
 
     var app = builder.Build();
 
-    Log.Information("BF2WebAdmin.Server is starting");
-    Log.Information("Current profile: {Profile}", profile);
+    app.Logger.LogInformation("BF2WebAdmin.Server is starting");
+    app.Logger.LogInformation("Current profile: {Profile}", profile);
     
     if (connectionString.Contains(".sqlite"))
     {
         // SQLite initialization
-        Log.Information("Running SQLite migrations");
+        app.Logger.LogInformation("Running SQLite migrations");
         using var scope = app.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<BF2Context>();
         await context.Database.MigrateAsync();
@@ -180,9 +189,11 @@ try
 }
 catch (Exception ex)
 {
-    Log.Fatal(ex, "An unhandled exception occurred during bootstrapping");
+    Console.WriteLine("An unhandled exception occurred during bootstrapping: " + ex);
+    throw;
+    // Log.Fatal(ex, "An unhandled exception occurred during bootstrapping");
 }
-finally
-{
-    Log.CloseAndFlush();
-}
+// finally
+// {
+//     Log.CloseAndFlush();
+// }

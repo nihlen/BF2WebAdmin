@@ -5,12 +5,12 @@ using BF2WebAdmin.Common;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Extensions;
 using Nihlen.Common.Telemetry;
-using Serilog;
 
 namespace BF2WebAdmin.Server;
 
 public class ModuleResolver : IModuleResolver
 {
+    private readonly ILogger<ModuleResolver> _logger;
     private static readonly Assembly CurrentAssembly = Assembly.GetEntryAssembly();
 
     private static readonly StringBuilder CommandDocumentation;
@@ -47,6 +47,11 @@ public class ModuleResolver : IModuleResolver
         CommandDocumentation = new StringBuilder();
         ScanAssembly();
         File.WriteAllText("commands.txt", CommandDocumentation.ToString());
+    }
+
+    public ModuleResolver(ILogger<ModuleResolver> logger)
+    {
+        _logger = logger;
     }
 
     private IDictionary<Type, IList<Func<ICommand, ValueTask>>> GetCommandHandlers()
@@ -87,7 +92,7 @@ public class ModuleResolver : IModuleResolver
             if (!Modules.ContainsKey(commandHandler.ModuleType))
             {
                 // throw new NullReferenceException($"No instance of {commandHandler.ModuleType} exists");
-                Log.Verbose("No instance of {ModuleType} exists", commandHandler.ModuleType);
+                _logger.LogTrace("No instance of {ModuleType} exists", commandHandler.ModuleType);
                 continue;
             }
 
@@ -112,7 +117,7 @@ public class ModuleResolver : IModuleResolver
                         }
                         catch (Exception e)
                         {
-                            Log.Error(e, "Command handling failed for {Message} (sync)", matchedCommand.Message.Text);
+                            _logger.LogError(e, "Command handling failed for {Message} (sync)", matchedCommand.Message.Text);
                             activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text}");
                         }
                              
@@ -146,7 +151,7 @@ public class ModuleResolver : IModuleResolver
                         }
                         catch (Exception ex)
                         {
-                            Log.Error(ex, "Command handling failed for {Message} (async)", matchedCommand.Message.Text);
+                            _logger.LogError(ex, "Command handling failed for {Message} (async)", matchedCommand.Message.Text);
                             activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text} {ex.Message}");
                         }
                                              
@@ -160,7 +165,7 @@ public class ModuleResolver : IModuleResolver
         }
 
         if (handlerCount == 0)
-            Log.Verbose("No command handlers registered for {CommandName}", typeof(TCommand).Name);
+            _logger.LogTrace("No command handlers registered for {CommandName}", typeof(TCommand).Name);
     }
 
     private IDictionary<Type, IList<Func<IEvent, ValueTask>>> GetEventHandlers()
@@ -202,7 +207,7 @@ public class ModuleResolver : IModuleResolver
             {
                 // Some modules are optional
                 //throw new NullReferenceException($"No instance of {eventHandler.ModuleType} exists");
-                Log.Verbose("No instance of {ModuleTypeName} exists for {EventTypeName}", eventHandler.ModuleType.Name, eventHandler.EventType.Name);
+                _logger.LogTrace("No instance of {ModuleTypeName} exists for {EventTypeName}", eventHandler.ModuleType.Name, eventHandler.EventType.Name);
                 continue;
             }
 
@@ -226,7 +231,7 @@ public class ModuleResolver : IModuleResolver
                         }
                         catch (Exception ex)
                         {
-                            Log.Error(ex, "Event handling failed for {Event} (async)", matchedEvent);
+                            _logger.LogError(ex, "Event handling failed for {Event} (async)", matchedEvent);
                             activity?.SetStatus(ActivityStatusCode.Error, $"Event failed: {eventType.Name}, {ex.Message}");
                         }
                                                           
@@ -240,7 +245,7 @@ public class ModuleResolver : IModuleResolver
         }
 
         if (handlerCount == 0)
-            Log.Verbose("No event handlers registered for {EventName}", typeof(TEvent).Name);
+            _logger.LogTrace("No event handlers registered for {EventName}", typeof(TEvent).Name);
         
         static bool TraceEventType(string? eventType) => eventType != nameof(PlayerPositionEvent) && eventType != nameof(ProjectilePositionEvent);
     }

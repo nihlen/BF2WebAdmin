@@ -2,14 +2,13 @@
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Configuration.Models;
 using Microsoft.Extensions.Options;
-using Serilog;
 using Tweetinvi.Events;
 using Tweetinvi.Models;
 using Tweetinvi.Streaming;
 
 namespace BF2WebAdmin.Server.Modules;
 
-public class TwitterModule : IModule,
+public class TwitterModule : BaseModule,
     IHandleCommandAsync<TwitterFollowCommand>,
     IHandleCommand<TwitterUnfollowCommand>
 {
@@ -21,7 +20,7 @@ public class TwitterModule : IModule,
     private DateTime _lastMessage = DateTime.MinValue;
     private readonly TimeSpan _messageDelay = new TimeSpan(0, 0, 10);
 
-    public TwitterModule(IGameServer server, IOptions<TwitterConfig> config)
+    public TwitterModule(IGameServer server, IOptions<TwitterConfig> config, ILogger<TwitterModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _gameServer = server;
         _credentials = new TwitterCredentials(
@@ -78,7 +77,7 @@ public class TwitterModule : IModule,
             args.Tweet.InReplyToUserId != null)
             return;
 
-        Log.Information("Received tweet {TweetText}", args.Tweet.FullText);
+        Logger.LogInformation("Received tweet {TweetText}", args.Tweet.FullText);
         _gameServer.GameWriter.SendText($"@{args.Tweet.CreatedBy.ScreenName} - {args.Tweet.FullText}");
         _lastMessage = DateTime.UtcNow;
     }

@@ -1,6 +1,5 @@
 ﻿using BF2WebAdmin.Server.Abstractions;
 using Nihlen.Common.Telemetry;
-using Serilog;
 
 namespace BF2WebAdmin.Server;
 
@@ -13,10 +12,12 @@ public interface IMediator
 public class Mediator : IMediator
 {
     private readonly IModuleResolver _moduleResolver;
+    private readonly ILogger<Mediator> _logger;
 
-    public Mediator(IModuleResolver moduleResolver)
+    public Mediator(IModuleResolver moduleResolver, ILogger<Mediator> logger)
     {
         _moduleResolver = moduleResolver;
+        _logger = logger;
     }
 
     public async ValueTask PublishAsync<TEvent>(TEvent gameEvent) where TEvent : IEvent
@@ -27,7 +28,7 @@ public class Mediator : IMediator
         // TODO: make an alternate version that uses Channel<IEvent> and see if it causes less delays
         if (!_moduleResolver.EventHandlers.TryGetValue(eventType, out var handlers))
         {
-            Log.Verbose("No handler found for event type {EventType}", eventType);
+            _logger.LogTrace("No handler found for event type {EventType}", eventType);
             return;
         }
         

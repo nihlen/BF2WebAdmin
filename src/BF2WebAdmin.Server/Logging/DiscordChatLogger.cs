@@ -2,7 +2,6 @@
 using BF2WebAdmin.Server.Configuration.Models;
 using Microsoft.Extensions.Options;
 using Nihlen.Common.Telemetry;
-using Serilog;
 
 namespace BF2WebAdmin.Server.Logging;
 
@@ -13,10 +12,12 @@ public interface IChatLogger
 
 public class DiscordChatLogger : IChatLogger
 {
+    private readonly ILogger<DiscordChatLogger> _logger;
     private readonly IList<DiscordClientWrapper> _discordClients = new List<DiscordClientWrapper>();
 
-    public DiscordChatLogger(IOptions<DiscordConfig> discordConfig)
+    public DiscordChatLogger(IOptions<DiscordConfig> discordConfig, ILogger<DiscordChatLogger> logger)
     {
+        _logger = logger;
         foreach (var discordWebhook in discordConfig.Value.Webhooks)
         {
             _discordClients.Add(new DiscordClientWrapper
@@ -42,7 +43,7 @@ public class DiscordChatLogger : IChatLogger
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed logging to Discord {Message}", message);
+            _logger.LogError(ex, "Failed logging to Discord {Message}", message);
             activity?.SetStatus(ActivityStatusCode.Error, $"Discord message failed: {ex.Message}");
         }
     }

@@ -2,7 +2,6 @@
 using BF2WebAdmin.Server.Extensions;
 using Microsoft.Extensions.Options;
 using Nihlen.Common.Telemetry;
-using Serilog;
 
 namespace BF2WebAdmin.Server;
 
@@ -10,12 +9,16 @@ public class BF2WebAdminService : BackgroundService
 {
     private readonly ISocketServer _server;
     private readonly IHostApplicationLifetime _applicationLifetime;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger<BF2WebAdminService> _logger;
     private readonly ServerSettings _settings;
 
-    public BF2WebAdminService(IOptions<ServerSettings> settings, ISocketServer server, IHostApplicationLifetime applicationLifetime)
+    public BF2WebAdminService(IOptions<ServerSettings> settings, ISocketServer server, IHostApplicationLifetime applicationLifetime, ILoggerFactory loggerFactory)
     {
         _server = server;
         _applicationLifetime = applicationLifetime;
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory.CreateLogger<BF2WebAdminService>();
         _settings = settings.Value;
     }
 
@@ -37,6 +40,7 @@ public class BF2WebAdminService : BackgroundService
                 _settings.Port,
                 _settings.GameServers[0].RconPort,
                 @"C:\Projects\DotNet\BF2WebAdmin\src\BF2WebAdmin.Server\bin\Debug\netcoreapp2.0\gameevents-31-220-7-51-0-1515868847.txt",
+                _loggerFactory.CreateLogger<FakeGameServer>(),
                 0, //475_617
                 stoppingToken
             ); // 2v2 start?
@@ -58,11 +62,11 @@ public class BF2WebAdminService : BackgroundService
         {
             // Stop the application if the main service fails
             // The container will restart automatically if configured
-            Log.Fatal(ex, "Service failed");
+            _logger.LogCritical(ex, "Service failed");
             _applicationLifetime.StopApplication();
         }
 
-        static async Task WaitForActivityListenersAsync(CancellationToken cancellationToken)
+        async Task WaitForActivityListenersAsync(CancellationToken cancellationToken)
         {
             // The activity listeners take around 300 ms to be added in debug mode
             // We want to delay server connections until this is done to get the initial traces
@@ -73,7 +77,7 @@ public class BF2WebAdminService : BackgroundService
             }
 
             if (!Telemetry.ActivitySource.HasListeners())
-                Log.Warning("No activity listeners found after waiting 2 s");
+                _logger.LogWarning("No activity listeners found after waiting 2 s");
         }
     }
 }

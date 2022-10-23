@@ -4,19 +4,20 @@ using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 using Nihlen.Common.Telemetry;
-using Serilog;
 
 namespace BF2WebAdmin.Server.Abstractions;
 
 public abstract class BaseModule : IModule
 {
     protected readonly IGameServer GameServer;
+    protected readonly ILogger Logger;
     protected readonly CancellationToken ModuleCancellationToken;
     protected IMediator Mediator => GameServer.ModManager.Mediator;
 
-    protected BaseModule(IGameServer gameServer, CancellationTokenSource moduleCancellationTokenSource)
+    protected BaseModule(IGameServer gameServer, ILogger logger, CancellationTokenSource moduleCancellationTokenSource)
     {
         GameServer = gameServer;
+        Logger = logger;
         ModuleCancellationToken = moduleCancellationTokenSource.Token;
     }
 
@@ -83,7 +84,7 @@ public abstract class BaseModule : IModule
 
     protected async Task<string> SendRconCommandAsync(string command)
     {
-        var rcon = new RconClient(GameServer.ConnectedIpAddress, GameServer.ServerInfo.RconPort, GameServer.ServerInfo.RconPassword);
+        var rcon = new RconClient(GameServer.ConnectedIpAddress, GameServer.ServerInfo.RconPort, GameServer.ServerInfo.RconPassword, Logger);
         return await rcon.SendAsync(command);
     }
 
@@ -100,7 +101,7 @@ public abstract class BaseModule : IModule
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Failed to complete background task: {Description}", description);
+                Logger.LogError(ex, "Failed to complete background task: {Description}", description);
                 activity?.SetStatus(ActivityStatusCode.Error, $"Background task failed: {ex.Message}");
             }
         }, ModuleCancellationToken);

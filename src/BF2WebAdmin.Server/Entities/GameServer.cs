@@ -9,7 +9,6 @@ using BF2WebAdmin.Shared;
 using BF2WebAdmin.Shared.Communication.DTOs;
 using Nihlen.Common.Telemetry;
 using Nihlen.Gamespy;
-using Serilog;
 
 namespace BF2WebAdmin.Server.Entities;
 
@@ -20,6 +19,7 @@ public class GameServer : IGameServer
 
     private IGameWriter _gameWriter;
     private readonly IServiceProvider _globalServices;
+    private readonly ILogger<GameServer> _logger;
     private readonly CancellationToken _cancellationToken;
     public ServerInfo ServerInfo { get; private set; }
     public IGameWriter GameWriter => _gameWriter;
@@ -69,6 +69,7 @@ public class GameServer : IGameServer
         ConnectedIpAddress = connectedIpAddress;
         _gameWriter = writer;
         _globalServices = globalServices;
+        _logger = _globalServices.GetRequiredService<ILogger<GameServer>>();
         _cancellationToken = cancellationToken;
         ServerInfo = serverInfo;
     }
@@ -147,7 +148,7 @@ public class GameServer : IGameServer
         }
         catch (Exception e)
         {
-            Log.Error(e, "ModManager creation failed on ServerUpdate");
+            _logger.LogError(e, "ModManager creation failed on ServerUpdate");
         }
     }
 
@@ -404,13 +405,13 @@ public class GameServer : IGameServer
             var matchedPlayer = Players.FirstOrDefault(p => p.Id == responsePlayer.Pid);
             if (matchedPlayer is null)
             {
-                Log.Warning("Failed to find matching player from query response: {PlayerPid} {PlayerName}", responsePlayer.Pid, responsePlayer.Name);
+                _logger.LogWarning("Failed to find matching player from query response: {PlayerPid} {PlayerName}", responsePlayer.Pid, responsePlayer.Name);
                 continue;
             }
 
             if (matchedPlayer.Team.Id != responsePlayer.Team)
             {
-                Log.Information("Fixing team mismatch for {Player} ({OldTeam} => {NewTeam})", matchedPlayer.Name, matchedPlayer.Team, responsePlayer.Team);
+                _logger.LogInformation("Fixing team mismatch for {Player} ({OldTeam} => {NewTeam})", matchedPlayer.Name, matchedPlayer.Team.Id, responsePlayer.Team);
                 await UpdatePlayerTeamAsync(matchedPlayer, responsePlayer.Team, DateTimeOffset.UtcNow);
                 //if (player.Index == matchedPlayer.Index) isFixed = true;
             }

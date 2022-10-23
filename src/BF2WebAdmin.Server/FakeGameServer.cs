@@ -3,7 +3,6 @@ using System.Net.Sockets;
 using System.Text;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Server.Modules.BF2;
-using Serilog;
 
 namespace BF2WebAdmin.Server;
 
@@ -15,19 +14,21 @@ public class FakeGameServer
     private readonly int _rconPort;
     private readonly string _gameLogPath;
     private readonly int _skip;
+    private readonly ILogger<FakeGameServer> _logger;
     private readonly CancellationToken _cancellationToken;
     private bool _run;
 
     private StreamReader _reader;
     private StreamWriter _writer;
 
-    public FakeGameServer(IPAddress ipAddress, int port, int rconPort, string gameLogPath, int skip = 0, CancellationToken? cancellationToken = null)
+    public FakeGameServer(IPAddress ipAddress, int port, int rconPort, string gameLogPath, ILogger<FakeGameServer> logger, int skip = 0, CancellationToken? cancellationToken = null)
     {
         _ipAddress = ipAddress;
         _port = port;
         _rconPort = rconPort;
         _gameLogPath = gameLogPath;
         _skip = skip;
+        _logger = logger;
         _cancellationToken = cancellationToken ?? CancellationToken.None;
         _run = true;
     }
@@ -60,14 +61,14 @@ public class FakeGameServer
                         }
                         catch (Exception e)
                         {
-                            Log.Error(e, "Rcon message read failed");
+                            _logger.LogError(e, "Rcon message read failed");
                         }
                     }, _cancellationToken);
                 }
             }
             catch (Exception e)
             {
-                Log.Error(e, "Rcon listener failed");
+                _logger.LogError(e, "Rcon listener failed");
             }
         }, _cancellationToken);
 
@@ -85,7 +86,7 @@ public class FakeGameServer
                 using (_reader = new StreamReader(stream))
                 await using (_writer = new StreamWriter(stream))
                 {
-                    Log.Information("Starting FakeGameServer");
+                    _logger.LogInformation("Starting FakeGameServer");
                     _writer.AutoFlush = true;
                     var writeTask = SendGameEvents();
                     //await AddPlayerAsync(1, "Tester", 1, "127.0.1.1", "hash", 1);
@@ -95,16 +96,16 @@ public class FakeGameServer
                     {
                         // TODO: switch to .ReadLineAsync(_cancellationToken) in .NET 7
                         var message = await _reader.ReadLineAsync().WaitAsync(_cancellationToken);
-                        Log.Information("Received: {Message}", message);
+                        _logger.LogInformation("Received: {Message}", message);
                     }
 
                     await writeTask;
-                    Log.Information("Stopping FakeGameServer");
+                    _logger.LogInformation("Stopping FakeGameServer");
                 }
             }
             catch (Exception e)
             {
-                Log.Error(e, "Fake game server failed");
+                _logger.LogError(e, "Fake game server failed");
             }
         }, _cancellationToken);
     }
@@ -117,7 +118,7 @@ public class FakeGameServer
     {
         DiscordModule.IsEnabled = false;
         var lines = await File.ReadAllLinesAsync(_gameLogPath, _cancellationToken);
-        Log.Information("Read {Lines} game events from file", lines.Length);
+        _logger.LogInformation("Read {Lines} game events from file", lines.Length);
 
         //lines = lines.Skip(7445).ToArray(); // skip until 2v2 action - there will be mismatch though
 
@@ -144,12 +145,12 @@ public class FakeGameServer
                     {
                         skipFinished = true;
                         DiscordModule.IsEnabled = true; // don't spam discord
-                        Log.Information("Skip finished");
+                        _logger.LogInformation("Skip finished");
                     }
 
                     // TODO: tryout spinwait and see if it's more accurate and not too cpu intensive
                     //SpinWait.SpinUntil(() => sw.ElapsedMilliseconds > snapshot.Item1, 1000);
-                    await MultimediaTimer.Delay(timestamp - diff);
+                    await MultimediaTimer.Delay(timestamp - diff, _cancellationToken);
                     //await Task.Delay(timestamp - diff);
                 }
 

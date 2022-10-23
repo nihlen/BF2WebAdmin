@@ -13,9 +13,9 @@ public interface IGameStreamService
 
 public class RabbitMqGameStreamService : IGameStreamService
 {
-    private readonly IBus _messageBus;
+    private readonly IBus? _messageBus;
 
-    public RabbitMqGameStreamService(IBus messageBus)
+    public RabbitMqGameStreamService(IBus? messageBus)
     {
         _messageBus = messageBus;
     }

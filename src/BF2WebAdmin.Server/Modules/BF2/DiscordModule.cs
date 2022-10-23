@@ -11,7 +11,6 @@ using BF2WebAdmin.Shared;
 using Discord;
 using Discord.WebSocket;
 using Nihlen.Common.Telemetry;
-using Serilog;
 using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;
 
 namespace BF2WebAdmin.Server.Modules.BF2;
@@ -228,7 +227,7 @@ public class DiscordModule : BaseModule,
 # Execute a console command
 !exec```";
 
-    public DiscordModule(IGameServer server, IGameStreamService gameStreamService, CancellationTokenSource cts) : base(server, cts)
+    public DiscordModule(IGameServer server, IGameStreamService gameStreamService, ILogger<DiscordModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _game = server;
         _gameStreamService = gameStreamService;
@@ -274,7 +273,7 @@ public class DiscordModule : BaseModule,
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Failed to send Discord message {Message}", text);
+                Logger.LogError(ex, "Failed to send Discord message {Message}", text);
             }
         }
     }
@@ -291,16 +290,16 @@ public class DiscordModule : BaseModule,
                 }
                 else
                 {
-                    Log.Error(message.Exception, "DISCORD: {message}", message.Message);
+                    Logger.LogError(message.Exception, "DISCORD: {message}", message.Message);
                 }
             }
             else if (message.Severity == LogSeverity.Warning)
             {
-                Log.Warning("DISCORD: {message}", message.Message);
+                Logger.LogWarning("DISCORD: {Message}", message.Message);
             }
             else
             {
-                Log.Debug("DISCORD: {message}", message.Message);
+                Logger.LogDebug("DISCORD: {Message}", message.Message);
             }
 
             return Task.CompletedTask;
@@ -451,7 +450,7 @@ public class DiscordModule : BaseModule,
         // TODO: sanitize message, remove ` and other characters
         if (_adminChannels == null)
         {
-            Log.Warning("No admin channels found");
+            Logger.LogWarning("No admin channels found");
             return;
         }
 
@@ -471,7 +470,7 @@ public class DiscordModule : BaseModule,
         // TODO: sanitize message, remove ` and other characters
         if (_matchResultChannels == null)
         {
-            Log.Warning("No match result channels found");
+            Logger.LogWarning("No match result channels found");
             return;
         }
 
@@ -487,7 +486,7 @@ public class DiscordModule : BaseModule,
     {
         if (_adminChannels == null)
         {
-            Log.Warning("No admin channel channels found");
+            Logger.LogWarning("No admin channel channels found");
             return;
         }
 

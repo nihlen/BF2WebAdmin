@@ -20,14 +20,13 @@ using Microsoft.EntityFrameworkCore;
 using Nihlen.Common.Telemetry;
 using Polly;
 using Polly.Registry;
-using Serilog;
 
 namespace BF2WebAdmin.Server;
 
 // TODO: Move commands into new module folders? (like Features/)
 public class ModManager : IModManager
 {
-    private static readonly IReadOnlyPolicyRegistry<string> PolicyRegistry;
+    private static IReadOnlyPolicyRegistry<string>? PolicyRegistry;
     public static readonly string[] DefaultModuleNames = { nameof(BF2Module), nameof(LogModule), nameof(WebModule) };
 
     private const string CommandPrefix = ".";
@@ -39,6 +38,7 @@ public class ModManager : IModManager
 
     private IConfiguration Configuration { get; set; }
     private IServiceProvider _services;
+    private readonly ILogger<ModManager> _logger;
 
     public ILookup<string, ServerPlayerAuth> AuthPlayers { get; private set; }
 
@@ -46,68 +46,16 @@ public class ModManager : IModManager
 
     public IMediator Mediator { get; private set; }
 
-    static ModManager()
-    {
-        // Exponential back-off plus some jitter
-        var jitterer = new Random();
-
-        var retryPolicyAsync = Policy
-            .Handle<SqlException>()
-            .WaitAndRetryAsync(
-                retryCount: 6,
-                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
-                onRetry: (exception, retryAttempt, timespan) => Log.Warning("Failed attempt #{Attempt}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", retryAttempt, timespan, exception.Message, exception.StackTrace)
-            );
-
-        var retryPolicyLongAsync = Policy
-            .Handle<SqlException>()
-            .WaitAndRetryAsync(
-                retryCount: 10, // ~17 min
-                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
-                onRetry: (exception, retryAttempt, timespan) => Log.Warning("Failed attempt #{Attempt}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", retryAttempt, timespan, exception.Message, exception.StackTrace)
-            );
-
-        var httpStatusCodesWorthRetrying = new[] {
-            HttpStatusCode.RequestTimeout, // 408
-            HttpStatusCode.InternalServerError, // 500
-            HttpStatusCode.BadGateway, // 502
-            HttpStatusCode.ServiceUnavailable, // 503
-            HttpStatusCode.GatewayTimeout // 504
-        };
-        var retryPolicyHttpAsync = Policy
-            .Handle<HttpRequestException>()
-            .OrResult<HttpResponseMessage>(r => httpStatusCodesWorthRetrying.Contains(r.StatusCode))
-            .WaitAndRetryAsync(
-                retryCount: 6,
-                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
-                onRetry: (exception, retryAttempt, timespan) => Log.Warning("Failed attempt #{Attempt}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", retryAttempt, timespan, exception.Exception.Message, exception.Exception.StackTrace)
-            );
-
-        var retryPolicy = Policy
-            .Handle<SqlException>()
-            .WaitAndRetry(
-                retryCount: 6,
-                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
-                onRetry: (exception, retryAttempt, timespan) => Log.Warning("Failed attempt #{Attempts}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", retryAttempt, timespan, exception.Message, exception.StackTrace)
-            );
-
-        PolicyRegistry = new PolicyRegistry
-        {
-            { PolicyNames.RetryPolicy, retryPolicy },
-            { PolicyNames.RetryPolicyAsync, retryPolicyAsync },
-            { PolicyNames.RetryPolicyLongAsync, retryPolicyLongAsync },
-            { PolicyNames.RetryPolicyHttpAsync, retryPolicyHttpAsync }
-        };
-    }
-
     private ModManager(IGameServer gameServer, IServiceProvider globalServices, CancellationToken cancellationToken)
     {
         _gameServer = gameServer;
         _globalServices = globalServices;
+        _logger = globalServices.GetRequiredService<ILogger<ModManager>>();
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _moduleResolver = new ModuleResolver();
-        Mediator = new Mediator(_moduleResolver);
-
+        _moduleResolver = new ModuleResolver(globalServices.GetRequiredService<ILogger<ModuleResolver>>());
+        Mediator = new Mediator(_moduleResolver, globalServices.GetRequiredService<ILogger<Mediator>>());
+        PolicyRegistry = CreatePolicyRegistry(globalServices.GetRequiredService<ILogger<ModManager>>());
+        
         BuildConfiguration();
         ConfigureDependencies();
     }
@@ -126,7 +74,7 @@ public class ModManager : IModManager
         //     modManager.CreateModulesAsync(),
         //     modManager.GetAuthPlayersAsync()
         // ));
-
+        
         await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(async () =>
         {
             await modManager.GetServerSettingsAsync();
@@ -137,6 +85,63 @@ public class ModManager : IModManager
         return modManager;
     }
 
+    private static IReadOnlyPolicyRegistry<string> CreatePolicyRegistry(ILogger<ModManager> logger)
+    {
+        if (PolicyRegistry is not null)
+            return PolicyRegistry;
+        
+        // Exponential back-off plus some jitter
+        var jitterer = new Random();
+
+        var retryPolicyAsync = Policy
+            .Handle<SqlException>()
+            .WaitAndRetryAsync(
+                retryCount: 6,
+                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
+                onRetry: (exception, timespan, context) => logger.LogWarning("Failed attempt #{Attempt}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", timespan, context, exception.Message, exception.StackTrace)
+            );
+
+        var retryPolicyLongAsync = Policy
+            .Handle<SqlException>()
+            .WaitAndRetryAsync(
+                retryCount: 10, // ~17 min
+                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
+                onRetry: (exception, retryAttempt, timespan) => logger.LogWarning("Failed attempt #{Attempt}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", retryAttempt, timespan, exception.Message, exception.StackTrace)
+            );
+
+        var httpStatusCodesWorthRetrying = new[] {
+            HttpStatusCode.RequestTimeout, // 408
+            HttpStatusCode.InternalServerError, // 500
+            HttpStatusCode.BadGateway, // 502
+            HttpStatusCode.ServiceUnavailable, // 503
+            HttpStatusCode.GatewayTimeout // 504
+        };
+        var retryPolicyHttpAsync = Policy
+            .Handle<HttpRequestException>()
+            .OrResult<HttpResponseMessage>(r => httpStatusCodesWorthRetrying.Contains(r.StatusCode))
+            .WaitAndRetryAsync(
+                retryCount: 6,
+                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
+                onRetry: (exception, retryAttempt, timespan) => logger.LogWarning("Failed attempt #{Attempt}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", retryAttempt, timespan, exception.Exception.Message, exception.Exception.StackTrace)
+            );
+
+        var retryPolicy = Policy
+            .Handle<SqlException>()
+            .WaitAndRetry(
+                retryCount: 6,
+                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
+                onRetry: (exception, retryAttempt, timespan) => logger.LogWarning("Failed attempt #{Attempts}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", retryAttempt, timespan, exception.Message, exception.StackTrace)
+            );
+
+        return new PolicyRegistry
+        {
+            { PolicyNames.RetryPolicy, retryPolicy },
+            { PolicyNames.RetryPolicyAsync, retryPolicyAsync },
+            { PolicyNames.RetryPolicyLongAsync, retryPolicyLongAsync },
+            { PolicyNames.RetryPolicyHttpAsync, retryPolicyHttpAsync }
+        };
+    }
+    
     public T GetModule<T>() where T : IModule
     {
         return (T)_moduleResolver.Modules[typeof(T)];
@@ -165,6 +170,8 @@ public class ModManager : IModManager
     {
         var serviceCollection = new ServiceCollection();
 
+        serviceCollection.AddLogging(builder => builder.AddProvider(_globalServices.GetRequiredService<ILoggerProvider>()));
+
         // Options
         var geoipConfig = Configuration.GetSection("Geoip");
         serviceCollection.AddOptions();
@@ -182,7 +189,7 @@ public class ModManager : IModManager
         serviceCollection.AddSingleton<IReadOnlyPolicyRegistry<string>>(PolicyRegistry);
         serviceCollection.AddSingleton<IMediator>(c => Mediator);
         serviceCollection.AddSingleton<IHubContext<ServerHub, IServerHubClient>>(sp => _globalServices.GetRequiredService<IHubContext<ServerHub, IServerHubClient>>());
-        serviceCollection.AddSingleton<MassTransit.IBus>(sp => _globalServices.GetRequiredService<MassTransit.IBus>());
+        serviceCollection.AddSingleton<MassTransit.IBus>(sp => _globalServices.GetService<MassTransit.IBus>());
         serviceCollection.AddSingleton<IGameStreamService, RabbitMqGameStreamService>();
         //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RabbitMqGameStreamService>());
         //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RedisGameStreamService>());
@@ -239,7 +246,7 @@ public class ModManager : IModManager
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Resolve module error");
+                _logger.LogError(ex, "Resolve module error");
                 throw;
             }
         }
@@ -339,22 +346,22 @@ public class ModManager : IModManager
                 if (command is BaseCommand baseCommand)
                     baseCommand.Message = message;
                 else
-                    Log.Warning("{CommandName} is not a {BaseCommand}", commandType.Name, nameof(BaseCommand));
+                    _logger.LogWarning("{CommandName} is not a {BaseCommand}", commandType.Name, nameof(BaseCommand));
 
                 await Mediator.HandleAsync(command);
             }
             catch (CommandArgumentCountException ex)
             {
                 //Logger.LogError(ex, $"{parser} Wrong argument count: {ex.Message}");
-                Log.Verbose("Wrong argument count: {Message}", ex.Message);
+                _logger.LogTrace("Wrong argument count: {Message}", ex.Message);
             }
             catch (FormatException ex)
             {
-                Log.Error(ex, "{Parser} Format exception: {ExceptionMessage}", parser, ex.Message);
+                _logger.LogError(ex, "{Parser} Format exception: {ExceptionMessage}", parser, ex.Message);
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "{Parser} Command handle exception: {ExceptionMessage}", parser, ex.Message);
+                _logger.LogError(ex, "{Parser} Command handle exception: {ExceptionMessage}", parser, ex.Message);
             }
         }
 

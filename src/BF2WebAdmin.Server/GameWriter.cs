@@ -10,7 +10,6 @@ using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
 using Nihlen.Common.Telemetry;
-using Serilog;
 
 namespace BF2WebAdmin.Server;
 
@@ -19,6 +18,7 @@ public class GameWriter : IGameWriter
     private readonly BinaryWriter _writer;
     private readonly Channel<string> _gameMessageChannel;
     private readonly bool _logSend;
+    private readonly ILogger<GameWriter> _logger;
     private readonly CancellationToken _cancellationToken;
     private int _responseCounter;
 
@@ -29,10 +29,11 @@ public class GameWriter : IGameWriter
 
     public double CurrentTrackerInterval { get; private set; } = 300;
 
-    public GameWriter(BinaryWriter writer, bool logSend, CancellationToken cancellationToken)
+    public GameWriter(BinaryWriter writer, bool logSend, ILogger<GameWriter> logger, CancellationToken cancellationToken)
     {
         _writer = writer;
         _logSend = logSend;
+        _logger = logger;
         _cancellationToken = cancellationToken;
 
         // Battlefield 2 does not support UTF-8, only what seems like Windows-1252
@@ -87,7 +88,7 @@ public class GameWriter : IGameWriter
             {
                 if (_logSend)
                 {
-                    Log.Debug("send: {Message}", message);
+                    _logger.LogDebug("send: {Message}", message);
                 }
 
                 // Easy method
@@ -103,7 +104,7 @@ public class GameWriter : IGameWriter
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Write error for server");
+                _logger.LogError(ex, "Write error for server");
                 activity?.SetStatus(ActivityStatusCode.Error, $"Failed to send game message: {ex.Message}");
             }
 
@@ -162,11 +163,11 @@ public class GameWriter : IGameWriter
         var exists = _pendingRconResponses.TryGetValue(responseCode, out var pendingResponse);
         if (!exists || pendingResponse == null)
         {
-            Log.Information("No responseCode {responseCode} found", responseCode);
+            _logger.LogInformation("No responseCode {ResponseCode} found", responseCode);
             return;
         }
 
-        Log.Information("RCON response {responseCode} {value}", responseCode, value);
+        _logger.LogInformation("RCON response {ResponseCode} {Value}", responseCode, value);
 
         pendingResponse.TrySetResult(value);
     }
@@ -327,12 +328,12 @@ public class GameWriter : IGameWriter
         {
             var sw = Stopwatch.StartNew();
             var response = GetRconResponseAsync("physics.gravity").GetAwaiter().GetResult();
-            Log.Information("Heartbeat response: {response} in {elapsedMs} ms", sw.ElapsedMilliseconds);
+            _logger.LogInformation("Heartbeat response: {Response} in {ElapsedMs} ms", sw.ElapsedMilliseconds);
         }
         catch (Exception e)
         {
             var duration = (DateTime.UtcNow - StartDate).TotalSeconds;
-            Log.Warning(e, "Failed to send heartbeat ({duration} s since start)", duration);
+            _logger.LogWarning(e, "Failed to send heartbeat ({Duration} s since start)", duration);
         }
     }
 }

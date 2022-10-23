@@ -4,7 +4,6 @@ using System.Threading.Channels;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
 using Nihlen.Common.Telemetry;
-using Serilog;
 
 namespace BF2WebAdmin.Server;
 
@@ -12,19 +11,21 @@ public class GameReader : IGameReader
 {
     private readonly IGameServer _gameServer;
     private readonly string _gameLogPath;
+    private readonly ILogger<GameReader> _logger;
     private readonly CancellationToken _cancellationToken;
     private readonly DateTime _startTime;
     private readonly Dictionary<string, Func<string[], DateTimeOffset, ValueTask>> _eventHandlers;
     private readonly Stopwatch _messageStopWatch;
     private readonly Channel<(string, DateTimeOffset)> _gameEventChannel;
 
-    public GameReader(IGameServer gameServer, string gameLogPath = null, CancellationToken? cancellationToken = null)
+    public GameReader(IGameServer gameServer, ILogger<GameReader> logger, string gameLogPath = null, CancellationToken? cancellationToken = null)
     {
         var eventHandler = new EventHandler(gameServer);
         _eventHandlers = GetEventsHandlers(eventHandler);
         _startTime = DateTime.UtcNow;
         _gameServer = gameServer;
         _gameLogPath = gameLogPath;
+        _logger = logger;
         _cancellationToken = cancellationToken ?? CancellationToken.None;
         _messageStopWatch = new Stopwatch();
         _gameEventChannel = Channel.CreateUnbounded<(string, DateTimeOffset)>(new UnboundedChannelOptions
@@ -41,7 +42,7 @@ public class GameReader : IGameReader
         }
 
         if (_gameLogPath != null)
-            Log.Debug("Logging game events to {gameLogPath}", _gameLogPath);
+            _logger.LogDebug("Logging game events to {gameLogPath}", _gameLogPath);
 
         _ = Task.Run(ParseAllMessagesAsync);
     }
@@ -71,7 +72,7 @@ public class GameReader : IGameReader
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Failed to parse message {Message}", message);
+                _logger.LogError(ex, "Failed to parse message {Message}", message);
                 activity?.SetStatus(ActivityStatusCode.Error, $"Game message parse failed: {ex.Message}");
             }
             
@@ -102,14 +103,14 @@ public class GameReader : IGameReader
             var elapsedMs = _messageStopWatch.ElapsedMilliseconds;
             if (elapsedMs > 400)
             {
-                Log.Warning("Event {EventType} took {ElapsedMilliseconds} ms ({Message}) Activity: {ActivityDuration} ticks", eventType, _messageStopWatch.ElapsedMilliseconds, message, Activity.Current?.Duration.Ticks);
+                _logger.LogWarning("Event {EventType} took {ElapsedMilliseconds} ms ({Message}) Activity: {ActivityDuration} ticks", eventType, _messageStopWatch.ElapsedMilliseconds, message, Activity.Current?.Duration.Ticks);
             }
         }
         else if (eventType.Length > 0)
         {
             if (eventType != "Unknown object or method!" && !eventType.StartsWith("id") && !eventType.StartsWith("0x"))
             {
-                Log.Error("Unknown server event: '{EventType}'", eventType);
+                _logger.LogError("Unknown server event: '{EventType}'", eventType);
                 Activity.Current?.SetTag("bf2wa.game-event-unknown", true);
             }
         }

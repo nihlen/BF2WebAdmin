@@ -3,7 +3,6 @@ using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
-using Serilog;
 using SixLabors.ImageSharp;
 
 namespace BF2WebAdmin.Server.Modules.BF2;
@@ -81,7 +80,7 @@ public class ChopperMayhemModule : BaseModule,
 
     private readonly double _altitudeOffset = 140;
 
-    public ChopperMayhemModule(IGameServer server, CancellationTokenSource cts) : base(server, cts)
+    public ChopperMayhemModule(IGameServer server, ILogger<ChopperMayhemModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
     }
         
@@ -185,7 +184,7 @@ public class ChopperMayhemModule : BaseModule,
                     if (pixel.A == 0)
                         continue;
 
-                    Log.Information("Pixel found at {x},{y}", ix, iy);
+                    Logger.LogInformation("Pixel found at {x},{y}", ix, iy);
 
                     var xPos = startX - ix * distanceX;
                     var zPos = startZ - iy * distanceZ;

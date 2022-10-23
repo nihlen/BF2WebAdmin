@@ -5,7 +5,6 @@ using System.Security.Cryptography;
 using System.Text;
 using BF2WebAdmin.Server.Abstractions;
 using Nihlen.Common.Telemetry;
-using Serilog;
 
 namespace BF2WebAdmin.Server;
 
@@ -14,6 +13,7 @@ public class RconClient : IRconClient, IDisposable
     private readonly IPAddress _ipAddress;
     private readonly int _port;
     private readonly string _password;
+    private readonly ILogger _logger;
 
     private TcpClient? _client;
 
@@ -21,11 +21,12 @@ public class RconClient : IRconClient, IDisposable
     private StreamReader? _reader;
     private BinaryWriter? _writer;
 
-    public RconClient(IPAddress ipAddress, int port, string password)
+    public RconClient(IPAddress ipAddress, int port, string password, ILogger logger)
     {
         _ipAddress = ipAddress;
         _port = port;
         _password = password;
+        _logger = logger;
     }
 
     public async Task<string> SendAsync(string command) => await SendAsync(new[] { command });
@@ -36,7 +37,7 @@ public class RconClient : IRconClient, IDisposable
         activity?.SetTag("bf2wa.rcon-endpoint", $"{_ipAddress}:{_port}");
         // activity?.SetTag("bf2wa.rcon-command", string.Join("|", commands));
 
-        Log.Debug("RCON connecting to {IpAddress} {Port}", _ipAddress, _port);
+        _logger.LogDebug("RCON connecting to {IpAddress} {Port}", _ipAddress, _port);
         if (_client?.Connected != true)
             await AuthenticateClientAsync();
 
@@ -49,7 +50,7 @@ public class RconClient : IRconClient, IDisposable
             _writer?.Write(GetCommandBytes(command));
             var response = ReadCommandResponse(_stream!);
             sb.Append(response);
-            Log.Debug("RCON response: {Response}", response);
+            _logger.LogDebug("RCON response: {Response}", response);
         }
         
         return sb.ToString();
@@ -71,7 +72,7 @@ public class RconClient : IRconClient, IDisposable
         while (!_reader.EndOfStream)
         {
             var msg = await _reader.ReadLineAsync();
-            Log.Debug("RCON read: {Message}", msg);
+            _logger.LogDebug("RCON read: {Message}", msg);
             if (string.IsNullOrWhiteSpace(msg))
                 continue;
 
@@ -90,7 +91,7 @@ public class RconClient : IRconClient, IDisposable
             }
             else if (msg.StartsWith(RconResponses.AuthenticationSuccessResponse))
             {
-                Log.Information("RCON authenticated successfully");
+                _logger.LogInformation("RCON authenticated successfully");
                 authenticated = true;
                 break;
             }

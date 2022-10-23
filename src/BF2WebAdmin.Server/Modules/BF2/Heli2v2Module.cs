@@ -17,7 +17,6 @@ using Humanizer.Localisation;
 using Newtonsoft.Json;
 using Polly;
 using Polly.Registry;
-using Serilog;
 using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;
 
 // TODO: split match and command handling
@@ -76,7 +75,7 @@ public class Heli2v2Module : BaseModule,
     private Player _stalker;
     private Player _stalked;
 
-    public Heli2v2Module(IGameServer server, IMatchRepository matchRepository, IReadOnlyPolicyRegistry<string> policyRegistry, CancellationTokenSource cts) : base(server, cts)
+    public Heli2v2Module(IGameServer server, IMatchRepository matchRepository, IReadOnlyPolicyRegistry<string> policyRegistry, ILogger<Heli2v2Module> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _gameServer = server;
         _matchRepository = matchRepository;
@@ -170,7 +169,7 @@ public class Heli2v2Module : BaseModule,
                 {
                     if (player.SubVehicle == null)
                     {
-                        Log.Warning("player.SubVehicle is null in {StatisticsMethod} for {PlayerName}", nameof(GetMatchStatisticsAsync), player?.Player?.Name);
+                        Logger.LogWarning("player.SubVehicle is null in {StatisticsMethod} for {PlayerName}", nameof(GetMatchStatisticsAsync), player?.Player?.Name);
                     }
 
                     if (player.SubVehicle != null)
@@ -363,12 +362,12 @@ public class Heli2v2Module : BaseModule,
 
         if (duration > TimeSpan.FromMinutes(10) && match.Rounds.Count > 10)
         {
-            Log.Information("Sending match results for {MatchId}", match.Id);
+            Logger.LogInformation("Sending match results for {MatchId}", match.Id);
             await SendDiscordEmbedAsync(builder.Build());
         }
         else
         {
-            Log.Information("Not sending match results for {MatchId} (duration: {Duration}, rounds: {RoundCount})", match.Id, duration, match.Rounds.Count);
+            Logger.LogInformation("Not sending match results for {MatchId} (duration: {Duration}, rounds: {RoundCount})", match.Id, duration, match.Rounds.Count);
         }
     }
 
@@ -851,7 +850,7 @@ public class Heli2v2Module : BaseModule,
             
             //await MultimediaTimer.Delay((int)(snapshot.Item1 - previousTime));
             SpinWait.SpinUntil(() => sw.ElapsedMilliseconds > snapshot.Item1, 1000);
-            Log.Error("Variance: {VarianceMs}", (sw.ElapsedMilliseconds - snapshot.Item1));
+            Logger.LogError("Variance: {VarianceMs}", (sw.ElapsedMilliseconds - snapshot.Item1));
             _gameServer.GameWriter.SendTeleport(_playerRecordingTarget, snapshot.Item2);
             _gameServer.GameWriter.SendRotate(_playerRecordingTarget, snapshot.Item3);
             if (_playbackCancellation.IsCancellationRequested)
@@ -1129,7 +1128,7 @@ public class Heli2v2Module : BaseModule,
                 // TODO: figure ut why this is not 100% fixed
                 _gameServer.GameWriter.SendText($"Team mismatch for {string.Join(" & ", teamPlayers.Select(p => $"{p.ShortName}"))} - switch team to fix match");
                 await SendDiscordMessageAsync($"2v2 team ID mismatch for {string.Join(", ", teamPlayers.Select(p => $"{p.DisplayName}={p.Team.Name}"))}");
-                Log.Warning("2v2 team ID mismatch for {PlayerTeamNames}", string.Join(", ", teamPlayers.Select(p => $"{p.DisplayName}={p.Team.Name}")));
+                Logger.LogWarning("2v2 team ID mismatch for {PlayerTeamNames}", string.Join(", ", teamPlayers.Select(p => $"{p.DisplayName}={p.Team.Name}")));
             }
 
             return;
@@ -1137,7 +1136,7 @@ public class Heli2v2Module : BaseModule,
 
         if (_pendingRound != null && (DateTime.UtcNow - _pendingRound?.ReadyTime) > TimeSpan.FromMinutes(5))
         {
-            Log.Debug("Pending round was over 5 minutes - clearing");
+            Logger.LogDebug("Pending round was over 5 minutes - clearing");
             _pendingRound = null;
         }
 
@@ -1303,7 +1302,7 @@ public class Heli2v2Module : BaseModule,
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "Failed to resume previous match");
+                Logger.LogWarning(ex, "Failed to resume previous match");
             }
         }
     }
@@ -1393,7 +1392,7 @@ public class Heli2v2Module : BaseModule,
 
         if (_playerRecordingWatch != null && _playerRecordingWatch.IsRunning)
         {
-            Log.Information("Recorded player {Position} {Rotation}", e.Position, e.Rotation);
+            Logger.LogInformation("Recorded player {Position} {Rotation}", e.Position, e.Rotation);
             _playerRecordingPositions.Add((_playerRecordingWatch.ElapsedMilliseconds, e.Position, e.Rotation));
         }
 
@@ -1474,7 +1473,7 @@ public class Heli2v2Module : BaseModule,
         if (!_roundsActive)
             return;
 
-        Log.Information("Saving new match {MatchId}", e.Match.Id);
+        Logger.LogInformation("Saving new match {MatchId}", e.Match.Id);
 
         await _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
             await _matchRepository.InsertMatchAsync(ToMatchEntity(e.Match))
@@ -1488,7 +1487,7 @@ public class Heli2v2Module : BaseModule,
         if (!_roundsActive)
             return;
 
-        Log.Information("Saving match end results for {MatchId}", e.Match.Id);
+        Logger.LogInformation("Saving match end results for {MatchId}", e.Match.Id);
 
         await _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
             await _matchRepository.UpdateMatchAsync(ToMatchEntity(e.Match))
@@ -1503,7 +1502,7 @@ public class Heli2v2Module : BaseModule,
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to get match statistics");
+            Logger.LogError(ex, "Failed to get match statistics");
         }
     }
 
@@ -1614,12 +1613,12 @@ public class Heli2v2Module : BaseModule,
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Error at end of round event");
+            Logger.LogError(ex, "Error at end of round event");
         }
 
         RunBackgroundTask("Save match round", async () =>
         {
-            Log.Information("Saving round {RoundId} on match {MatchId}", e.Round.Id, e.Round.MatchId);
+            Logger.LogInformation("Saving round {RoundId} on match {MatchId}", e.Round.Id, e.Round.MatchId);
 
             await _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
                 await _matchRepository.InsertRoundAsync(ToRoundEntity(e.Round))

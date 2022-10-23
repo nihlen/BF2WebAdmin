@@ -9,7 +9,6 @@ using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Logging;
 using BF2WebAdmin.Shared;
-using Serilog;
 
 namespace BF2WebAdmin.Server.Modules.BF2;
 
@@ -65,7 +64,7 @@ public class BF2Module : BaseModule,
     // TODO: does this need to be static for all servers to get it?
     public event Action<string, string> ServerGroupMessage;
 
-    public BF2Module(IGameServer server, ICountryResolver countryResolver, IServerSettingsRepository serverSettingsRepository, IChatLogger chatLogger, CancellationTokenSource cts) : base(server, cts)
+    public BF2Module(IGameServer server, ICountryResolver countryResolver, IServerSettingsRepository serverSettingsRepository, IChatLogger chatLogger, ILogger<BF2Module> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _gameServer = server;
         _countryResolver = countryResolver;
@@ -211,7 +210,7 @@ public class BF2Module : BaseModule,
 
     public void Handle(TimerIntervalCommand command)
     {
-        Log.Information("Timer interval set to {interval}", command.Value);
+        Logger.LogInformation("Timer interval set to {interval}", command.Value);
         _gameServer.GameWriter.SendTimerInterval(command.Value);
     }
 
@@ -503,11 +502,11 @@ public class BF2Module : BaseModule,
     {
         if (_gameServer.ServerInfo == null)
         {
-            Log.Warning("Couldn't update admins - ServerInfo missing");
+            Logger.LogWarning("Couldn't update admins - ServerInfo missing");
             return;
         }
 
-        var rconClient = new RconClient(_gameServer.ConnectedIpAddress, _gameServer.ServerInfo.RconPort, _gameServer.ServerInfo.RconPassword);
+        var rconClient = new RconClient(_gameServer.ConnectedIpAddress, _gameServer.ServerInfo.RconPort, _gameServer.ServerInfo.RconPassword, Logger);
 
         // Delete existing admins and add new admins from DB
         var ingameAdminResponse = await rconClient.SendAsync("iga listAdmins");
@@ -578,7 +577,7 @@ public class BF2Module : BaseModule,
             {
                 _heartbeatTimer = new Timer(o =>
                 {
-                    Log.Debug("Heartbeat");
+                    Logger.LogDebug("Heartbeat");
                     _gameServer.GameWriter.SendHeartbeat();
                 }, null, TimeSpan.Zero, TimeSpan.FromSeconds(25));
             }
@@ -635,25 +634,25 @@ public class PlayerSnapshot
     }
 }
 
-public class Profiler : IDisposable
-{
-    private readonly string _name;
-    private readonly Stopwatch _stopwatch;
-
-    private Profiler(string name)
-    {
-        _name = name;
-        _stopwatch = Stopwatch.StartNew();
-    }
-
-    public static Profiler Start(string name)
-    {
-        return new Profiler(name);
-    }
-
-    public void Dispose()
-    {
-        Log.Information("{Name} took {ElapsedMs} ms", _name, _stopwatch.ElapsedMilliseconds);
-        _stopwatch.Stop();
-    }
-}
+// public class Profiler : IDisposable
+// {
+//     private readonly string _name;
+//     private readonly Stopwatch _stopwatch;
+//
+//     private Profiler(string name)
+//     {
+//         _name = name;
+//         _stopwatch = Stopwatch.StartNew();
+//     }
+//
+//     public static Profiler Start(string name)
+//     {
+//         return new Profiler(name);
+//     }
+//
+//     public void Dispose()
+//     {
+//         Logger.LogInformation("{Name} took {ElapsedMs} ms", _name, _stopwatch.ElapsedMilliseconds);
+//         _stopwatch.Stop();
+//     }
+// }

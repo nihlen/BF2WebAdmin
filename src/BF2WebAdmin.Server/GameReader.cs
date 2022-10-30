@@ -101,7 +101,7 @@ public class GameReader : IGameReader
 
             _messageStopWatch.Stop();
             var elapsedMs = _messageStopWatch.ElapsedMilliseconds;
-            if (elapsedMs > 400)
+            if (elapsedMs > 2000)
             {
                 _logger.LogWarning("Event {EventType} took {ElapsedMilliseconds} ms ({Message}) Activity: {ActivityDuration} ticks", eventType, _messageStopWatch.ElapsedMilliseconds, message, Activity.Current?.Duration.Ticks);
             }
@@ -110,7 +110,7 @@ public class GameReader : IGameReader
         {
             if (eventType != "Unknown object or method!" && !eventType.StartsWith("id") && !eventType.StartsWith("0x"))
             {
-                _logger.LogError("Unknown server event: '{EventType}'", eventType);
+                _logger.LogDebug("Unknown server event: '{EventType}'", eventType);
                 Activity.Current?.SetTag("bf2wa.game-event-unknown", true);
             }
         }

@@ -91,7 +91,6 @@
                 {
                     <li @key="chat.Message.Id" class="@GetChatClass(chat.Message)">
                         @GetTimestamp(chat.Timestamp)
-                        &lt;@(chat.Message.Channel)&gt;
                         @(chat.Message.Type != "Server" ? $" {chat.Message.PlayerName}: " : string.Empty)
                         @chat.Message.Text
                     </li>

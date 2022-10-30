@@ -89,14 +89,12 @@
             <ul id="chatlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
                 @foreach (var chat in _chatLog)
                 {
-                    @if (chat.Message.Type == "Server")
-                    {
-                        <li @key="chat.Message.Id">@GetTimestamp(chat.Timestamp) &lt;@(chat.Message.Channel)&gt; @chat.Message.Text</li>
-                    }
-                    else
-                    {
-                        <li @key="chat.Message.Id" class="@GetChatClass(chat.Message)">@GetTimestamp(chat.Timestamp) &lt;@(chat.Message.Channel)&gt; @chat.Message.PlayerName: @chat.Message.Text</li>
-                    }
+                    <li @key="chat.Message.Id" class="@GetChatClass(chat.Message)">
+                        @GetTimestamp(chat.Timestamp)
+                        &lt;@(chat.Message.Channel)&gt;
+                        @(chat.Message.Type != "Server" ? $" {chat.Message.PlayerName}: " : string.Empty)
+                        @chat.Message.Text
+                    </li>
                 }
             </ul>
         </MudTabPanel>
@@ -556,6 +554,7 @@
         {
             "Team" => message.TeamName == "US" ? "blue-text text-lighten-1" : "red-text text-lighten-1",
             "Squad" => "green-text text-lighten-1",
+            "ServerMessage" => "grey-text",
             _ => string.Empty
         };
     }

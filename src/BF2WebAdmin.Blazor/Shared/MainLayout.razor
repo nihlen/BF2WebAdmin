@@ -1,13 +1,13 @@
 ﻿@inherits LayoutComponentBase
 
-<MudThemeProvider Theme="_currentTheme" />
-<MudDialogProvider />
-<MudSnackbarProvider />
+<MudThemeProvider Theme="_currentTheme"/>
+<MudDialogProvider/>
+<MudSnackbarProvider/>
 
 <MudLayout>
     <MudAppBar Elevation="0">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())"/>
+        <MudSpacer/>
 
         @if (_adminService.IsAuthenticated)
         {
@@ -21,12 +21,17 @@
             <MudIconButton Icon="@Icons.Custom.Brands.GitHub" Color="Color.Inherit" Link="https://github.com/Garderoben/MudBlazor" Target="_blank" />
         *@
     </MudAppBar>
-    <MudDrawer @bind-Open="_drawerOpen" Elevation="1" Width="300px">
-        <MudDrawerHeader>
-            <MudText Typo="Typo.h6">BF2 Web Admin</MudText>
-        </MudDrawerHeader>
-        <NavMenu />
-    </MudDrawer>
+
+    @if (_adminService.IsAuthenticated)
+    {
+        <MudDrawer @bind-Open="_drawerOpen" Elevation="1" Width="300px">
+            <MudDrawerHeader>
+                <MudText Typo="Typo.h6">BF2 Web Admin</MudText>
+            </MudDrawerHeader>
+            <NavMenu/>
+        </MudDrawer>
+    }
+
     <MudMainContent>
         @*<MudContainer MaxWidth="MaxWidth.Large" Class="my-16 pt-16">*@
         <MudContainer MaxWidth="MaxWidth.Large" Class="my-8 pt-8">
@@ -40,69 +45,72 @@
     // Theme source: https://github.com/aksoftware98/mudblazorsample/blob/main/MudBlazorSample/MudBlazorSample/Shared/MainLayout.razor
     private MudTheme _currentTheme = new();
     private readonly MudTheme _defaultTheme = new();
-    private readonly MudTheme _darkTheme = new()
-        {
-            // Official https://github.com/MudBlazor/MudBlazor/blob/4ab9e29ff5ad25c4c1aba62577c487637331e781/src/MudBlazor/Themes/Models/Palette.cs
-            Palette = new Palette
-            {
-                Primary = "#0bba83", // custom green
-                // Primary = "#776be7", // default purple
-                Black = "#27272f",
-                Background = "#32333d",
-                BackgroundGrey = "#27272f",
-                Surface = "#373740",
-                DrawerBackground = "#27272f",
-                DrawerText = "rgba(255,255,255, 0.50)",
-                DrawerIcon = "rgba(255,255,255, 0.50)",
-                AppbarBackground = "#27272f",
-                AppbarText = "rgba(255,255,255, 0.70)",
-                TextPrimary = "rgba(255,255,255, 0.70)",
-                TextSecondary = "rgba(255,255,255, 0.50)",
-                ActionDefault = "#adadb1",
-                ActionDisabled = "rgba(255,255,255, 0.26)",
-                ActionDisabledBackground = "rgba(255,255,255, 0.12)",
-                Divider = "rgba(255,255,255, 0.12)",
-                DividerLight = "rgba(255,255,255, 0.06)",
-                TableLines = "rgba(255,255,255, 0.12)",
-                LinesDefault = "rgba(255,255,255, 0.12)",
-                LinesInputs = "rgba(255,255,255, 0.3)",
-                TextDisabled = "rgba(255,255,255, 0.2)",
-                Info = "#3299ff",
-                Success = "#0bba83",
-                Warning = "#ffa800",
-                Error = "#f64e62",
-                Dark = "#27272f"
-            }
 
-            // Alt. https://github.com/aksoftware98/mudblazorsample/blob/main/MudBlazorSample/MudBlazorSample/Shared/MainLayout.razor
-            //Palette = new Palette
-            //{
-            //    Black = "#27272f",
-            //    Background = "#32333d",
-            //    BackgroundGrey = "#27272f",
-            //    Surface = "#373740",
-            //    DrawerBackground = "#27272f",
-            //    DrawerText = "rgba(255,255,255, 0.50)",
-            //    AppbarBackground = "#27272f",
-            //    AppbarText = "rgba(255,255,255, 0.70)",
-            //    TextPrimary = "rgba(255,255,255, 0.70)",
-            //    TextSecondary = "rgba(255,255,255, 0.50)",
-            //    ActionDefault = "#adadb1",
-            //    ActionDisabled = "rgba(255,255,255, 0.26)",
-            //    ActionDisabledBackground = "rgba(255,255,255, 0.12)",
-            //    DrawerIcon = "rgba(255,255,255, 0.50)"
-            //}
-        };
+    private readonly MudTheme _darkTheme = new()
+    {
+        // Official https://github.com/MudBlazor/MudBlazor/blob/4ab9e29ff5ad25c4c1aba62577c487637331e781/src/MudBlazor/Themes/Models/Palette.cs
+        Palette = new Palette
+        {
+            Primary = "#0bba83", // custom green
+            // Primary = "#776be7", // default purple
+            Black = "#27272f",
+            Background = "#32333d",
+            BackgroundGrey = "#27272f",
+            Surface = "#373740",
+            DrawerBackground = "#27272f",
+            DrawerText = "rgba(255,255,255, 0.50)",
+            DrawerIcon = "rgba(255,255,255, 0.50)",
+            AppbarBackground = "#27272f",
+            AppbarText = "rgba(255,255,255, 0.70)",
+            TextPrimary = "rgba(255,255,255, 0.70)",
+            TextSecondary = "rgba(255,255,255, 0.50)",
+            ActionDefault = "#adadb1",
+            ActionDisabled = "rgba(255,255,255, 0.26)",
+            ActionDisabledBackground = "rgba(255,255,255, 0.12)",
+            Divider = "rgba(255,255,255, 0.12)",
+            DividerLight = "rgba(255,255,255, 0.06)",
+            TableLines = "rgba(255,255,255, 0.12)",
+            LinesDefault = "rgba(255,255,255, 0.12)",
+            LinesInputs = "rgba(255,255,255, 0.3)",
+            TextDisabled = "rgba(255,255,255, 0.2)",
+            Info = "#3299ff",
+            Success = "#0bba83",
+            Warning = "#ffa800",
+            Error = "#f64e62",
+            Dark = "#27272f"
+        }
+
+    // Alt. https://github.com/aksoftware98/mudblazorsample/blob/main/MudBlazorSample/MudBlazorSample/Shared/MainLayout.razor
+    //Palette = new Palette
+    //{
+    //    Black = "#27272f",
+    //    Background = "#32333d",
+    //    BackgroundGrey = "#27272f",
+    //    Surface = "#373740",
+    //    DrawerBackground = "#27272f",
+    //    DrawerText = "rgba(255,255,255, 0.50)",
+    //    AppbarBackground = "#27272f",
+    //    AppbarText = "rgba(255,255,255, 0.70)",
+    //    TextPrimary = "rgba(255,255,255, 0.70)",
+    //    TextSecondary = "rgba(255,255,255, 0.50)",
+    //    ActionDefault = "#adadb1",
+    //    ActionDisabled = "rgba(255,255,255, 0.26)",
+    //    ActionDisabledBackground = "rgba(255,255,255, 0.12)",
+    //    DrawerIcon = "rgba(255,255,255, 0.50)"
+    //}
+    };
 
     bool _drawerOpen = true;
 
     protected override void OnInitialized()
     {
         _currentTheme = _darkTheme;
+        _adminService.OnIsAuthenticatedChange += b => StateHasChanged();
     }
 
     void DrawerToggle()
     {
         _drawerOpen = !_drawerOpen;
     }
+
 }

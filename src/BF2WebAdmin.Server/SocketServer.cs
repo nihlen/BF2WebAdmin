@@ -1,10 +1,12 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Shared;
+using Microsoft.Extensions.Caching.Memory;
 using Nihlen.Common.Telemetry;
 using Polly;
 
@@ -12,49 +14,113 @@ namespace BF2WebAdmin.Server;
 
 public interface ISocketServer
 {
-    IPAddress GetIpAddress();
     IGameServer? GetGameServer(string serverId);
-    IEnumerable<IGameServer> GetGameServers(string serverGroup);
-    Task ListenAsync(CancellationToken cancellationToken);
-    Task RetryConnectionAsync(IPAddress ipAddress, int port, ServerInfo serverInfo);
+    IEnumerable<IGameServer> GetGameServers(string? serverGroup);
+    Task<IEnumerable<ServerInfo>> GetDisconnectedServersAsync();
+    Task StartAsync(CancellationToken cancellationToken);
+    Task HandleServerUpdateAsync(string serverId, ServerUpdateType type);
 }
 
 public class SocketServer : ISocketServer
 {
-    private static ReadOnlySpan<byte> NewLine => new[] { (byte)'\n' };
-
     private readonly IPAddress _ipAddress;
     private readonly int _port;
-    private readonly IEnumerable<ServerInfo> _serverInfo;
+    private readonly IEnumerable<ServerInfo>? _serverInfoFromConfig;
     private readonly IServiceProvider _globalServices;
     private readonly bool _logSend;
     private readonly bool _logRecv;
     private readonly ConcurrentDictionary<IPEndPoint, TcpClient> _connections;
-    private readonly ConcurrentDictionary<string, IGameServer> _servers;
+    private readonly ConcurrentDictionary<string, GameServerConnectionContext> _servers;
     private readonly ILogger<SocketServer> _logger;
+    private readonly IServerSettingsRepository _serverRepository;
+    private readonly IMemoryCache _cache;
+    private CancellationToken? _serverCancellationToken;
+    private CancellationTokenSource? _serverReconnectCancellationTokenSource;
 
     public IPAddress GetIpAddress() => _ipAddress;
-    public IGameServer? GetGameServer(string serverId) => _servers.TryGetValue(serverId, out var server) ? server : null;
-    public IEnumerable<IGameServer> GetGameServers(string serverGroup) => _servers.Values.Where(s => s.ModManager?.ServerSettings?.ServerGroup == serverGroup).ToList();
+    public IGameServer? GetGameServer(string serverId) => _servers.TryGetValue(serverId, out var serverContext) ? serverContext.GameServer : null;
+    public IEnumerable<IGameServer> GetGameServers(string? serverGroup) => _servers.Values.Where(s => s.GameServer.ModManager?.ServerSettings?.ServerGroup == serverGroup || serverGroup is null).Select(c => c.GameServer).ToList();
+    public async Task<IEnumerable<ServerInfo>> GetDisconnectedServersAsync() => (await GetServerInfoAsync()).Where(si => !_servers.ContainsKey($"{si.IpAddress}:{si.GamePort}"));
 
-    public SocketServer(IPAddress ipAddress, int port, IEnumerable<ServerInfo> serverInfo, IServiceProvider globalServices, bool logSend, bool logRecv)
+    public SocketServer(IPAddress ipAddress, int port, IEnumerable<ServerInfo>? serverInfoFromConfig, IServiceProvider globalServices, bool logSend, bool logRecv)
     {
         _ipAddress = ipAddress;
         _port = port;
-        _serverInfo = serverInfo;
+        _serverInfoFromConfig = serverInfoFromConfig;
         _globalServices = globalServices;
+        _serverRepository = globalServices.GetRequiredService<IServerSettingsRepository>();
+        _cache = globalServices.GetRequiredService<IMemoryCache>();
         _logger = globalServices.GetRequiredService<ILogger<SocketServer>>();
         _logSend = logSend;
         _logRecv = logRecv;
         _connections = new ConcurrentDictionary<IPEndPoint, TcpClient>();
-        _servers = new ConcurrentDictionary<string, IGameServer>();
-        
+        _servers = new ConcurrentDictionary<string, GameServerConnectionContext>();
+
         // TODO: Move to BF2WebAdminMeter.cs? How to access servers?
-        _ = Telemetry.Meter.CreateObservableGauge("bf2wa.server.connected.count", () => _servers.Values.Count(s => s.SocketState == SocketState.Connected), description: "Connected game servers");
-        _ = Telemetry.Meter.CreateObservableGauge("bf2wa.player.count", () => _servers.Values.Sum(s => s.Players.Count()), description: "Players on all servers");
+        _ = Telemetry.Meter.CreateObservableGauge("bf2wa.server.connected.count", () => _servers.Values.Count(c => c.GameServer.SocketState == SocketState.Connected), description: "Connected game servers");
+        _ = Telemetry.Meter.CreateObservableGauge("bf2wa.player.count", () => _servers.Values.Sum(c => c.GameServer.Players.Count()), description: "Players on all servers");
     }
 
-    public async Task ListenAsync(CancellationToken cancellationToken)
+    private async ValueTask<IEnumerable<ServerInfo>> GetServerInfoAsync()
+    {
+        return await _cache.GetOrCreateAsync<IEnumerable<ServerInfo>>(nameof(GetServerInfoAsync), async entry =>
+        {
+            // Combine server info from config and DB
+            entry.AbsoluteExpiration = DateTimeOffset.Now.AddMinutes(5);
+
+            var result = new List<ServerInfo>();
+            var servers = await _serverRepository.GetServersAsync();
+            result.AddRange(servers.Select(s => new ServerInfo
+            {
+                IpAddress = s.IpAddress,
+                GamePort = s.GamePort,
+                QueryPort = s.QueryPort,
+                RconPort = s.RconPort,
+                RconPassword = s.RconPassword,
+                ServerGroup = s.ServerGroup,
+                DiscordBot = new ServerInfo.DiscordBotConfig
+                {
+                    Token = s.DiscordBotToken,
+                    AdminChannel = s.DiscordAdminChannel,
+                    NotificationChannel = s.DiscordNotificationChannel,
+                    MatchResultChannel = s.DiscordMatchResultChannel
+                }
+            }));
+
+            // Prioritize servers from the DB and fill in non-duplicates from app settings
+            if (_serverInfoFromConfig?.Any() ?? false)
+            {
+                result.AddRange(_serverInfoFromConfig.Where(s => !result.Any(r => r.IpAddress == s.IpAddress && r.GamePort == s.GamePort)));
+            }
+
+            return result;
+        });
+    }
+
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        _serverCancellationToken = cancellationToken;
+        var listenTask = ListenAsync(cancellationToken);
+        var connectToGameServersTask = ReconnectToServersAsync(cancellationToken);
+        await listenTask;
+    }
+
+    private async Task ReconnectToServersAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            _serverReconnectCancellationTokenSource?.Cancel();
+            var serverInfos = await GetServerInfoAsync();
+            _serverReconnectCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            await Task.WhenAll(serverInfos.Select(serverInfo => RetryConnectionAsync(GetIpAddress(), _port, serverInfo, _serverReconnectCancellationTokenSource.Token)));
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Failed to reconnect to servers");
+        }
+    }
+
+    private async Task ListenAsync(CancellationToken cancellationToken)
     {
         var server = StartTcpListener();
         _logger.LogInformation("Server started");
@@ -66,11 +132,12 @@ public class SocketServer : ISocketServer
             {
                 var client = await server.AcceptTcpClientAsync(cancellationToken);
                 AppDiagnostics.ConnectedClientsCounter.Add(1);
-                
+
+                var serverInfo = await GetServerInfoAsync();
                 var ipEndPoint = GetIpEndPoint(client);
                 var ipv4 = ipEndPoint.Address.MapToIPv4();
                 var isPrivateIp = ipv4.IsPrivate();
-                if (_serverInfo.All(s => s.IpAddress != ipv4.ToString()) && !isPrivateIp)
+                if (serverInfo.All(s => s.IpAddress != ipv4.ToString()) && !isPrivateIp)
                 {
                     _logger.LogWarning("Unauthorized connection from {IpAddress} - closing socket", ipEndPoint.Address);
                     client.Close();
@@ -82,6 +149,7 @@ public class SocketServer : ISocketServer
                 _connections.TryAdd(ipEndPoint, client);
 
                 var task = HandleConnectionLegacyAsync(client, cancellationToken);
+
                 //var task = HandleConnectionAsync(client, cancellationToken);
                 tasks.Add(task);
             }
@@ -106,19 +174,19 @@ public class SocketServer : ISocketServer
     private TcpListener StartTcpListener()
     {
         var server = new TcpListener(IPAddress.Any, _port);
-        //var server = new TcpListener(_ipAddress, _port);
         server.Start();
         return server;
     }
 
-    private async Task HandleConnectionLegacyAsync(TcpClient client, CancellationToken cancellationToken)
+    private async Task HandleConnectionLegacyAsync(TcpClient client, CancellationToken parentCancellationToken)
     {
         var ipEndPoint = GetIpEndPoint(client);
-
         _logger.LogInformation("Client {IpAddress}:{Port} connected", ipEndPoint.Address, ipEndPoint.Port);
 
         // TODO: Timeout before connection is dropped if it doesn't send serverInfo event?
 
+        var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(parentCancellationToken);
+        var cancellationToken = cancellationTokenSource.Token;
         IGameServer gameServer = null;
 
         try
@@ -130,7 +198,6 @@ public class SocketServer : ISocketServer
             IGameWriter gameWriter = new GameWriter(writer, _logSend, _globalServices.GetRequiredService<ILogger<GameWriter>>(), cancellationToken);
             IGameReader gameReader = null;
 
-            
             while (client.Connected && stream.CanRead && !cancellationToken.IsCancellationRequested)
             {
                 try
@@ -145,7 +212,7 @@ public class SocketServer : ISocketServer
                         _logger.LogError("Null message received for {ServerId}", gameServer?.Id);
                         break;
                     }
-                    
+
                     AppDiagnostics.ReceivedMessagesCounter.Add(1);
 
                     // TODO: temp ignore spam
@@ -160,7 +227,7 @@ public class SocketServer : ISocketServer
                     if (gameServer == null || gameReader == null)
                     {
                         // Server is currently pending - wait for serverInfo event so we can get id
-                        var result = await GetGameServerFromInitialMessageAsync(message, ipEndPoint, gameWriter, cancellationToken);
+                        var result = await GetGameServerFromInitialMessageAsync(message, ipEndPoint, gameWriter, client, cancellationTokenSource);
                         gameServer = result.GameServer;
                         gameReader = result.GameReader;
                     }
@@ -168,6 +235,7 @@ public class SocketServer : ISocketServer
                     if (gameReader != null)
                     {
                         gameReader.QueueMessage(message);
+
                         //await gameReader?.ParseMessageAsync(message);
                     }
 
@@ -192,6 +260,9 @@ public class SocketServer : ISocketServer
                 }
             }
 
+            // Make sure this connection is closed if a cancellation was requested
+            client.Close();
+
             if (gameServer != null)
                 await gameServer.UpdateSocketStateAsync(SocketState.Disconnected, DateTimeOffset.UtcNow);
         }
@@ -203,8 +274,9 @@ public class SocketServer : ISocketServer
         _connections.TryRemove(ipEndPoint, out var removed);
         _logger.LogInformation("Client {IpAddress}:{Port} disconnected", ipEndPoint.Address, ipEndPoint.Port);
 
+        var serverInfo = await GetServerInfoAsync();
         var ipv4 = gameServer?.IpAddress.MapToIPv4();
-        var matchingServerInfo = _serverInfo.FirstOrDefault(s => s.IpAddress == ipv4?.ToString() && s.GamePort == gameServer?.GamePort);
+        var matchingServerInfo = serverInfo.FirstOrDefault(s => s.IpAddress == ipv4?.ToString() && s.GamePort == gameServer?.GamePort);
         if (matchingServerInfo == null)
         {
             _logger.LogError("Unable to find matching server info for {IpAddress}:{Port}", ipv4, gameServer?.GamePort);
@@ -212,7 +284,7 @@ public class SocketServer : ISocketServer
         }
 
         await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
-        await RetryConnectionAsync(_ipAddress, _port, matchingServerInfo);
+        await RetryConnectionAsync(_ipAddress, _port, matchingServerInfo, _serverReconnectCancellationTokenSource?.Token ?? cancellationToken);
     }
 
     //private async Task HandleConnectionAsync(TcpClient client)
@@ -424,18 +496,18 @@ public class SocketServer : ISocketServer
 
     private static IPEndPoint GetIpEndPoint(TcpClient client)
     {
-        var result = client.Client.RemoteEndPoint as IPEndPoint;
-        if (result == null)
+        if (client.Client.RemoteEndPoint is not IPEndPoint result)
             throw new InvalidCastException();
 
         return result;
     }
 
     private async Task<(IGameServer? GameServer, IGameReader? GameReader)> GetGameServerFromInitialMessageAsync(
-        string message, 
-        IPEndPoint ipEndPoint, 
-        IGameWriter gameWriter, 
-        CancellationToken cancellationToken
+        string message,
+        IPEndPoint ipEndPoint,
+        IGameWriter gameWriter,
+        TcpClient tcpClient,
+        CancellationTokenSource cancellationTokenSource
     )
     {
         var parts = message.Split('\t');
@@ -446,45 +518,42 @@ public class SocketServer : ISocketServer
             return default;
         }
 
+        var serverInfos = await GetServerInfoAsync();
         var gamePort = int.Parse(parts[3]);
-        var serverInfo = _serverInfo.FirstOrDefault(i => 
-            (i.IpAddress == ipEndPoint.Address.ToString() || ipEndPoint.Address.IsPrivate() || ipEndPoint.Address.Equals(_ipAddress)) && 
+        var serverInfo = serverInfos.FirstOrDefault(i =>
+            (i.IpAddress == ipEndPoint.Address.ToString() || ipEndPoint.Address.IsPrivate() || ipEndPoint.Address.Equals(_ipAddress)) &&
             i.GamePort == gamePort
         );
+
         if (serverInfo == null)
             throw new Exception($"Server info not found in settings: {ipEndPoint.Address}:{gamePort}");
 
         var publicIpAddress = ipEndPoint.Address.IsPrivate() ? _ipAddress : ipEndPoint.Address;
         var key = $"{publicIpAddress}:{gamePort}";
-        var gameServer = await GetGameServerAsync(publicIpAddress, ipEndPoint.Address, gameWriter, key, serverInfo, cancellationToken);
-        var gameReader = new GameReader(gameServer, _globalServices.GetRequiredService<ILogger<GameReader>>(), cancellationToken: cancellationToken);
+        var gameServer = await GetGameServerAsync();
+
+        // var gameServer = await GetGameServerAsync(publicIpAddress, ipEndPoint.Address, gameWriter, key, serverInfo, tcpClient, cancellationToken);
+        var gameReader = new GameReader(gameServer, _globalServices.GetRequiredService<ILogger<GameReader>>(), cancellationToken: cancellationTokenSource.Token);
         return (gameServer, gameReader);
-    }
 
-    private async Task<IGameServer> GetGameServerAsync(
-        IPAddress publicIpAddress, 
-        IPAddress connectedIpAddress,
-        IGameWriter gameWriter, 
-        string key, 
-        ServerInfo serverInfo, 
-        CancellationToken cancellationToken
-    )
-    {
-        if (_servers.ContainsKey(key))
+        async Task<IGameServer> GetGameServerAsync()
         {
-            var reusedServer = _servers[key];
-            _logger.LogInformation("Reused existing GameServer instance {ServerId}", reusedServer.Id);
-            await reusedServer.SetReconnectedAsync(gameWriter, DateTimeOffset.UtcNow);
-            return reusedServer;
-        }
+            if (_servers.TryGetValue(key, out var existingContext))
+            {
+                _logger.LogInformation("Reused existing GameServer instance {ServerId}", existingContext.GameServer.Id);
+                await existingContext.GameServer.SetReconnectedAsync(gameWriter, DateTimeOffset.UtcNow);
+                return existingContext.GameServer;
+            }
 
-        _logger.LogInformation("Created new GameServer instance {ServerKey}", key);
-        var newServer = await GameServer.CreateAsync(publicIpAddress, connectedIpAddress, gameWriter, serverInfo, _globalServices, cancellationToken);
-        _servers.TryAdd(key, newServer);
-        return newServer;
+            _logger.LogInformation("Created new GameServer instance {ServerKey}", key);
+            var newServer = await GameServer.CreateAsync(publicIpAddress, ipEndPoint.Address, gameWriter, serverInfo, _globalServices, cancellationTokenSource.Token);
+            var context = new GameServerConnectionContext(key, newServer, tcpClient, cancellationTokenSource);
+            _servers.TryAdd(key, context);
+            return newServer;
+        }
     }
 
-    public Task RetryConnectionAsync(IPAddress ipAddress, int port, ServerInfo serverInfo)
+    private Task RetryConnectionAsync(IPAddress ipAddress, int port, ServerInfo serverInfo, CancellationToken cancellationToken)
     {
         return Policy.Handle<Exception>()
             .WaitAndRetryForeverAsync(
@@ -494,7 +563,7 @@ public class SocketServer : ISocketServer
                     if (exception.Message.Contains("Connection refused") || exception.Message.Contains("failed to respond"))
                     {
                         _logger.LogWarning(
-                            "Failed attempt {RetryAttempt} for {ServerIpAddress}:{ServerGamePort}. Retrying in {Timespan} ({ExceptionMessage})", 
+                            "Failed attempt {RetryAttempt} for {ServerIpAddress}:{ServerGamePort}. Retrying in {Timespan} ({ExceptionMessage})",
                             retryAttempt, serverInfo.IpAddress, serverInfo.GamePort, timespan, exception.Message
                         );
                     }
@@ -502,12 +571,13 @@ public class SocketServer : ISocketServer
                     {
                         _logger.LogWarning(
                             exception,
-                            "Failed attempt {RetryAttempt} for {ServerIpAddress}:{ServerGamePort}. Retrying in {Timespan}", 
+                            "Failed attempt {RetryAttempt} for {ServerIpAddress}:{ServerGamePort}. Retrying in {Timespan}",
                             retryAttempt, serverInfo.IpAddress, serverInfo.GamePort, timespan
                         );
                     }
                 }
-            ).ExecuteAsync(async () =>
+            )
+            .ExecuteAsync(async (_) =>
             {
                 var resolvedIpAddress = await serverInfo.IpAddress.GetIpAddressAsync();
                 var gameServerIps = new List<IPAddress> { resolvedIpAddress };
@@ -523,14 +593,15 @@ public class SocketServer : ISocketServer
                 foreach (var gameServerIp in gameServerIps)
                 {
                     AppDiagnostics.ServerConnectRetryCounter.Add(1, new KeyValuePair<string, object?>("server-address", $"{ipAddress}:{port}"));
-                    
+
                     try
                     {
                         // Check if server has already connected
-                        var matchingServer = _servers.Values.FirstOrDefault(s => 
-                            (s.IpAddress.Equals(gameServerIp) || gameServerIp.IsPrivate() && s.IpAddress.Equals(ipAddress)) && s.GamePort == serverInfo.GamePort
-                        );
-                            
+                        var matchingServer = _servers.Values.FirstOrDefault(s =>
+                                (s.GameServer.IpAddress.Equals(gameServerIp) || gameServerIp.IsPrivate() && s.GameServer.IpAddress.Equals(ipAddress)) && s.GameServer.GamePort == serverInfo.GamePort
+                            )
+                            ?.GameServer;
+
                         if (matchingServer?.SocketState == SocketState.Connected)
                         {
                             _logger.LogInformation("Server {ServerId} is already connected. Aborting connection retries", matchingServer.Id);
@@ -547,7 +618,7 @@ public class SocketServer : ISocketServer
                             return;
 
                         if (response?.Contains("Connection failed") ?? false)
-                        {   
+                        {
                             // Let mm_webadmin connect to a server with a specific IP
                             // Used when the connecting IP is not open for connections the other way, but another IP for the same machine is (local dev)
                             _logger.LogInformation("Sending reconnect command for {GameServerIp} to connect to {SelfIpAddress}", gameServerIp, ipAddress);
@@ -565,6 +636,39 @@ public class SocketServer : ISocketServer
                 // Only throw if all attempts failed
                 if (exceptions.Count == gameServerIps.Count)
                     throw exceptions.First();
-            });
+            }, cancellationToken);
     }
+
+    // public async Task Handle(ServerUpdated notification, CancellationToken cancellationToken)
+    public async Task HandleServerUpdateAsync(string serverId, ServerUpdateType type)
+    {
+        _logger.LogDebug("Handling server {UpdateType} for {ServerId}", type, serverId);
+
+        // Clear cached server infos
+        _cache.Remove(nameof(GetServerInfoAsync));
+
+        if (_servers.TryRemove(serverId, out var serverContext))
+            serverContext?.CancellationTokenSource.Cancel();
+
+        // Setup new reconnection tasks, since servers could have been added or removed
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ReconnectToServersAsync(_serverCancellationToken ?? CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to reconnect to servers");
+            }
+        }, _serverCancellationToken ?? CancellationToken.None);
+    }
+
+    private record GameServerConnectionContext(string ServerId, GameServer GameServer, TcpClient TcpClient, CancellationTokenSource CancellationTokenSource);
+}
+
+public enum ServerUpdateType
+{
+    AddOrUpdate,
+    Remove
 }

@@ -1,6 +1,4 @@
-﻿@inject ISnackbar Snackbar
-
-<MudDialog>
+﻿<MudDialog>
     <TitleContent>
         <MudText Typo="Typo.h6">
             @text
@@ -18,12 +16,21 @@
 </MudDialog>
 
 @code {
-    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
 
-    [Parameter] public Action<string> callback { get; set; }
-    [Parameter] public string text { get; set; }
-    [Parameter] public string placeholder { get; set; }
-    [Parameter] public string success { get; set; }
+    [CascadingParameter]
+    MudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public Action<string> callback { get; set; }
+
+    [Parameter]
+    public string text { get; set; }
+
+    [Parameter]
+    public string placeholder { get; set; }
+
+    [Parameter]
+    public string success { get; set; }
 
     public string TextValue { get; set; }
 
@@ -46,8 +53,9 @@
     private void Submit()
     {
         if (!string.IsNullOrWhiteSpace(success))
-            Snackbar.Add(success, Severity.Success);
-        
+            _snackbar.Add(success, Severity.Success);
+
         MudDialog.Close(DialogResult.Ok(TextValue));
     }
+
 }

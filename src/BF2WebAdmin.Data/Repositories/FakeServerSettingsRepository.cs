@@ -12,12 +12,22 @@ public class FakeServerSettingsRepository : IServerSettingsRepository
         throw new System.NotImplementedException();
     }
 
+    public async Task<IEnumerable<Server>> GetServersAsync()
+    {
+        throw new System.NotImplementedException();
+    }
+
     public Task<Server> GetServerAsync(string serverId)
     {
         return Task.FromResult(new Server { ServerId = serverId, ServerGroup = serverId });
     }
 
     public Task SetServerAsync(Server server)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveServerAsync(string serverId)
     {
         return Task.CompletedTask;
     }

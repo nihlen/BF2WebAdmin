@@ -1,0 +1,16 @@
+﻿@page "/server/add"
+
+<PageTitle>BF2 Web Admin - Add server</PageTitle>
+
+<MudText Typo="Typo.h3" Class="mb-8">Add server</MudText>
+
+<ServerEditForm Callback="OnAddServer"></ServerEditForm>
+
+@code {
+
+    private void OnAddServer(string serverId)
+    {
+        _navigationManager.NavigateTo("/server/" + AdminService.UrlEncodeServerId(serverId));
+    }
+
+}

@@ -1,0 +1,166 @@
+﻿@using BF2WebAdmin.Shared.Communication.DTOs
+@using System.ComponentModel.DataAnnotations
+
+<EditForm Model="@_model" OnValidSubmit="OnValidSubmit">
+    <DataAnnotationsValidator/>
+    <MudCard>
+        <MudCardContent>
+            <MudTextField Label="Server group" @bind-Value="_model.ServerGroup" For="@(() => _model.ServerGroup)"/>
+            <MudTextField Label="IP address" @bind-Value="_model.IpAddress" For="@(() => _model.IpAddress)" ReadOnly="!string.IsNullOrWhiteSpace(ServerId)"/>
+            <MudTextField Label="Game port" @bind-Value="_model.GamePort" For="@(() => _model.GamePort)" ReadOnly="!string.IsNullOrWhiteSpace(ServerId)"/>
+            <MudTextField Label="Query port" @bind-Value="_model.QueryPort" For="@(() => _model.QueryPort)"/>
+            <MudTextField Label="Rcon port" @bind-Value="_model.RconPort" For="@(() => _model.RconPort)"/>
+            <MudTextField Label="Rcon password" @bind-Value="_model.RconPassword" For="@(() => _model.RconPassword)"/>
+            <MudTextField Label="Discord bot token" @bind-Value="_model.DiscordBotToken" For="@(() => _model.DiscordBotToken)"/>
+            <MudTextField Label="Discord admin channel" @bind-Value="_model.DiscordAdminChannel" For="@(() => _model.DiscordAdminChannel)"/>
+            <MudTextField Label="Discord notification channel" @bind-Value="_model.DiscordNotificationChannel" For="@(() => _model.DiscordNotificationChannel)"/>
+            <MudTextField Label="Discord match channel" @bind-Value="_model.DiscordMatchResultChannel" For="@(() => _model.DiscordMatchResultChannel)"/>
+        </MudCardContent>
+
+        <MudCardActions>
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="mr-4">Save</MudButton>
+            <MudButton ButtonType="ButtonType.Button" Variant="Variant.Filled" Color="Color.Default" Class="mr-4" OnClick="TestServerAsync">Test connection</MudButton>
+            @if (!string.IsNullOrWhiteSpace(ServerId))
+            {
+                <MudButton ButtonType="ButtonType.Button" Variant="Variant.Filled" Color="Color.Error" OnClick="DeleteServerAsync">Remove server</MudButton>
+            }
+        </MudCardActions>
+    </MudCard>
+    <ValidationSummary/>
+</EditForm>
+
+@code {
+
+    [Parameter]
+    public string? ServerId { get; set; }
+
+    [Parameter]
+    public Action<string>? Callback { get; set; }
+
+    private ServerFormModel _model = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+
+        if (ServerId is null)
+            return;
+
+        var serverData = await _adminService.GetServerAsync(AdminService.UrlDecodeServerId(ServerId));
+
+        _model = new ServerFormModel
+        {
+            ServerGroup = serverData.ServerGroup,
+            IpAddress = serverData.IpAddress,
+            GamePort = serverData.GamePort,
+            QueryPort = serverData.QueryPort,
+            RconPort = serverData.RconPort,
+            RconPassword = serverData.RconPassword,
+            DiscordBotToken = serverData.DiscordBotToken,
+            DiscordAdminChannel = serverData.DiscordAdminChannel,
+            DiscordNotificationChannel = serverData.DiscordNotificationChannel,
+            DiscordMatchResultChannel = serverData.DiscordMatchResultChannel
+        };
+
+        StateHasChanged();
+    }
+
+    private async Task SetServerAsync()
+    {
+        var serverData = ModelToDto(_model);
+        await _adminService.SetServerAsync(serverData);
+        _snackbar.Add("Server has been saved", Severity.Success);
+    }
+
+    private async void TestServerAsync()
+    {
+        var result = await _adminService.TestServerAsync(ModelToDto(_model));
+
+        foreach (var serverResult in result)
+        {
+            if (serverResult.Success) _snackbar.Add($"{serverResult.Type} response OK", Severity.Success);
+            else _snackbar.Add($"{serverResult.Type} response error", Severity.Error);
+        }
+    }
+
+    private async void DeleteServerAsync()
+    {
+        var parameters = new DialogParameters
+        {
+            { "ContentText", "Do you want to remove this server?" },
+            { "ButtonText", "Remove" },
+            { "Color", Color.Error }
+        };
+
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall };
+
+        var dialog = _dialogService.Show<ConfirmDialog>("Delete", parameters, options);
+        var result = await dialog.Result;
+        if (result.Cancelled)
+            return;
+        
+        await _adminService.RemoveServerAsync(AdminService.UrlDecodeServerId(ServerId));
+        _snackbar.Add("Server has been removed", Severity.Success);
+        _navigationManager.NavigateTo("/");
+    }
+
+    private async void OnValidSubmit(EditContext context)
+    {
+        try
+        {
+            await SetServerAsync();
+            StateHasChanged();
+            Callback?.Invoke($"{_model.IpAddress}:{_model.GamePort}");
+            _snackbar.Add($"Server has been saved", Severity.Success);
+        }
+        catch (Exception e)
+        {
+            _snackbar.Add("Server save failed: " + e.Message, Severity.Error);
+        }
+    }
+
+    private static ServerDataDto ModelToDto(ServerFormModel model)
+    {
+        return new ServerDataDto
+        {
+            ServerId = $"{model.IpAddress}:{model.GamePort}",
+            ServerGroup = model.ServerGroup,
+            IpAddress = model.IpAddress,
+            GamePort = model.GamePort,
+            QueryPort = model.QueryPort,
+            RconPort = model.RconPort,
+            RconPassword = model.RconPassword,
+            DiscordBotToken = model.DiscordBotToken,
+            DiscordAdminChannel = model.DiscordAdminChannel,
+            DiscordNotificationChannel = model.DiscordNotificationChannel,
+            DiscordMatchResultChannel = model.DiscordMatchResultChannel
+        };
+    }
+
+    public class ServerFormModel
+    {
+        [Required]
+        public string ServerGroup { get; set; } = "default";
+
+        [Required]
+        public string IpAddress { get; set; }
+
+        [Required]
+        public int GamePort { get; set; } = 16567;
+
+        [Required]
+        public int QueryPort { get; set; } = 29900;
+
+        [Required]
+        public int RconPort { get; set; } = 4711;
+
+        [Required]
+        public string RconPassword { get; set; }
+
+        public string DiscordBotToken { get; set; }
+        public string DiscordAdminChannel { get; set; }
+        public string DiscordNotificationChannel { get; set; }
+        public string DiscordMatchResultChannel { get; set; }
+    }
+
+}

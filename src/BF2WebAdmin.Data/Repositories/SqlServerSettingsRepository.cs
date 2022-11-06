@@ -27,13 +27,42 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
         return await connection.QueryAsync<string>(@"SELECT DISTINCT [ServerGroup] FROM [dbo].[Server]");
     }
 
+    public async Task<IEnumerable<Server>> GetServersAsync()
+    {
+        using var connection = NewConnection;
+        return await connection.QueryAsync<Server>(
+            @"SELECT [ServerId]
+                ,[ServerGroup]
+                ,[IpAddress]
+                ,[GamePort]
+                ,[QueryPort]
+                ,[RconPort]
+                ,[RconPassword]
+                ,[DiscordBotToken]
+                ,[DiscordAdminChannel]
+                ,[DiscordNotificationChannel]
+                ,[DiscordMatchResultChannel]
+            FROM [dbo].[Server]"
+        );
+    }
+
     public async Task<Server> GetServerAsync(string serverId)
     {
         using var connection = NewConnection;
         return await connection.QueryFirstOrDefaultAsync<Server>(
-            @"SELECT TOP 1 s.[ServerId], s.[ServerGroup]
-            FROM dbo.[Server] s
-            WHERE s.[ServerId] = @ServerId",
+            @"SELECT TOP 1 [ServerId]
+                ,[ServerGroup]
+                ,[IpAddress]
+                ,[GamePort]
+                ,[QueryPort]
+                ,[RconPort]
+                ,[RconPassword]
+                ,[DiscordBotToken]
+                ,[DiscordAdminChannel]
+                ,[DiscordNotificationChannel]
+                ,[DiscordMatchResultChannel]
+            FROM [dbo].[Server]
+            WHERE [ServerId] = @ServerId",
             new { ServerId = serverId }
         );
     }
@@ -45,17 +74,83 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
         if (existingServer is null)
         {
             await connection.ExecuteAsync(
-                @"INSERT INTO [dbo].[Server] ([ServerId], [ServerGroup]) VALUES (@ServerId, @ServerGroup)",
-                new { ServerId = server.ServerId, ServerGroup = server.ServerGroup }
+                @"INSERT INTO [dbo].[Server]
+	                ([ServerId]
+	                ,[ServerGroup]
+	                ,[IpAddress]
+	                ,[GamePort]
+	                ,[QueryPort]
+	                ,[RconPort]
+	                ,[RconPassword]
+	                ,[DiscordBotToken]
+	                ,[DiscordAdminChannel]
+	                ,[DiscordNotificationChannel]
+	                ,[DiscordMatchResultChannel])
+                VALUES
+	                (@ServerId
+	                ,@ServerGroup
+	                ,@IpAddress
+	                ,@GamePort
+	                ,@QueryPort
+	                ,@RconPort
+	                ,@RconPassword
+	                ,@DiscordBotToken
+	                ,@DiscordAdminChannel
+	                ,@DiscordNotificationChannel
+	                ,@DiscordMatchResultChannel)",
+                new
+                {
+                    ServerId = server.ServerId, 
+                    ServerGroup = server.ServerGroup,
+                    IpAddress = server.IpAddress,
+                    GamePort = server.GamePort,
+                    QueryPort = server.QueryPort,
+                    RconPort = server.RconPort,
+                    RconPassword = server.RconPassword,
+                    DiscordBotToken = server.DiscordBotToken,
+                    DiscordAdminChannel = server.DiscordAdminChannel,
+                    DiscordNotificationChannel = server.DiscordNotificationChannel,
+                    DiscordMatchResultChannel = server.DiscordMatchResultChannel
+                }
             );
         }
         else
         {
             await connection.ExecuteAsync(
-                @"UPDATE [dbo].[Server] SET [ServerGroup] = @ServerGroup WHERE [ServerId] = @ServerId",
-                new { ServerId = server.ServerId, ServerGroup = server.ServerGroup }
+                @"UPDATE [dbo].[Server]
+                SET [ServerGroup] = @ServerGroup
+	                ,[QueryPort] = @QueryPort
+	                ,[RconPort] = @RconPort
+	                ,[RconPassword] = @RconPassword
+	                ,[DiscordBotToken] = @DiscordBotToken
+	                ,[DiscordAdminChannel] = @DiscordAdminChannel
+	                ,[DiscordNotificationChannel] = @DiscordNotificationChannel
+	                ,[DiscordMatchResultChannel] = @DiscordMatchResultChannel
+                WHERE [ServerId] = @ServerId",
+                new
+                {
+                    ServerId = server.ServerId, 
+                    ServerGroup = server.ServerGroup,
+                    QueryPort = server.QueryPort,
+                    RconPort = server.RconPort,
+                    RconPassword = server.RconPassword,
+                    DiscordBotToken = server.DiscordBotToken,
+                    DiscordAdminChannel = server.DiscordAdminChannel,
+                    DiscordNotificationChannel = server.DiscordNotificationChannel,
+                    DiscordMatchResultChannel = server.DiscordMatchResultChannel
+                }
             );
         }
+    }
+
+    public async Task RemoveServerAsync(string serverId)
+    {
+        using var connection = NewConnection;
+        await connection.ExecuteAsync(
+            @"DELETE FROM [dbo].[Server]
+            WHERE [ServerId] = @ServerId",
+            new { ServerId = serverId }
+        );
     }
 
     public async Task<IEnumerable<string>> GetModulesAsync(string serverGroup)

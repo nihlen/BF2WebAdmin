@@ -24,6 +24,11 @@ public class ServerSettingsRepository : IServerSettingsRepository
             .ToListAsync();
     }
 
+    public async Task<IEnumerable<Server>> GetServersAsync()
+    {
+        return await _context.Servers.ToListAsync();
+    }
+
     public async Task<Server> GetServerAsync(string serverId)
     {
         return await _context.Servers.FindAsync(serverId);
@@ -42,6 +47,16 @@ public class ServerSettingsRepository : IServerSettingsRepository
             await _context.Servers.AddAsync(server);
         }
 
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task RemoveServerAsync(string serverId)
+    {
+        var existingServer = await _context.Servers.FindAsync(serverId);
+        if (existingServer is null)
+            return;
+
+        _context.Servers.Remove(existingServer);
         await _context.SaveChangesAsync();
     }
 

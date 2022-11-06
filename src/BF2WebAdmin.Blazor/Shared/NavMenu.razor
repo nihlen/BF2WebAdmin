@@ -9,22 +9,16 @@
 
 <MudNavMenu>
     <MudNavLink Href="" Match="NavLinkMatch.All">Dashboard</MudNavLink>
-    @* <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink> *@
+    
     <MudDivider/>
+    
     <MudNavGroup Title="Servers" Expanded="true">
-        @* <MudNavGroup Title="Servers" Expanded="true" Icon="@Icons.Material.Filled.List"> *@
         @foreach (var grouping in _servers.Values.GroupBy(s => s.ServerGroup).OrderBy((g => g.Key)))
         {
             <MudNavLink Href="@("/servergroup/" + grouping.Key)"
                         Match="NavLinkMatch.Prefix">
                 @grouping.Key
             </MudNavLink>
-            @* <MudNavLink Href="@("/servergroup/" + grouping.Key)" *@
-            @*             Match="NavLinkMatch.Prefix" *@
-            @*             Icon="@Icons.Material.Filled.Group" *@
-            @*             IconColor="@Color.Info"> *@
-            @*     @grouping.Key *@
-            @* </MudNavLink> *@
 
             @foreach (var server in grouping.OrderBy(s => s.Name))
             {
@@ -38,6 +32,13 @@
 
             <MudDivider/>
         }
+
+        <MudNavLink Href="/server/add"
+                    Match="NavLinkMatch.All"
+                    Icon="@Icons.Material.Filled.Add"
+                    IconColor="@Color.Success">
+            Add server
+        </MudNavLink>
 
     </MudNavGroup>
 </MudNavMenu>
@@ -55,6 +56,11 @@
                 _servers.AddOrUpdate(e.Id, id => e, (id, existingServer) => e);
                 StateHasChanged();
             }),
+            _adminService.HubConnection.On<ServerRemoveEvent>(nameof(ServerRemoveEvent), e =>
+            {
+                _servers.TryRemove(e.ServerId, out _);
+                StateHasChanged();
+            }),
         };
 
         await _adminService.ConnectAsync();
@@ -69,4 +75,5 @@
 
         return ValueTask.CompletedTask;
     }
+
 }

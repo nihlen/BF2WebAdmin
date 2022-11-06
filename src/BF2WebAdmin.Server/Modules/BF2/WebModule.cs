@@ -41,12 +41,9 @@ public class WebModule : BaseModule,
         _gameServer = server;
         _serverHub = serverHub;
         _serverSettingsRepository = serverSettingsRepository;
-
-        ServerHub.UserConnectEvent += async (_, userId) => await SendServerInfo(userId, false);
-        ServerHub.UserSelectServerEvent += async (_, data) => { if (data.Item2 == _gameServer.Id) await SendServerInfo(data.Item1, true); };
     }
 
-    private async Task SendServerInfo(string userId, bool fullInfo)
+    public async Task SendServerInfo(string userId, bool fullInfo)
     {
         // Send server info to new user
         await ClientsUser(userId).ServerUpdateEvent(

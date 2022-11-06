@@ -4,44 +4,61 @@
 @using System.Collections.Concurrent
 @using BF2WebAdmin.Shared
 @using BF2WebAdmin.Shared.Communication.Events
-@inject NavigationManager _navigationManager
-@inject AdminService _adminService
 @implements IAsyncDisposable
 
 <PageTitle>BF2 Web Admin</PageTitle>
 
-<MudText Typo="Typo.h3" Class="mb-8">Servers</MudText>
+<div class="d-flex justify-space-between flex-grow-1">
+    <div>
+        <MudText Typo="Typo.h3" Class="mb-8">Servers</MudText>
+    </div>
+    <div>
+        <MudFab Color="Color.Success" StartIcon="@Icons.Material.Filled.Add" Size="Size.Large" Href="/server/add"/>
+    </div>
+</div>
 
-<MudGrid>
-    @foreach (var server in _servers.Values)
-    {
-        <MudItem xs="4">
-            <MudCard>
-                <MudCardHeader>
-                    <CardHeaderContent>
-                        <MudText Typo="Typo.h6">@server.Name</MudText>
-                    </CardHeaderContent>
-                    <CardHeaderActions>
-                        <MudIconButton Icon="@Icons.Material.Filled.Settings" Color="Color.Default" />
-                    </CardHeaderActions>
-                </MudCardHeader>
-                <MudCardContent>
-                    <MudChip Icon="@(server.SocketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
-                             IconColor="@(server.SocketState == SocketState.Connected ? Color.Success : Color.Error)">
-                        @server.SocketState
-                    </MudChip>
-                    <MudChip>@server.GameState</MudChip>
-                    <MudChip>@server.IpAddress:@server.GamePort (@server.QueryPort)</MudChip>
-                    <MudChip>@server.Map</MudChip>
-                    <MudChip>@server.Players / @server.MaxPlayers players</MudChip>
-                </MudCardContent>
-                <MudCardActions>
-                    <MudLink Variant="Variant.Text" Color="Color.Primary" Href="@("/server/" + AdminService.UrlEncodeServerId(server.Id))">View server</MudLink>
-                </MudCardActions>
-            </MudCard>
-        </MudItem>
-    }
-</MudGrid>
+@foreach (var group in _servers.Values.GroupBy(s => s.ServerGroup))
+{
+    <MudPaper Class="py-6 px-8 mb-8" Outlined="true" Style="background: rgba(50, 51, 61, 0)">
+        <MudLink Href="@($"/servergroup/{group.Key}")" Underline="Underline.None">
+            <MudText Typo="Typo.h5" Class="mb-4">@group.Key</MudText>
+        </MudLink>
+
+        <MudGrid>
+            @foreach (var server in group)
+            {
+                <MudItem xs="4">
+                    <MudLink Href="@("/server/" + AdminService.UrlEncodeServerId(server.Id))" Underline="Underline.None">
+                        <MudCard>
+                            <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudText Typo="Typo.h6" Class="py-0">
+                                        <MudIcon Icon="@(server.SocketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
+                                                 Color="@(server.SocketState == SocketState.Connected ? Color.Success : Color.Error)" Size="Size.Small"/>
+                                        @server.Name
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Style="color: rgba(255, 255, 255, 0.4)">
+                                        @server.IpAddress:@server.GamePort
+                                    </MudText>
+                                </CardHeaderContent>
+                                <CardHeaderActions>
+                                    <MudLink Href="@($"/server/{AdminService.UrlEncodeServerId(server.Id)}/edit")">
+                                        <MudIcon Icon="@Icons.Material.Filled.Settings" Color="@Color.Default"/>
+                                    </MudLink>
+                                </CardHeaderActions>
+                            </MudCardHeader>
+                            <MudCardContent>
+                                <MudChip Size="Size.Small">@server.GameState</MudChip>
+                                <MudChip Size="Size.Small">@server.Map</MudChip>
+                                <MudChip Size="Size.Small">@server.Players / @server.MaxPlayers players</MudChip>
+                            </MudCardContent>
+                        </MudCard>
+                    </MudLink>
+                </MudItem>
+            }
+        </MudGrid>
+    </MudPaper>
+}
 
 @code {
     private List<IDisposable> _listeners = new();
@@ -54,6 +71,11 @@
             _adminService.HubConnection.On<ServerUpdateEvent>(nameof(ServerUpdateEvent), e =>
             {
                 _servers.AddOrUpdate(e.Id, id => e, (id, existingServer) => e);
+                StateHasChanged();
+            }),
+            _adminService.HubConnection.On<ServerRemoveEvent>(nameof(ServerRemoveEvent), e =>
+            {
+                _servers.TryRemove(e.ServerId, out _);
                 StateHasChanged();
             }),
         };
@@ -70,4 +92,5 @@
 
         return ValueTask.CompletedTask;
     }
+
 }

@@ -1,0 +1,19 @@
+﻿@page "/server/{serverId}/edit"
+
+<PageTitle>BF2 Web Admin - Edit @(AdminService.UrlDecodeServerId(ServerId))</PageTitle>
+
+<MudText Typo="Typo.h3" Class="mb-8">Edit @(AdminService.UrlDecodeServerId(ServerId))</MudText>
+
+<ServerEditForm ServerId="@ServerId" Callback="OnEditServer"></ServerEditForm>
+
+@code {
+
+    [Parameter]
+    public string? ServerId { get; set; }
+
+    private void OnEditServer(string serverId)
+    {
+        _navigationManager.NavigateTo("/server/" + AdminService.UrlEncodeServerId(serverId));
+    }
+
+}

@@ -1,11 +1,15 @@
-﻿using BF2WebAdmin.Data.Abstractions;
+﻿using System.Net;
+using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Modules.BF2;
+using BF2WebAdmin.Shared;
 using BF2WebAdmin.Shared.Communication.DTOs;
 using BF2WebAdmin.Shared.Communication.Events;
+using Mapster;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Nihlen.Common.Telemetry;
+using Nihlen.Gamespy;
 
 namespace BF2WebAdmin.Server.Hubs;
 
@@ -25,6 +29,7 @@ public interface IServerHubClient
     Task PlayerVehicleEvent(Shared.Communication.Events.PlayerVehicleEvent e);
     Task ProjectilePositionEvent(Shared.Communication.Events.ProjectilePositionEvent e);
     Task ServerUpdateEvent(Shared.Communication.Events.ServerUpdateEvent e);
+    Task ServerRemoveEvent(Shared.Communication.Events.ServerRemoveEvent e);
     Task SocketStateEvent(SocketStateEvent e);
     Task ServerSnapshotEvent(ServerSnapshotEvent e);
     Task RequestResponseEvent(RequestResponseEvent e);
@@ -37,6 +42,8 @@ public class ServerHub : Hub<IServerHubClient>
     private readonly IServerSettingsRepository _serverSettingsRepository;
     private readonly IServiceProvider _serviceProvider;
 
+    // TODO: remove socketserver dependency and use mediatr instead?
+    // TODO: possibly user the server-specific mediator instead of WebModule directly
     public ServerHub(ISocketServer socketServer, IServerSettingsRepository serverSettingsRepository, IServiceProvider serviceProvider)
     {
         _socketServer = socketServer;
@@ -44,19 +51,44 @@ public class ServerHub : Hub<IServerHubClient>
         _serviceProvider = serviceProvider;
     }
 
-    // Events used to send to all servers' WebModules (TODO: change to some GetModule loop instead)
-    public static event EventHandler<string> UserConnectEvent; 
-    public static event EventHandler<(string, string)> UserSelectServerEvent; 
-
     public async Task UserConnect()
     {
-        UserConnectEvent?.Invoke(this, GetUserId());
+        await SendServerUpdatesAsync();
+    }
+
+    private async Task SendServerUpdatesAsync()
+    {
+        var modules = GetWebModules();
+        foreach (var module in modules)
+        {
+            await module.SendServerInfo(GetUserId(), false);
+        }
+
+        var disconnectedServers = await _socketServer.GetDisconnectedServersAsync();
+        foreach (var serverInfo in disconnectedServers)
+        {
+            var serverId = $"{serverInfo.IpAddress}:{serverInfo.GamePort}";
+            await Clients.All.ServerUpdateEvent(new Shared.Communication.Events.ServerUpdateEvent
+            {
+                Id = serverId,
+                Name = serverId,
+                IpAddress = serverInfo.IpAddress,
+                GamePort = serverInfo.GamePort,
+                QueryPort = serverInfo.QueryPort,
+                ServerGroup = serverInfo.ServerGroup,
+                TimeStamp = DateTimeOffset.UtcNow,
+                GameState = GameState.NotConnected,
+                SocketState = SocketState.Disconnected
+            });
+        }
     }
 
     public async Task SelectServer(string serverId)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, serverId);
-        UserSelectServerEvent?.Invoke(this, (GetUserId(), serverId));
+
+        var module = GetWebModule(serverId);
+        await module.SendServerInfo(GetUserId(), true);
     }
 
     public async Task DeselectServer(string serverId)
@@ -68,13 +100,13 @@ public class ServerHub : Hub<IServerHubClient>
     {
         // TODO: send new event type via mediator instead like GameStreamConsumer?
         var module = _socketServer.GetGameServer(serverId)?.ModManager.GetModule<WebModule>();
-        if (module == null) 
+        if (module == null)
             throw new Exception("WebModule not found for" + serverId);
 
         return module;
     }
 
-    private IEnumerable<WebModule> GetWebModules(string serverGroup)
+    private IEnumerable<WebModule> GetWebModules(string? serverGroup = null)
     {
         // TODO: send new event type via mediator instead like GameStreamConsumer?
         return _socketServer.GetGameServers(serverGroup).Select(s => s.ModManager.GetModule<WebModule>());
@@ -91,7 +123,7 @@ public class ServerHub : Hub<IServerHubClient>
         using var activity = Telemetry.StartRootActivity($"{nameof(SendChatMessage)}:{message}");
         activity?.SetTag("bf2wa.server-id", serverId);
         activity?.SetTag("bf2wa.custom-command", message);
-        
+
         await GetWebModule(serverId).HandleAdminChatAsync(GetUserId(), message);
     }
 
@@ -100,7 +132,7 @@ public class ServerHub : Hub<IServerHubClient>
         using var activity = Telemetry.StartRootActivity($"{nameof(SendRconCommand)}:{message}");
         activity?.SetTag("bf2wa.server-id", serverId);
         activity?.SetTag("bf2wa.custom-command", message);
-        
+
         await GetWebModule(serverId).HandleRconCommandAsync(GetUserId(), message);
     }
 
@@ -109,49 +141,80 @@ public class ServerHub : Hub<IServerHubClient>
         using var activity = Telemetry.StartRootActivity($"{nameof(SendCustomCommand)}:{message}");
         activity?.SetTag("bf2wa.server-id", serverId);
         activity?.SetTag("bf2wa.custom-command", message);
-        
+
         await GetWebModule(serverId).HandleCustomCommandAsync(GetUserId(), message);
     }
 
     public async Task<ServerDataDto> GetServer(string serverId)
     {
         using var _ = Telemetry.StartRootActivity();
-        // return await GetWebModule(serverId).GetServerAsync(serverId);
+
         var server = await _serverSettingsRepository.GetServerAsync(serverId) ?? new Data.Entities.Server
         {
             ServerId = serverId,
             ServerGroup = "default"
         };
-        
-        return new ServerDataDto
-        {
-            ServerId = server.ServerId,
-            ServerGroup = server.ServerGroup
-        };
+
+        return server.Adapt<ServerDataDto>();
     }
 
-    public async Task SetServer(string serverId, string serverGroup)
+    public async Task SetServer(ServerDataDto server)
     {
         using var _ = Telemetry.StartRootActivity();
-        await _serverSettingsRepository.SetServerAsync(new Data.Entities.Server { ServerId = serverId, ServerGroup = serverGroup });
-        var gameServer = _socketServer.GetGameServer(serverId);
-        if (gameServer is not null)
-        {
-            await ReloadModulesAsync(gameServer);
-        }
+        var serverEntity = server.Adapt<Data.Entities.Server>();
+        await _serverSettingsRepository.SetServerAsync(serverEntity);
+        await _socketServer.HandleServerUpdateAsync(server.ServerId, ServerUpdateType.AddOrUpdate);
+        await SendServerUpdatesAsync();
     }
 
-    private static async Task ReloadModulesAsync(IGameServer gameServer)
+    public async Task RemoveServer(string serverId)
     {
-        // TODO: disable whatever the old modmanager is doing, dispose and finish all long-running tasks
-        // gameServer.ModManager.dispose?
-        await gameServer.CreateModManagerAsync(true);
+        using var _ = Telemetry.StartRootActivity();
+        await _serverSettingsRepository.RemoveServerAsync(serverId);
+        await _socketServer.HandleServerUpdateAsync(serverId, ServerUpdateType.Remove);
+        await Clients.All.ServerRemoveEvent(new ServerRemoveEvent { ServerId = serverId });
+    }
+
+    public async Task<IEnumerable<TestServerResult>> TestServer(ServerDataDto server)
+    {
+        using var _ = Telemetry.StartRootActivity();
+
+        bool validRcon;
+        bool validGamespy;
+
+        try
+        {
+            var rconClient = new RconClient(IPAddress.Parse(server.IpAddress), server.RconPort, server.RconPassword, _serviceProvider.GetRequiredService<ILogger<RconClient>>());
+            var rconResponse = await rconClient.SendAsync("iga listAdmins");
+            validRcon = !string.IsNullOrWhiteSpace(rconResponse);
+        }
+        catch (Exception ex)
+        {
+            validRcon = false;
+        }
+
+        try
+        {
+            var gamespyClient = new Gamespy3Service();
+            var gamespyResponse = await gamespyClient.QueryServerAsync(IPAddress.Parse(server.IpAddress), server.QueryPort);
+            validGamespy = !string.IsNullOrWhiteSpace(gamespyResponse.Name);
+        }
+        catch (Exception ex)
+        {
+            validGamespy = false;
+        }
+
+        return new[]
+        {
+            new TestServerResult("RCON", validRcon),
+            new TestServerResult("Gamespy query", validGamespy)
+        };
     }
 
     public async Task<IEnumerable<string>> GetServerGroupModules(string serverId, string serverGroup)
     {
         using var _ = Telemetry.StartRootActivity();
-        // return await GetWebModule(serverId).GetServerGroupModulesAsync(serverGroup);
+
         var modules = await _serverSettingsRepository.GetModulesAsync(serverGroup);
         return modules.Concat(ModManager.DefaultModuleNames).Distinct();
     }
@@ -165,7 +228,7 @@ public class ServerHub : Hub<IServerHubClient>
     public async Task SetServerGroupModules(string serverId, string serverGroup, IEnumerable<string> moduleNames)
     {
         using var _ = Telemetry.StartRootActivity();
-        // await GetWebModule(serverId).SetServerGroupModulesAsync(serverGroup, moduleNames);
+
         await _serverSettingsRepository.SetModulesAsync(serverGroup, moduleNames);
     }
 
@@ -177,5 +240,11 @@ public class ServerHub : Hub<IServerHubClient>
         {
             await ReloadModulesAsync(gameServer);
         }
+    }
+
+    private static async Task ReloadModulesAsync(IGameServer gameServer)
+    {
+        // TODO: disable whatever the old modmanager is doing, dispose and finish all long-running tasks
+        await gameServer.CreateModManagerAsync(true);
     }
 }

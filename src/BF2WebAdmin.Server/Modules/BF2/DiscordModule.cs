@@ -41,7 +41,6 @@ public class DiscordModule : BaseModule,
 
     private readonly IGameServer _game;
     private readonly IGameStreamService _gameStreamService;
-    private readonly ServerInfo.DiscordBotConfig _config;
     private readonly IDictionary<int, bool> _newPlayers = new Dictionary<int, bool>();
     private readonly Channel<(ISocketMessageChannel Channel, string? Text, Embed? Embed)> _discordMessageChannel;
     private IEnumerable<SocketTextChannel> _adminChannels;
@@ -227,17 +226,16 @@ public class DiscordModule : BaseModule,
 # Execute a console command
 !exec```";
 
+    private ServerInfo.DiscordBotConfig Config => _game.ServerInfo.DiscordBot;
+
     public DiscordModule(IGameServer server, IGameStreamService gameStreamService, ILogger<DiscordModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _game = server;
         _gameStreamService = gameStreamService;
 
-        var discordBot = server.ServerInfo.DiscordBot;
-        if (discordBot == null)
+        if (string.IsNullOrWhiteSpace(server.ServerInfo.DiscordBot?.Token))
             return;
-
-        _config = discordBot;
-
+        
         _discordMessageChannel = Channel.CreateUnbounded<(ISocketMessageChannel Channel, string? Text, Embed? Embed)>(new UnboundedChannelOptions
         {
             AllowSynchronousContinuations = true,
@@ -261,7 +259,7 @@ public class DiscordModule : BaseModule,
 
         SetupDiscordEvents();
 
-        await _discord.LoginAsync(TokenType.Bot, _config.Token);
+        await _discord.LoginAsync(TokenType.Bot, Config.Token);
         await _discord.StartAsync();
 
         // Send all queued Discord messages
@@ -307,9 +305,9 @@ public class DiscordModule : BaseModule,
 
         _discord.Ready += async () =>
         {
-            _adminChannels = _discord.Guilds.SelectMany(g => g.TextChannels.Where(c => c.Name == _config.AdminChannel));
-            _notificationChannels = _discord.Guilds.SelectMany(g => g.TextChannels.Where(c => c.Name == _config.NotificationChannel));
-            _matchResultChannels = _discord.Guilds.SelectMany(g => g.TextChannels.Where(c => c.Name == _config.MatchResultChannel));
+            _adminChannels = _discord.Guilds.SelectMany(g => g.TextChannels.Where(c => c.Name == Config.AdminChannel));
+            _notificationChannels = _discord.Guilds.SelectMany(g => g.TextChannels.Where(c => c.Name == Config.NotificationChannel));
+            _matchResultChannels = _discord.Guilds.SelectMany(g => g.TextChannels.Where(c => c.Name == Config.MatchResultChannel));
 
             await UpdateActivityNameAsync();
 
@@ -320,7 +318,7 @@ public class DiscordModule : BaseModule,
         {
             if (message.Author.IsBot)
                 return;
-            if (message.Channel.Name != _config.AdminChannel)
+            if (message.Channel.Name != Config.AdminChannel)
                 return;
 
             if (message.Content.Length > 4 && message.Content[1..5] == "help")

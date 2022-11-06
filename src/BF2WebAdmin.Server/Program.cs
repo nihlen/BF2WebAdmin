@@ -1,4 +1,5 @@
-﻿using BF2WebAdmin.Data;
+﻿using System.Reflection;
+using BF2WebAdmin.Data;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Repositories;
 using BF2WebAdmin.Server;
@@ -7,6 +8,8 @@ using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Services;
 using MassTransit;
+using MediatR;
+using MediatR.Registration;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
@@ -22,16 +25,16 @@ try
 
     var configPath = Path.Combine(ProjectContext.GetDirectory(), "Configuration");
     var profile = ProjectContext.GetEnvironmentName();
-    
+
     builder.Configuration
         .SetBasePath(configPath)
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
         .AddJsonFile($"appsettings.{profile}.json", optional: true, reloadOnChange: false)
         .AddJsonFile("appsecrets.json", optional: false, reloadOnChange: false)
         .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false);
-    
+
     builder.Services.AddCustomTelemetry("bf2-webadmin", otlpEndpoint: builder.Configuration["Telemetry:OtlpEndpoint"]);
-    
+
     // builder.Host.UseSerilog((context, services, configuration) =>
     // {
     //     configuration
@@ -51,7 +54,6 @@ try
     // Add services to the container.
 
     builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
-    builder.Services.Configure<SeqSettings>(builder.Configuration.GetSection("Seq"));
     builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Authentication"));
 
     var serverSettings = builder.Configuration.GetSection("ServerSettings").Get<ServerSettings>();
@@ -83,6 +85,7 @@ try
                 });
             });
         });
+
         builder.Services.AddMassTransitHostedService(true);
         builder.Services.AddSingleton<GameStreamConsumer>();
     }
@@ -93,14 +96,18 @@ try
         var serverIp = serverSettings.IpAddress.GetIpAddressAsync().GetAwaiter().GetResult();
         return new SocketServer(serverIp, serverSettings.Port, serverSettings.GameServers, services, serverSettings.PrintSendLog, serverSettings.PrintRecvLog);
     });
+
     builder.Services.AddHostedService<BF2WebAdminService>();
     builder.Services.AddSignalR()
+
         //.AddMessagePackProtocol();
         .AddJsonProtocol(options =>
         {
             options.PayloadSerializerOptions.PropertyNamingPolicy = null;
         });
+
     builder.Services.AddControllersWithViews();
+
     // TODO: DataProtection to persist logins
     builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
         .AddCookie(options =>
@@ -109,12 +116,22 @@ try
             options.SlidingExpiration = true;
             options.AccessDeniedPath = "/Forbidden/";
         });
+
     builder.Services.AddRazorPages();
     builder.Services.AddResponseCompression(opts =>
     {
         opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[] { "application/octet-stream" });
     });
-    
+
+    // Normal MediatR doesn't work with the singleton SocketServer, but we can setup it up differently 
+    // This is not very nice though...
+    // var serviceConfig = new MediatRServiceConfiguration();
+    // ServiceRegistrar.AddRequiredServices(builder.Services, serviceConfig);
+    // builder.Services.AddMediatR(config => config.AsSingleton(), Assembly.GetExecutingAssembly());
+    // builder.Services.AddMediatR(Assembly.GetExecutingAssembly());
+    // builder.Services.AddSingleton<MediatR.IMediator>(serviceProvider => new MediatR.Mediator(serviceProvider.GetRequiredService));
+    // builder.Services.AddSingleton<INotificationHandler<ServerUpdated>>(c => c.GetRequiredService<ISocketServer>());
+
     var connectionString = builder.Configuration.GetConnectionString("BF2DB");
     if (connectionString.Contains(".sqlite"))
     {
@@ -131,7 +148,7 @@ try
 
     app.Logger.LogInformation("BF2WebAdmin.Server is starting");
     app.Logger.LogInformation("Current profile: {Profile}", profile);
-    
+
     if (connectionString.Contains(".sqlite"))
     {
         // SQLite initialization
@@ -178,8 +195,10 @@ catch (Exception ex)
 {
     Console.WriteLine("An unhandled exception occurred during bootstrapping: " + ex);
     throw;
+
     // Log.Fatal(ex, "An unhandled exception occurred during bootstrapping");
 }
+
 // finally
 // {
 //     Log.CloseAndFlush();

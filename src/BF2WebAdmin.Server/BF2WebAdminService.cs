@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using BF2WebAdmin.Server.Extensions;
 using Microsoft.Extensions.Options;
 using Nihlen.Common.Telemetry;
 
@@ -28,9 +27,10 @@ public class BF2WebAdminService : BackgroundService
 
         using var activity = Telemetry.ActivitySource.StartActivity(nameof(BF2WebAdminService));
 
-        var listenTask = _server.ListenAsync(stoppingToken);
+        var listenTask = _server.StartAsync(stoppingToken);
 
         // Create a fake game server that connects
+        // TODO: move to a separate container image
         var fakeGameServerTask = Task.CompletedTask;
         if (_settings.StartFakeGameServer)
         {
@@ -48,15 +48,9 @@ public class BF2WebAdminService : BackgroundService
             fakeGameServerTask = fakeGameServer.ConnectAsync();
         }
 
-        var connectToGameServersTask = Task.CompletedTask;
-        if (!_settings.GameServers.IsNullOrEmpty())
-        {
-            connectToGameServersTask = Task.WhenAll(_settings.GameServers.Select(serverInfo => _server.RetryConnectionAsync(_server.GetIpAddress(), _settings.Port, serverInfo)));
-        }
-
         try
         {
-            await Task.WhenAll(listenTask, fakeGameServerTask, connectToGameServersTask);
+            await Task.WhenAll(listenTask, fakeGameServerTask);
         }
         catch (Exception ex)
         {
@@ -102,6 +96,7 @@ public class ServerInfo
     public int RconPort { get; set; }
     public string RconPassword { get; set; }
     public DiscordBotConfig DiscordBot { get; set; }
+    public string ServerGroup { get; set; }
 
     public class DiscordBotConfig
     {
@@ -110,10 +105,4 @@ public class ServerInfo
         public string NotificationChannel { get; set; }
         public string MatchResultChannel { get; set; }
     }
-}
-
-public class SeqSettings
-{
-    public string ServerUrl { get; set; }
-    public string ApiKey { get; set; }
 }

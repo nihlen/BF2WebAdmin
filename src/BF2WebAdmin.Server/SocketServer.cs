@@ -126,7 +126,7 @@ public class SocketServer : ISocketServer
         _logger.LogInformation("Server started");
         var tasks = new List<Task>();
 
-        while (server.Server.IsBound)
+        while (server.Server.IsBound && !cancellationToken.IsCancellationRequested)
         {
             try
             {
@@ -153,11 +153,18 @@ public class SocketServer : ISocketServer
                 //var task = HandleConnectionAsync(client, cancellationToken);
                 tasks.Add(task);
             }
+            catch (TaskCanceledException)
+            {
+                // Server is shutting down
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Game server TCP error");
             }
         }
+        
+        if (cancellationToken.IsCancellationRequested)
+            server?.Server?.Close();
 
         _logger.LogInformation("Server stopped");
 

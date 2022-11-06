@@ -1,8 +1,8 @@
 ﻿@page "/server/{serverId}/edit"
 
-<PageTitle>BF2 Web Admin - Edit @(AdminService.UrlDecodeServerId(ServerId))</PageTitle>
+<PageTitle>BF2 Web Admin - Edit server</PageTitle>
 
-<MudText Typo="Typo.h3" Class="mb-8">Edit @(AdminService.UrlDecodeServerId(ServerId))</MudText>
+<MudText Typo="Typo.h3" Class="mb-8">Edit server</MudText>
 
 <ServerEditForm ServerId="@ServerId" Callback="OnEditServer"></ServerEditForm>
 

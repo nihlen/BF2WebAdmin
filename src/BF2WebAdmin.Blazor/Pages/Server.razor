@@ -15,7 +15,14 @@
     <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mb-8">Server is offline</MudAlert>
 }
 
-<MudText Typo="Typo.h3" Class="mb-8">@_serverName</MudText>
+<div class="d-flex justify-space-between flex-grow-1">
+    <div>
+        <MudText Typo="Typo.h3" Class="mb-8">@_serverName</MudText>
+    </div>
+    <div>
+        <MudFab StartIcon="@Icons.Material.Filled.Settings" Size="Size.Large" Href="@($"/server/{AdminService.UrlEncodeServerId(ServerId)}/edit")"/>
+    </div>
+</div>
 
 <div class="mb-8">
     <MudChip Icon="@(_socketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
@@ -28,9 +35,6 @@
     <MudChip>@_currentPlayers / @_maxPlayers players</MudChip>
     <MudChip>
         <MudLink Variant="Variant.Text" Color="Color.Info" Href="@("/servergroup/" + _serverGroup)">@_serverGroup</MudLink>
-    </MudChip>
-    <MudChip>
-        <MudLink Variant="Variant.Text" Color="Color.Info" Href="@($"/server/{AdminService.UrlEncodeServerId(ServerId)}/edit")">Edit</MudLink>
     </MudChip>
 </div>
 

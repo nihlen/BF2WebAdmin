@@ -9,11 +9,11 @@
 
 <MudNavMenu>
     <MudNavLink Href="" Match="NavLinkMatch.All">Dashboard</MudNavLink>
-    
+
     <MudDivider/>
-    
+
     <MudNavGroup Title="Servers" Expanded="true">
-        @foreach (var grouping in _servers.Values.GroupBy(s => s.ServerGroup).OrderBy((g => g.Key)))
+        @foreach (var grouping in _servers.Values.GroupBy(s => s.ServerGroup).OrderBy(g => g.Key))
         {
             <MudNavLink Href="@("/servergroup/" + grouping.Key)"
                         Match="NavLinkMatch.Prefix">
@@ -26,7 +26,7 @@
                             Match="NavLinkMatch.Prefix"
                             Icon="@(server.SocketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
                             IconColor="@(server.SocketState == SocketState.Connected ? Color.Success : Color.Error)">
-                    @server.Name (@server.Players / @server.MaxPlayers)
+                    @TruncateServerName(server.Name) (@server.Players / @server.MaxPlayers)
                 </MudNavLink>
             }
 
@@ -74,6 +74,12 @@
         }
 
         return ValueTask.CompletedTask;
+    }
+
+    private static string? TruncateServerName(string? serverName)
+    {
+        const int maxLength = 20;
+        return ((serverName?.Length ?? 0) > maxLength) ? serverName?[..Math.Min(maxLength, serverName.Length)] + "…" : serverName;
     }
 
 }

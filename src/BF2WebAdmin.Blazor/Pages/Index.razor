@@ -17,7 +17,7 @@
     </div>
 </div>
 
-@foreach (var group in _servers.Values.GroupBy(s => s.ServerGroup))
+@foreach (var group in _servers.Values.GroupBy(s => s.ServerGroup).OrderBy(g => g.Key))
 {
     <MudPaper Class="py-6 px-8 mb-8" Outlined="true" Style="background: rgba(50, 51, 61, 0)">
         <MudLink Href="@($"/servergroup/{group.Key}")" Underline="Underline.None">
@@ -25,7 +25,7 @@
         </MudLink>
 
         <MudGrid>
-            @foreach (var server in group)
+            @foreach (var server in group.OrderBy(s => s.Name))
             {
                 <MudItem xs="4">
                     <MudLink Href="@("/server/" + AdminService.UrlEncodeServerId(server.Id))" Underline="Underline.None">

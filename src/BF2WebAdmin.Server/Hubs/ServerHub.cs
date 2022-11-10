@@ -175,7 +175,7 @@ public class ServerHub : Hub<IServerHubClient>
         await Clients.All.ServerRemoveEvent(new ServerRemoveEvent { ServerId = serverId });
     }
 
-    public async Task<IEnumerable<TestServerResult>> TestServer(ServerDataDto server)
+    public async Task<TestServerResult[]> TestServer(ServerDataDto server)
     {
         using var _ = Telemetry.StartRootActivity();
 

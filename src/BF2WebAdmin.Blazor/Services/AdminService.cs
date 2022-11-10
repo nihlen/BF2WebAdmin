@@ -116,7 +116,7 @@ public class AdminService : IAsyncDisposable
         await HubConnection.SendAsync("SetServer", server);
 
     public async Task<IEnumerable<TestServerResult>> TestServerAsync(ServerDataDto server) =>
-        await HubConnection.InvokeAsync<IEnumerable<TestServerResult>>("TestServer", server);
+        await HubConnection.InvokeAsync<TestServerResult[]>("TestServer", server);
 
     public async Task RemoveServerAsync(string serverId) =>
         await HubConnection.SendAsync("RemoveServer", serverId);

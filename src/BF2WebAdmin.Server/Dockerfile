@@ -1,11 +1,11 @@
 #See https://aka.ms/containerfastmode to understand how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
 # For use in Visual Studio
-FROM mcr.microsoft.com/dotnet/aspnet:6.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:7.0 AS base
 WORKDIR /app
 EXPOSE 80
 
-FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
 WORKDIR /src
 COPY ["src/BF2WebAdmin.Server/BF2WebAdmin.Server.csproj", "src/BF2WebAdmin.Server/"]
 COPY ["src/BF2WebAdmin.Data/BF2WebAdmin.Data.csproj", "src/BF2WebAdmin.Data/"]

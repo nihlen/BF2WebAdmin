@@ -99,12 +99,11 @@ try
 
     builder.Services.AddHostedService<BF2WebAdminService>();
     builder.Services.AddSignalR()
-
-        //.AddMessagePackProtocol();
-        .AddJsonProtocol(options =>
-        {
-            options.PayloadSerializerOptions.PropertyNamingPolicy = null;
-        });
+        .AddMessagePackProtocol();
+        // .AddJsonProtocol(options =>
+        // {
+        //     options.PayloadSerializerOptions.PropertyNamingPolicy = null;
+        // });
 
     builder.Services.AddControllersWithViews();
 

@@ -211,18 +211,18 @@ public class ServerHub : Hub<IServerHubClient>
         };
     }
 
-    public async Task<IEnumerable<string>> GetServerGroupModules(string serverId, string serverGroup)
+    public async Task<string[]> GetServerGroupModules(string serverId, string serverGroup)
     {
         using var _ = Telemetry.StartRootActivity();
 
         var modules = await _serverSettingsRepository.GetModulesAsync(serverGroup);
-        return modules.Concat(ModManager.DefaultModuleNames).Distinct();
+        return modules.Concat(ModManager.DefaultModuleNames).Distinct().ToArray();
     }
 
-    public IEnumerable<string> GetAllModules()
+    public string[] GetAllModules()
     {
         using var _ = Telemetry.StartRootActivity();
-        return ModuleResolver.AllModuleNames;
+        return ModuleResolver.AllModuleNames.ToArray();
     }
 
     public async Task SetServerGroupModules(string serverId, string serverGroup, IEnumerable<string> moduleNames)

@@ -14,6 +14,7 @@ public class AdminService : IAsyncDisposable
     public string? SelectedServerId { get; private set; }
 
     private bool _isAuthenticated;
+
     public bool IsAuthenticated
     {
         get => _isAuthenticated;
@@ -33,11 +34,12 @@ public class AdminService : IAsyncDisposable
         HubConnection = new HubConnectionBuilder()
             .WithUrl(navigationManager.ToAbsoluteUri("/hubs/server"))
             .WithAutomaticReconnect()
-            //.AddMessagePackProtocol()
-            .AddJsonProtocol(options =>
-            {
-                options.PayloadSerializerOptions.PropertyNamingPolicy = null;
-            })
+            .AddMessagePackProtocol()
+
+            // .AddJsonProtocol(options =>
+            // {
+            //     options.PayloadSerializerOptions.PropertyNamingPolicy = null;
+            // })
             .Build();
     }
 
@@ -97,46 +99,46 @@ public class AdminService : IAsyncDisposable
         await HubConnection.SendAsync("DeselectServer", serverId);
     }
 
-    public async Task SendChatMessageAsync(string text) => 
+    public async Task SendChatMessageAsync(string text) =>
         await HubConnection.SendAsync("SendChatMessage", SelectedServerId, text);
 
-    public async Task SendRconCommandAsync(string text) => 
+    public async Task SendRconCommandAsync(string text) =>
         await HubConnection.SendAsync("SendRconCommand", SelectedServerId, text);
 
-    public async Task SendCustomCommandAsync(string text) => 
+    public async Task SendCustomCommandAsync(string text) =>
         await HubConnection.SendAsync("SendCustomCommand", SelectedServerId, text);
 
     // TODO: new ServerData type? should we send it in an event instead so it works for many active users?
-    public async Task<ServerDataDto> GetServerAsync(string? serverId = null) => 
+    public async Task<ServerDataDto> GetServerAsync(string? serverId = null) =>
         await HubConnection.InvokeAsync<ServerDataDto>("GetServer", serverId ?? SelectedServerId);
 
-    public async Task SetServerAsync(ServerDataDto server) => 
+    public async Task SetServerAsync(ServerDataDto server) =>
         await HubConnection.SendAsync("SetServer", server);
 
-    public async Task<IEnumerable<TestServerResult>> TestServerAsync(ServerDataDto server) => 
+    public async Task<IEnumerable<TestServerResult>> TestServerAsync(ServerDataDto server) =>
         await HubConnection.InvokeAsync<IEnumerable<TestServerResult>>("TestServer", server);
 
-    public async Task RemoveServerAsync(string serverId) => 
+    public async Task RemoveServerAsync(string serverId) =>
         await HubConnection.SendAsync("RemoveServer", serverId);
 
     public async Task<IEnumerable<string>> GetServerGroupModulesAsync(string serverGroup) => 
-        await HubConnection.InvokeAsync<IEnumerable<string>>("GetServerGroupModules", SelectedServerId, serverGroup);
+        await HubConnection.InvokeAsync<string[]>("GetServerGroupModules", SelectedServerId, serverGroup);
 
-    public async Task SetServerGroupModulesAsync(string serverGroup, IEnumerable<string> moduleNames) => 
+    public async Task SetServerGroupModulesAsync(string serverGroup, IEnumerable<string> moduleNames) =>
         await HubConnection.SendAsync("SetServerGroupModules", SelectedServerId, serverGroup, moduleNames);
 
-    public async Task ReloadServerGroupModulesAsync(string serverGroup) => 
+    public async Task ReloadServerGroupModulesAsync(string serverGroup) =>
         await HubConnection.SendAsync("ReloadServerGroupModules", serverGroup);
 
-    public async Task<IEnumerable<string>> GetAllModulesAsync() => 
-        await HubConnection.InvokeAsync<IEnumerable<string>>("GetAllModules");
+    public async Task<IEnumerable<string>> GetAllModulesAsync() =>
+        await HubConnection.InvokeAsync<string[]>("GetAllModules");
 
-    public async ValueTask DisposeAsync() => 
+    public async ValueTask DisposeAsync() =>
         await HubConnection.DisposeAsync();
 
-    public static string? UrlEncodeServerId(string? serverId) => 
+    public static string? UrlEncodeServerId(string? serverId) =>
         serverId?.Replace(".", "-")?.Replace(":", "_");
 
-    public static string? UrlDecodeServerId(string? encodedServerId) => 
+    public static string? UrlDecodeServerId(string? encodedServerId) =>
         encodedServerId?.Replace("-", ".")?.Replace("_", ":");
 }

@@ -10,6 +10,7 @@ The communication between webadmin and the ModManager module on the Battlefield 
   * Switch team, kill, warn, kick and ban
   * Map selection
   * Interactive chat
+  * Live minimap
   * Ingame and custom commands available through chat
 * Discord integration (optional)
   * channel for player join/leave messages

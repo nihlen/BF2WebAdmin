@@ -385,8 +385,8 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(StartEventRecordingCommand command)
     {
-        // Save log files in /app/data
-        var path = Path.Combine("./data/", $"gameevents-{GameServer.Id.Replace(".", "-").Replace(":", "-")}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.txt");
+        // Save log files in /app/Data
+        var path = Path.Combine("./Data/", $"gameevents-{GameServer.Id.Replace(".", "-").Replace(":", "-")}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.txt");
         GameServer.GameReader.StartRecording(path);
     }
 

@@ -94,7 +94,7 @@ public class SocketServer : ISocketServer
             }
 
             return result;
-        });
+        }) ?? Enumerable.Empty<ServerInfo>();
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -525,12 +525,15 @@ public class SocketServer : ISocketServer
             return default;
         }
 
+        // Find ServerInfo - Order by exact IP match, since we can accept all private network IPs when using containers
         var serverInfos = await GetServerInfoAsync();
         var gamePort = int.Parse(parts[3]);
-        var serverInfo = serverInfos.FirstOrDefault(i =>
-            (i.IpAddress == ipEndPoint.Address.ToString() || ipEndPoint.Address.IsPrivate() || ipEndPoint.Address.Equals(_ipAddress)) &&
-            i.GamePort == gamePort
-        );
+        var serverInfo = serverInfos
+            .OrderByDescending(i => i.IpAddress == ipEndPoint.Address.ToString())
+            .FirstOrDefault(i =>
+                (i.IpAddress == ipEndPoint.Address.ToString() || ipEndPoint.Address.IsPrivate() || ipEndPoint.Address.Equals(_ipAddress)) &&
+                i.GamePort == gamePort
+            );
 
         if (serverInfo == null)
             throw new Exception($"Server info not found in settings: {ipEndPoint.Address}:{gamePort}");
@@ -541,6 +544,7 @@ public class SocketServer : ISocketServer
 
         // var gameServer = await GetGameServerAsync(publicIpAddress, ipEndPoint.Address, gameWriter, key, serverInfo, tcpClient, cancellationToken);
         var gameReader = new GameReader(gameServer, _globalServices.GetRequiredService<ILogger<GameReader>>(), cancellationToken: cancellationTokenSource.Token);
+        gameServer.GameReader = gameReader;
         return (gameServer, gameReader);
 
         async Task<IGameServer> GetGameServerAsync()

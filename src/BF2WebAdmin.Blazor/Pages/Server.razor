@@ -242,9 +242,6 @@
     private readonly List<string> _rconCommandsForNotifications = new() { "!w", "!k", "!b", "iga warn", "iga kick", "iga ban", "!unban", "!clearbans" };
     private Canvas canvas;
 
-    //private Canvas2DContext _context;
-    //protected BECanvasComponent _canvasReference;
-
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
@@ -348,19 +345,6 @@
 
                     StateHasChanged();
                 }
-
-                //var component = _canvasReference?.As<BECanvasComponent>();
-                //if (component is null)
-                //    return;
-
-                //_context ??= await _canvasReference.CreateCanvas2DAsync();
-
-                //await _context.SetFillStyleAsync("green");
-
-                //await _context.FillRectAsync(10, 100, 100, 100);
-
-                //await _context.SetFontAsync("48px serif");
-                //await _context.StrokeTextAsync("Hello Blazor!!!", 10, 100);
             }),
             _adminService.HubConnection.On<PlayerScoreEvent>(nameof(PlayerScoreEvent), e =>
             {
@@ -508,9 +492,6 @@
         var dx = e.OffsetX - _mapDragStart?.X ?? 0;
         var dy = e.OffsetY - _mapDragStart?.Y ?? 0;
         _mapOffset = (dx, dy);
-
-        // const double incrementSize = 0.2d;
-        // _mapScale = deltaY > 0 ? _mapScale * (1 - incrementSize) : _mapScale * (1 + incrementSize);
     }
 
     [JSInvokable("GameLoop")]
@@ -573,25 +554,15 @@
             if (!player.IsAlive || player.UpdateTimestamp is null || player.PreviousPosition is null || player.Position is null)
                 continue;
 
-            // await _context.FontAsync("32px solid");
-            // await _context.FillTextAsync($"{player.Position.X:F}/{player.Position.Y:F}/{player.Position.Z:F}", width/2f, 50);
-
-            // TODO: linear interpolation
             var pdt = (double)(_stopwatch.ElapsedMilliseconds - player.UpdateTimestamp) / _updateIntervalMs;
-
-            // var pdt = (_stopwatch.ElapsedMilliseconds - player.UpdateTimestamp) / UpdateIntervalMs;
             var interpolatedPosition = Lerp(player.PreviousPosition, player.Position, pdt);
             var canvasPosition = GetCanvasPosition(interpolatedPosition, width, height);
-
-            // var canvasPosition = GetCanvasPosition(player.Position, width, height);
+            
             await _context.FillStyleAsync(player.Team == 2 ? "#60a5fa" : "#f87171");
-
             await _context.StrokeTextAsync(player.Name, canvasPosition.X, canvasPosition.Y - 10);
             await _context.FillTextAsync(player.Name, canvasPosition.X, canvasPosition.Y - 10);
             await _context.BeginPathAsync();
             await _context.ArcAsync(canvasPosition.X, canvasPosition.Y, 3, 0, 2 * Math.PI, false);
-
-            // await _context.FillStyleAsync()
             await _context.StrokeAsync();
             await _context.FillAsync(FillRule.NonZero);
         }
@@ -603,7 +574,6 @@
 
         (double X, double Y) GetCanvasPosition(Vector3 position, int canvasWidth, int canvasHeight)
         {
-            // return (position.X * _mapScale + canvasWidth / 2f, -position.Y * _mapScale + canvasHeight / 2f);
             return (position.X * _mapScale + canvasWidth / 2f + _mapOffset.X, -position.Y * _mapScale + canvasHeight / 2f + _mapOffset.Y);
         }
 
@@ -615,12 +585,6 @@
                 Y = LerpValue(v0.Y, v1.Y, dt),
                 Z = LerpValue(v0.Z, v1.Z, dt)
             };
-
-            // return (
-            //     LerpValue(v0.X, v1.X, dt),
-            //     LerpValue(v0.Y, v1.Y, dt),
-            //     LerpValue(v0.Z, v1.Z, dt)
-            // );
         }
 
         static double LerpValue(double v0, double v1, double t)
@@ -648,18 +612,8 @@
         {
             _script = await _jsRuntime.InvokeAsync<IJSObjectReference>("import", "/js/server.js");
             await _script.InvokeVoidAsync("initRender", DotNetObjectReference.Create(this));
-
-            // await _script.InvokeAsync<object>("initGame", DotNetObjectReference.Create(this));
-            // await _jsRuntime.InvokeAsync<object>("initGame", DotNetObjectReference.Create(this));
             _context = await canvas.GetContext2DAsync();
         }
-
-        // if (firstRender)
-        // {
-        //     await using var ctx1 = await canvas.GetContext2DAsync();
-        //     await ctx1.FontAsync("48px solid");
-        //     await ctx1.FillTextAsync("Hello", 0, 150);
-        // }
 
         // TODO: don't run this for every PlayerPositionUpdate
         var tabId = ActiveTabIndex switch
@@ -717,14 +671,6 @@
         _textValue = string.Empty;
         await _adminService.SendChatMessageAsync(text);
     }
-
-    // private async void ChangeMap(int index)
-    // {
-    //     var map = _maps.First(m => m.Index == index);
-    //     var cmd = $"map {map.Name} gpm_cq 16";
-    //     await _adminService.SendRconCommandAsync(cmd);
-    //     _snackbar.Add("Map is being changed", Severity.Success);
-    // }
 
     private async Task ShowInputDialogAsync(string text, string placeholder, string? success, Action<string> callback)
     {

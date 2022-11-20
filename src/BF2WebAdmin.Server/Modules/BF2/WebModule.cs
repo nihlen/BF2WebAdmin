@@ -2,6 +2,7 @@
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
+using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Shared.Communication.DTOs;
 using BF2WebAdmin.Shared.Communication.Events;
@@ -24,7 +25,9 @@ public class WebModule : BaseModule,
     IHandleEventAsync<GameStateChangedEvent>,
     IHandleEventAsync<ProjectilePositionEvent>,
     IHandleEventAsync<MapChangedEvent>,
-    IHandleEventAsync<SocketStateChangedEvent>
+    IHandleEventAsync<SocketStateChangedEvent>,
+    IHandleCommandAsync<StartEventRecordingCommand>,
+    IHandleCommandAsync<StopEventRecordingCommand>
 {
     public const string WebAdminHashGod = "WebAdminHashGod";
 
@@ -378,5 +381,17 @@ public class WebModule : BaseModule,
             },
             Text = message
         });
+    }
+
+    public async ValueTask HandleAsync(StartEventRecordingCommand command)
+    {
+        // Save log files in /app/data
+        var path = Path.Combine("./data/", $"gameevents-{GameServer.Id.Replace(".", "-").Replace(":", "-")}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.txt");
+        GameServer.GameReader.StartRecording(path);
+    }
+
+    public async ValueTask HandleAsync(StopEventRecordingCommand command)
+    {
+        GameServer.GameReader.StopRecording();
     }
 }

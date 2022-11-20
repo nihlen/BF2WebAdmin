@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Text;
 using System.Threading.Channels;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
@@ -10,46 +11,45 @@ namespace BF2WebAdmin.Server;
 public class GameReader : IGameReader
 {
     private readonly IGameServer _gameServer;
-    private readonly string _gameLogPath;
     private readonly ILogger<GameReader> _logger;
     private readonly CancellationToken _cancellationToken;
-    private readonly DateTime _startTime;
     private readonly Dictionary<string, Func<string[], DateTimeOffset, ValueTask>> _eventHandlers;
-    private readonly Stopwatch _messageStopWatch;
-    private readonly Channel<(string, DateTimeOffset)> _gameEventChannel;
+    private readonly Stopwatch _messageDurationStopWatch;
+    private readonly Stopwatch _messageTimestampStopWatch;
+    private readonly Channel<(string, long)> _gameEventChannel;
+    private readonly DateTime _startTime;
+    private string? _gameLogPath;
+    private long _gameLogStartTimestamp;
 
-    public GameReader(IGameServer gameServer, ILogger<GameReader> logger, string gameLogPath = null, CancellationToken? cancellationToken = null)
+    public GameReader(IGameServer gameServer, ILogger<GameReader> logger, CancellationToken? cancellationToken = null)
     {
         var eventHandler = new EventHandler(gameServer);
         _eventHandlers = GetEventsHandlers(eventHandler);
         _startTime = DateTime.UtcNow;
         _gameServer = gameServer;
-        _gameLogPath = gameLogPath;
         _logger = logger;
         _cancellationToken = cancellationToken ?? CancellationToken.None;
-        _messageStopWatch = new Stopwatch();
-        _gameEventChannel = Channel.CreateUnbounded<(string, DateTimeOffset)>(new UnboundedChannelOptions
+        _messageDurationStopWatch = new Stopwatch();
+        _messageTimestampStopWatch = Stopwatch.StartNew();
+        _gameEventChannel = Channel.CreateUnbounded<(string, long)>(new UnboundedChannelOptions
         {
             AllowSynchronousContinuations = true,
             SingleReader = true,
             SingleWriter = true
         });
-        
+
         if (_gameEventChannel.Reader.CanCount)
         {
             var tagList = new TagList { { "serverid", _gameServer.Id } };
             _ = Telemetry.Meter.CreateObservableGauge("bf2wa.reader.queue.count", () => new Measurement<int>(_gameEventChannel.Reader.Count, tagList), description: "Length of the game reader channel queue");
         }
 
-        if (_gameLogPath != null)
-            _logger.LogDebug("Logging game events to {gameLogPath}", _gameLogPath);
-
         _ = Task.Run(ParseAllMessagesAsync);
     }
 
     public void QueueMessage(string message)
     {
-        _gameEventChannel.Writer.TryWrite((message, DateTimeOffset.UtcNow));
+        _gameEventChannel.Writer.TryWrite((message, _messageTimestampStopWatch.ElapsedMilliseconds));
     }
 
     private async Task ParseAllMessagesAsync()
@@ -75,35 +75,36 @@ public class GameReader : IGameReader
                 _logger.LogError(ex, "Failed to parse message {Message}", message);
                 activity?.SetStatus(ActivityStatusCode.Error, $"Game message parse failed: {ex.Message}");
             }
-            
+
             AppDiagnostics.TrackMessageReceive(startTime, _gameServer.Id);
         }
 
         static bool TraceEventType(string? eventType) => eventType != "playerPositionUpdate" && eventType != "projectilePositionUpdate";
     }
 
-    private async Task ParseMessageAsync(string message, DateTimeOffset time)
+    private async Task ParseMessageAsync(string message, long time)
     {
         var parts = message.Split('\t');
         var eventType = parts[0];
 
         Activity.Current?.SetTag("bf2wa.game-event-type", eventType);
-        
+
         if (eventType == "response")
         {
             _gameServer.SetRconResponse(parts[1], parts[2]);
         }
         else if (_eventHandlers.TryGetValue(eventType, out var eventHandler))
         {
-            _messageStopWatch.Restart();
-            await eventHandler(parts, time);
+            var timeDt = _startTime.AddMilliseconds(time);
+            _messageDurationStopWatch.Restart();
+            await eventHandler(parts, timeDt);
             LogGameEvent(message, time);
 
-            _messageStopWatch.Stop();
-            var elapsedMs = _messageStopWatch.ElapsedMilliseconds;
+            _messageDurationStopWatch.Stop();
+            var elapsedMs = _messageDurationStopWatch.ElapsedMilliseconds;
             if (elapsedMs > 2000)
             {
-                _logger.LogWarning("Event {EventType} took {ElapsedMilliseconds} ms ({Message}) Activity: {ActivityDuration} ticks", eventType, _messageStopWatch.ElapsedMilliseconds, message, Activity.Current?.Duration.Ticks);
+                _logger.LogWarning("Event {EventType} took {ElapsedMilliseconds} ms ({Message}) Activity: {ActivityDuration} ticks", eventType, _messageDurationStopWatch.ElapsedMilliseconds, message, Activity.Current?.Duration.Ticks);
             }
         }
         else if (eventType.Length > 0)
@@ -116,14 +117,56 @@ public class GameReader : IGameReader
         }
     }
 
-    private void LogGameEvent(string message, DateTimeOffset time)
+    private void LogGameEvent(string message, long timeMilliseconds)
     {
         if (_gameLogPath == null)
             return;
 
-        var diff = (int)(time - _startTime).TotalMilliseconds;
-        var line = $"{diff} {message}\n";
-        File.AppendAllText(_gameLogPath, line);
+        try
+        {
+            var diff = timeMilliseconds - _gameLogStartTimestamp;
+            
+            // Ignore the command which started the logging
+            if (diff < 0)
+                return;
+            
+            var line = $"{diff} {message}\n";
+            File.AppendAllText(_gameLogPath, line);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to write game event to {GameLogPath}", _gameLogPath);
+        }
+    }
+
+    public void StartRecording(string gameLogPath)
+    {
+        _logger.LogInformation("Logging all game events to {GameLogPath}", _gameLogPath);
+
+        // Write initial state to file
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"0 serverInfo\t{_gameServer.Name}\t{string.Join("|", _gameServer.Maps.Select(m => $"{m.Name}|{m.Size}"))}\t{_gameServer.GamePort}\t{_gameServer.QueryPort}\t{_gameServer.MaxPlayers}");
+        sb.AppendLine($"0 gameStatePlaying\t{_gameServer.Teams.First().Name}\t{_gameServer.Teams.Last().Name}\t{_gameServer.Map?.Name}\t{_gameServer.MaxPlayers}");
+
+        foreach (var player in _gameServer.Players)
+        {
+            sb.AppendLine($"0 playerConnect\t{player.Index}\t{player.Name}\t{player.Id}\t{player.IpAddress.ToString()}\t{player.Hash}\t{player.Team.Id}");
+            sb.AppendLine($"0 playerScore\t{player.Index}\t{player.Score.Total}\t{player.Score.Team}\t{player.Score.Kills}\t{player.Score.Deaths}");
+            if (player.Vehicle is not null)
+                sb.AppendLine($"0 enterVehicle\t{player.Index}\t{player.Vehicle.RootVehicleId}\t{player.Vehicle.RootVehicleTemplate}\t{player.Vehicle.Template}");
+        }
+
+        File.AppendAllText(gameLogPath, sb.ToString());
+
+        _gameLogStartTimestamp = _messageTimestampStopWatch.ElapsedMilliseconds;
+        _gameLogPath = gameLogPath;
+    }
+
+    public void StopRecording()
+    {
+        _logger.LogInformation("Stopped logging all game events");
+        _gameLogPath = null;
     }
 
     private static Dictionary<string, Func<string[], DateTimeOffset, ValueTask>> GetEventsHandlers(IEventHandler eh)

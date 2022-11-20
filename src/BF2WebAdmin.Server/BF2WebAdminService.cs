@@ -27,30 +27,9 @@ public class BF2WebAdminService : BackgroundService
 
         using var activity = Telemetry.ActivitySource.StartActivity(nameof(BF2WebAdminService));
 
-        var listenTask = _server.StartAsync(stoppingToken);
-
-        // Create a fake game server that connects
-        // TODO: move to a separate container image
-        var fakeGameServerTask = Task.CompletedTask;
-        if (_settings.StartFakeGameServer)
-        {
-            // TODO: Config file
-            var fakeGameServer = new FakeGameServer(
-                IPAddress.Loopback,
-                _settings.Port,
-                _settings.GameServers[0].RconPort,
-                @"C:\Projects\DotNet\BF2WebAdmin\src\BF2WebAdmin.Server\bin\Debug\netcoreapp2.0\gameevents-31-220-7-51-0-1515868847.txt",
-                _loggerFactory.CreateLogger<FakeGameServer>(),
-                0, //475_617
-                stoppingToken
-            ); // 2v2 start?
-
-            fakeGameServerTask = fakeGameServer.ConnectAsync();
-        }
-
         try
         {
-            await Task.WhenAll(listenTask, fakeGameServerTask);
+            await _server.StartAsync(stoppingToken);
         }
         catch (Exception ex)
         {
@@ -81,7 +60,6 @@ public class ServerSettings
     public string IpAddress { get; set; }
     public int Port { get; set; }
     public List<ServerInfo> GameServers { get; set; }
-    public bool StartFakeGameServer { get; set; }
     public string ServerLogDirectory { get; set; }
     public bool PrintSendLog { get; set; }
     public bool PrintRecvLog { get; set; }

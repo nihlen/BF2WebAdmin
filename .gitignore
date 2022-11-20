@@ -258,4 +258,4 @@ Logs/
 .idea/
 
 # Test data
-Data/*.txt
+**/Data/*.txt

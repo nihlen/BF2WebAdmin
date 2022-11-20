@@ -11,6 +11,8 @@ public interface IGameServer
 
     IModManager ModManager { get; }
     IGameWriter GameWriter { get; }
+    IGameReader GameReader { get; set; }
+
     ServerInfo ServerInfo { get; }
 
     string Id { get; }
@@ -32,7 +34,6 @@ public interface IGameServer
     IEnumerable<Projectile> Projectiles { get; }
     IEnumerable<(MessageDto Message, DateTimeOffset Time)> Messages { get; }
     IEnumerable<(string Message, DateTimeOffset Time)> Events { get; }
-
     ValueTask CreateModManagerAsync(bool forceReinitialize = false);
     ValueTask UpdateServerInfoAsync(string name, int gamePort, int queryPort, int maxPlayers, DateTimeOffset time);
     ValueTask UpdateGameStateAsync(GameState state, DateTimeOffset time);

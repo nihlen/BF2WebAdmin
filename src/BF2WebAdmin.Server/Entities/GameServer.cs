@@ -23,6 +23,7 @@ public class GameServer : IGameServer
     private readonly CancellationToken _cancellationToken;
     public ServerInfo ServerInfo { get; private set; }
     public IGameWriter GameWriter => _gameWriter;
+    public IGameReader GameReader { get; set; }
     public IModManager? ModManager { get; private set; }
 
     public string Id => $"{IpAddress}:{GamePort}";

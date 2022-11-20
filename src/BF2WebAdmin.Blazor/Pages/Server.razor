@@ -3,9 +3,12 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.SignalR.Client
 @using System.Collections.Concurrent
+@using System.Diagnostics
 @using System.Xml.Serialization
 @using BF2WebAdmin.Shared
 @using BF2WebAdmin.Shared.Communication.Events
+@using Excubo.Blazor.Canvas
+@using Excubo.Blazor.Canvas.Contexts
 @implements IAsyncDisposable
 
 <PageTitle>BF2 Web Admin - @_serverName</PageTitle>
@@ -85,103 +88,119 @@
 
 </MudGrid>
 
-@*<BECanvas Width="300" Height="400" @ref="_canvasReference"></BECanvas>*@
 
-<MudPaper>
+<MudGrid Class="mb-8">
 
-    <MudTabs Outlined="true" @bind-ActivePanelIndex="ActiveTabIndex">
+    <MudItem xs="12" sm="6">
+        <MudPaper Class="mb-8">
+            <MudTabs Position="Position.Top" Outlined="true" @bind-ActivePanelIndex="ActiveTabIndex">
 
-        <MudTabPanel Text="Chat" Icon="@Icons.Material.Filled.Chat">
-            <ul id="chatlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
-                @foreach (var chat in _chatLog)
-                {
-                    <li @key="chat.Message.Id" class="@GetChatClass(chat.Message)">
-                        @GetTimestamp(chat.Timestamp)
-                        @(chat.Message.Type != "Server" ? $" {chat.Message.PlayerName}: " : string.Empty)
-                        @chat.Message.Text
-                    </li>
-                }
-            </ul>
-        </MudTabPanel>
+                <MudTabPanel Text="Chat" Icon="@Icons.Material.Filled.Chat" Style="width: 50px">
+                    <ul id="chatlog" class="px-4 py-4" style="overflow-y: scroll; height: 500px; max-height: 500px;">
+                        @foreach (var chat in _chatLog)
+                        {
+                            <li @key="chat.Message.Id" class="@GetChatClass(chat.Message)">
+                                @GetTimestamp(chat.Timestamp)
+                                @(chat.Message.Type != "Server" ? $" {chat.Message.PlayerName}: " : string.Empty)
+                                @chat.Message.Text
+                            </li>
+                        }
+                    </ul>
+                </MudTabPanel>
 
-        <MudTabPanel Text="Events" Icon="@Icons.Material.Filled.Bolt">
-            <ul id="eventlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
-                @foreach (var gameEvent in _eventLog)
-                {
-                    <li @key="gameEvent.Id">@GetTimestamp(gameEvent.Timestamp) @gameEvent.Message</li>
-                }
-            </ul>
-        </MudTabPanel>
+                <MudTabPanel Text="Maps" Icon="@Icons.Material.Filled.Map">
+                    <div class="px-4 py-4">
+                        <MudList Clickable="true" SelectedValue="_maps?.FirstOrDefault(m => m.Name == _map)?.Index" Width="300px">
+                            @foreach (var map in _maps)
+                            {
+                                <MudListItem Value="@map.Index"
+                                             Text="@(map.Index + " " + map.Name + " " + map.Size)"
+                                             Icon="@Icons.Material.Filled.Map"
+                                             OnClick="@(() => _adminService.SendRconCommandAsync($"map {map.Name} gpm_cq {map.Size}"))"/>
+                            }
+                        </MudList>
+                    </div>
+                </MudTabPanel>
 
-        <MudTabPanel Text="Requests" Icon="@Icons.Material.Filled.DoubleArrow">
-            <ul id="requestlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
-                @foreach (var request in _requestResponses)
-                {
-                    <li class="mb-4">
-                        <div>Request:</div>
-                        <pre>@request.Request</pre>
-                        <div>Response:</div>
-                        <pre>@request.Response</pre>
-                    </li>
-                }
-            </ul>
-        </MudTabPanel>
+                <MudTabPanel Text="Bans" Icon="@Icons.Material.Filled.Block">
+                    <MudTable Items="@_bans" Hover="true" Breakpoint="Breakpoint.Sm">
+                        <HeaderContent>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Name</MudTh>
+                            <MudTh>Period</MudTh>
+                            <MudTh>Method</MudTh>
+                            <MudTh>Identifier</MudTh>
+                            <MudTh>By</MudTh>
+                            <MudTh>Reason</MudTh>
+                            <MudTh>Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Date">@context.Datetime</MudTd>
+                            <MudTd DataLabel="Name">@context.Nick</MudTd>
+                            <MudTd DataLabel="Period">@context.Period</MudTd>
+                            <MudTd DataLabel="Method">@context.Method</MudTd>
+                            <MudTd DataLabel="Identifier">@(context.Method == "Key" ? context.Cdkeyhash : context.Address)</MudTd>
+                            <MudTd DataLabel="By">@context.By</MudTd>
+                            <MudTd DataLabel="Reason">@context.Reason</MudTd>
+                            <MudTh>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(async () => { await _adminService.SendRconCommandAsync("!unban " + (context.Method == "Key" ? context.Cdkeyhash : context.Address)); await _adminService.SendRconCommandAsync("!banlist"); })"/>
+                            </MudTh>
+                        </RowTemplate>
+                    </MudTable>
+                </MudTabPanel>
 
-        <MudTabPanel Text="Maps" Icon="@Icons.Material.Filled.Map">
-            <div class="px-4 py-4">
-                <MudList Clickable="true" SelectedValue="_maps?.FirstOrDefault(m => m.Name == _map)?.Index" Width="300px">
-                    @foreach (var map in _maps)
-                    {
-                        <MudListItem Value="@map.Index"
-                                     Text="@(map.Index + " " + map.Name + " " + map.Size)"
-                                     Icon="@Icons.Material.Filled.Map"
-                                     OnClick="@(() => _adminService.SendRconCommandAsync($"map {map.Name} gpm_cq 16"))"/>
-                    }
-                </MudList>
+                <MudTabPanel Text="Events" Icon="@Icons.Material.Filled.Bolt">
+                    <ul id="eventlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
+                        @foreach (var gameEvent in _eventLog)
+                        {
+                            <li @key="gameEvent.Id">@GetTimestamp(gameEvent.Timestamp) @gameEvent.Message</li>
+                        }
+                    </ul>
+                </MudTabPanel>
+
+                <MudTabPanel Text="Requests" Icon="@Icons.Material.Filled.DoubleArrow">
+                    <ul id="requestlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
+                        @foreach (var request in _requestResponses)
+                        {
+                            <li class="mb-4">
+                                <div>Request:</div>
+                                <pre>@request.Request</pre>
+                                <div>Response:</div>
+                                <pre>@request.Response</pre>
+                            </li>
+                        }
+                    </ul>
+                </MudTabPanel>
+
+            </MudTabs>
+
+            @if (ActiveTabIndex == 0)
+            {
+                <MudTextField @bind-Value="_textValue"
+                              Immediate="true"
+                              Placeholder="Enter message"
+                              DisableUnderLine="true"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              OnKeyPress="OnKeyPress"/>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" sm="6">
+        @if (_map is not null)
+        {
+            <img id="minimap" style="display:none" src="@($"https://static.nihlen.net/bf2/minimaps/{_map?.ToLower()}.png")" alt="@_map"/>
+        }
+
+        <MudPaper Style="overflow: hidden;">
+            <div id="canvas-container" style="height: 600px">
+                <Canvas @ref="canvas" @onmousemove="e => MapDragAsync(e)" @onmousedown="(e) => _mapDragStart = (e.OffsetX - _mapOffset.X, e.OffsetY - _mapOffset.Y)" @onmouseup="() => _mapDragStart = null"></Canvas>
             </div>
-        </MudTabPanel>
+        </MudPaper>
+    </MudItem>
 
-        <MudTabPanel Text="Bans" Icon="@Icons.Material.Filled.Block">
-            <MudTable Items="@_bans" Hover="true" Breakpoint="Breakpoint.Sm">
-                <HeaderContent>
-                    <MudTh>Date</MudTh>
-                    <MudTh>Name</MudTh>
-                    <MudTh>Period</MudTh>
-                    <MudTh>Method</MudTh>
-                    <MudTh>Identifier</MudTh>
-                    <MudTh>By</MudTh>
-                    <MudTh>Reason</MudTh>
-                    <MudTh>Actions</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Date">@context.Datetime</MudTd>
-                    <MudTd DataLabel="Name">@context.Nick</MudTd>
-                    <MudTd DataLabel="Period">@context.Period</MudTd>
-                    <MudTd DataLabel="Method">@context.Method</MudTd>
-                    <MudTd DataLabel="Identifier">@(context.Method == "Key" ? context.Cdkeyhash : context.Address)</MudTd>
-                    <MudTd DataLabel="By">@context.By</MudTd>
-                    <MudTd DataLabel="Reason">@context.Reason</MudTd>
-                    <MudTh>
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@(async () => { await _adminService.SendRconCommandAsync("!unban " + (context.Method == "Key" ? context.Cdkeyhash : context.Address)); await _adminService.SendRconCommandAsync("!banlist"); })"/>
-                    </MudTh>
-                </RowTemplate>
-            </MudTable>
-        </MudTabPanel>
-
-    </MudTabs>
-
-    @if (ActiveTabIndex == 0)
-    {
-        <MudTextField @bind-Value="_textValue"
-                      Immediate="true"
-                      Placeholder="Enter message"
-                      DisableUnderLine="true"
-                      Variant="Variant.Outlined"
-                      Margin="Margin.Dense"
-                      OnKeyPress="OnKeyPress"/>
-    }
-
-</MudPaper>
+</MudGrid>
 
 @code {
     // TODO: split into separate file? or separate components?
@@ -221,6 +240,7 @@
     private readonly ConcurrentDictionary<int, PlayerDto> _players = new();
     private List<Ban> _bans = new();
     private readonly List<string> _rconCommandsForNotifications = new() { "!w", "!k", "!b", "iga warn", "iga kick", "iga ban", "!unban", "!clearbans" };
+    private Canvas canvas;
 
     //private Canvas2DContext _context;
     //protected BECanvasComponent _canvasReference;
@@ -236,7 +256,7 @@
 
         _activeTabIndex = 0;
 
-    // _serverData = await _adminService.GetServerAsync();
+        // _serverData = await _adminService.GetServerAsync();
     }
 
     protected override async Task OnInitializedAsync()
@@ -244,7 +264,7 @@
         if (ServerId is null)
             return;
 
-    //await AddListenersAsync(null);
+        //await AddListenersAsync(null);
     }
 
     private async Task AddListenersAsync(string? text)
@@ -313,6 +333,19 @@
                 if (_players.TryGetValue(e.PlayerId, out var player))
                 {
                     player.Score.Ping = e.Ping;
+                    player.PreviousPosition = player.Position;
+                    player.PreviousRotation = player.Rotation;
+                    player.Position = e.Position;
+                    player.Rotation = e.Rotation;
+
+                    // Calculate global update interval time (250 ms by default)
+                    if (player.Index == _players.Values.First().Index)
+                    {
+                        _updateIntervalMs = _stopwatch.ElapsedMilliseconds - player.UpdateTimestamp ?? 0;
+                    }
+
+                    player.UpdateTimestamp = _stopwatch.ElapsedMilliseconds;
+
                     StateHasChanged();
                 }
 
@@ -361,6 +394,7 @@
             }),
             _adminService.HubConnection.On<PlayerVehicleEvent>(nameof(PlayerVehicleEvent), e =>
             {
+                // TODO: add to Player.Vehicle property?
                 // TODO: change map icon?
                 _eventLog.Add(new EventLogDto { Message = $"{nameof(PlayerVehicleEvent)} {e.PlayerId} {e.Vehicle?.RootVehicleTemplate}", Timestamp = e.TimeStamp });
             }),
@@ -449,14 +483,190 @@
         };
     }
 
+    private IJSObjectReference? _script;
+    private Context2D? _context;
+    private double _mapScale = 0.6d;
+    private (double X, double Y) _mapOffset = (0, 0);
+    private (double X, double Y)? _mapDragStart = null;
+    private Stopwatch _stopwatch = Stopwatch.StartNew();
+    private double _updateIntervalMs = 250;
+
+    [JSInvokable("MapZoom")]
+    public async ValueTask MapZoomAsync(double deltaY)
+    {
+        const double incrementSize = 0.2d;
+        _mapScale = deltaY > 0 ? _mapScale * (1 - incrementSize) : _mapScale * (1 + incrementSize);
+        _mapOffset = deltaY > 0 ? (_mapOffset.X * (1 - incrementSize), _mapOffset.Y * (1 - incrementSize)) : (_mapOffset.X * (1 + incrementSize), _mapOffset.Y * (1 + incrementSize));
+    }
+
+    [JSInvokable("MapDrag")]
+    public async ValueTask MapDragAsync(MouseEventArgs e)
+    {
+        if (e.Buttons != 1 || _mapDragStart is null)
+            return;
+
+        var dx = e.OffsetX - _mapDragStart?.X ?? 0;
+        var dy = e.OffsetY - _mapDragStart?.Y ?? 0;
+        _mapOffset = (dx, dy);
+
+        // const double incrementSize = 0.2d;
+        // _mapScale = deltaY > 0 ? _mapScale * (1 - incrementSize) : _mapScale * (1 + incrementSize);
+    }
+
+    [JSInvokable("GameLoop")]
+    public async ValueTask GameLoopAsync(float timeStamp, int width, int height)
+    {
+        if (_context is null)
+            return;
+
+        await _context.ClearRectAsync(0, 0, width, height);
+
+        // Minimap
+        if (_map is not null)
+        {
+            var imageWidth = await _jsRuntime.InvokeAsync<int?>("eval", "document.getElementById('minimap')?.naturalWidth") ?? 0;
+            var imageHeight = await _jsRuntime.InvokeAsync<int?>("eval", "document.getElementById('minimap')?.naturalHeight") ?? 0;
+
+            if (imageWidth < 1000)
+            {
+                // Some minimap images are saved in a smaller format
+                imageWidth *= 2;
+                imageHeight *= 2;
+            }
+
+            imageWidth = (int)(imageWidth * _mapScale);
+            imageHeight = (int)(imageHeight * _mapScale);
+
+            await _jsRuntime.InvokeVoidAsync("eval", "minimapimage = document.getElementById('minimap')");
+            // await _context.DrawImageAsync("minimapimage", width / 2f - imageWidth / 2f, height / 2f - imageHeight / 2f, imageWidth, imageHeight);
+            await _context.DrawImageAsync("minimapimage", width / 2f - imageWidth / 2f + _mapOffset.X, height / 2f - imageHeight / 2f + _mapOffset.Y, imageWidth, imageHeight);
+        }
+
+        // Grid - this lags the page for some reason
+        // await _context.StrokeStyleAsync("#00000033");
+        // await _context.BeginPathAsync();
+        //
+        // var position = new Vector3 { X = 0, Y = 0 };
+        // for (var x = -1000; x < 1000; x+=100)
+        // {
+        //     for (var y = -1000; y < 1000; y += 100)
+        //     {
+        //         position.X = x;
+        //         position.Y = y;
+        //         var canvasPosition = GetCanvasPosition(position, width, height);
+        //         await _context.RectAsync(canvasPosition.X, canvasPosition.Y, GetScaledCanvasSize(100), GetScaledCanvasSize(100));
+        //     }
+        // }
+
+        await _context.StrokeAsync();
+
+        // Players
+        // TODO: group by vehicle
+        await _context.FillStyleAsync("#ffffff");
+        await _context.StrokeStyleAsync("#000000");
+        await _context.FontAsync("12px Verdana");
+        await _context.TextAlignAsync(TextAlign.Center);
+        await _context.LineWidthAsync(3);
+
+        foreach (var player in _players.Values)
+        {
+            if (!player.IsAlive || player.UpdateTimestamp is null || player.PreviousPosition is null || player.Position is null)
+                continue;
+
+            // await _context.FontAsync("32px solid");
+            // await _context.FillTextAsync($"{player.Position.X:F}/{player.Position.Y:F}/{player.Position.Z:F}", width/2f, 50);
+
+            // TODO: linear interpolation
+            var pdt = (double)(_stopwatch.ElapsedMilliseconds - player.UpdateTimestamp) / _updateIntervalMs;
+
+            // var pdt = (_stopwatch.ElapsedMilliseconds - player.UpdateTimestamp) / UpdateIntervalMs;
+            var interpolatedPosition = Lerp(player.PreviousPosition, player.Position, pdt);
+            var canvasPosition = GetCanvasPosition(interpolatedPosition, width, height);
+
+            // var canvasPosition = GetCanvasPosition(player.Position, width, height);
+            await _context.FillStyleAsync(player.Team == 2 ? "#60a5fa" : "#f87171");
+
+            await _context.StrokeTextAsync(player.Name, canvasPosition.X, canvasPosition.Y - 10);
+            await _context.FillTextAsync(player.Name, canvasPosition.X, canvasPosition.Y - 10);
+            await _context.BeginPathAsync();
+            await _context.ArcAsync(canvasPosition.X, canvasPosition.Y, 3, 0, 2 * Math.PI, false);
+
+            // await _context.FillStyleAsync()
+            await _context.StrokeAsync();
+            await _context.FillAsync(FillRule.NonZero);
+        }
+
+        int GetScaledCanvasSize(int size)
+        {
+            return (int)(size * _mapScale);
+        }
+
+        (double X, double Y) GetCanvasPosition(Vector3 position, int canvasWidth, int canvasHeight)
+        {
+            // return (position.X * _mapScale + canvasWidth / 2f, -position.Y * _mapScale + canvasHeight / 2f);
+            return (position.X * _mapScale + canvasWidth / 2f + _mapOffset.X, -position.Y * _mapScale + canvasHeight / 2f + _mapOffset.Y);
+        }
+
+        static Vector3 Lerp(Vector3 v0, Vector3 v1, double dt)
+        {
+            return new Vector3
+            {
+                X = LerpValue(v0.X, v1.X, dt),
+                Y = LerpValue(v0.Y, v1.Y, dt),
+                Z = LerpValue(v0.Z, v1.Z, dt)
+            };
+
+            // return (
+            //     LerpValue(v0.X, v1.X, dt),
+            //     LerpValue(v0.Y, v1.Y, dt),
+            //     LerpValue(v0.Z, v1.Z, dt)
+            // );
+        }
+
+        static double LerpValue(double v0, double v1, double t)
+        {
+            return v0 + ((v1 - v0) * t);
+        }
+
+        // const angleLerp = (a0: number, a1: number, t: number) => {
+        //     // a0 = a0 * Math.PI / 180;
+        //     // a1 = a1 * Math.PI / 180;
+        //     return a0 + shortAngleDist(a0, a1) * t;
+        // }
+        //
+        // const shortAngleDist = (a0: number, a1: number) => {
+        //     // const max = Math.PI * 2;
+        //     const max = 360;
+        //     const da = (a1 - a0) % max;
+        //     return 2 * da % max - da;
+        // }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            _script = await _jsRuntime.InvokeAsync<IJSObjectReference>("import", "/js/server.js");
+            await _script.InvokeVoidAsync("initRender", DotNetObjectReference.Create(this));
+
+            // await _script.InvokeAsync<object>("initGame", DotNetObjectReference.Create(this));
+            // await _jsRuntime.InvokeAsync<object>("initGame", DotNetObjectReference.Create(this));
+            _context = await canvas.GetContext2DAsync();
+        }
+
+        // if (firstRender)
+        // {
+        //     await using var ctx1 = await canvas.GetContext2DAsync();
+        //     await ctx1.FontAsync("48px solid");
+        //     await ctx1.FillTextAsync("Hello", 0, 150);
+        // }
+
         // TODO: don't run this for every PlayerPositionUpdate
         var tabId = ActiveTabIndex switch
         {
             0 => "chatlog",
-            1 => "eventlog",
-            2 => "requestlog",
+            3 => "eventlog",
+            4 => "requestlog",
             _ => null,
         };
 
@@ -477,6 +687,7 @@
     public async ValueTask DisposeAsync()
     {
         await RemoveListenersAsync(null);
+        await _script.InvokeVoidAsync("stopRender");
     }
 
     private async Task RemoveListenersAsync(Exception? exception)
@@ -507,13 +718,13 @@
         await _adminService.SendChatMessageAsync(text);
     }
 
-    private async void ChangeMap(int index)
-    {
-        var map = _maps.First(m => m.Index == index);
-        var cmd = $"map {map.Name} gpm_cq 16";
-        await _adminService.SendRconCommandAsync(cmd);
-        _snackbar.Add("Map is being changed", Severity.Success);
-    }
+    // private async void ChangeMap(int index)
+    // {
+    //     var map = _maps.First(m => m.Index == index);
+    //     var cmd = $"map {map.Name} gpm_cq 16";
+    //     await _adminService.SendRconCommandAsync(cmd);
+    //     _snackbar.Add("Map is being changed", Severity.Success);
+    // }
 
     private async Task ShowInputDialogAsync(string text, string placeholder, string? success, Action<string> callback)
     {
@@ -553,7 +764,7 @@
             "Squad" => "green-text text-lighten-1",
             "ServerMessage" => "grey-text",
             _ => string.Empty
-        };
+            };
     }
 
     private static string GetTimestamp(DateTimeOffset timestamp)

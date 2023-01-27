@@ -8,7 +8,7 @@ public interface IModManager : IDisposable
     Data.Entities.Server ServerSettings { get; }
     ILookup<string, ServerPlayerAuth> AuthPlayers { get; }
     IMediator Mediator { get; }
-    T GetModule<T>() where T : IModule;
+    T? GetModule<T>() where T : IModule;
     T GetGlobalService<T>() where T : notnull;
     Task GetAuthPlayersAsync();
     Task HandleFakeChatMessageAsync(Message message);

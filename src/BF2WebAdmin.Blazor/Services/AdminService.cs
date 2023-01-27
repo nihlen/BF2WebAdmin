@@ -122,10 +122,10 @@ public class AdminService : IAsyncDisposable
         await HubConnection.SendAsync("RemoveServer", serverId);
 
     public async Task<IEnumerable<string>> GetServerGroupModulesAsync(string serverGroup) => 
-        await HubConnection.InvokeAsync<string[]>("GetServerGroupModules", SelectedServerId, serverGroup);
+        await HubConnection.InvokeAsync<string[]>("GetServerGroupModules", serverGroup);
 
-    public async Task SetServerGroupModulesAsync(string serverGroup, IEnumerable<string> moduleNames) =>
-        await HubConnection.SendAsync("SetServerGroupModules", SelectedServerId, serverGroup, moduleNames);
+    public async Task SetServerGroupModulesAsync(string serverGroup, string[] moduleNames) =>
+        await HubConnection.SendAsync("SetServerGroupModules", serverGroup, moduleNames);
 
     public async Task ReloadServerGroupModulesAsync(string serverGroup) =>
         await HubConnection.SendAsync("ReloadServerGroupModules", serverGroup);

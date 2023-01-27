@@ -32,7 +32,6 @@ public class SocketServer : ISocketServer
     private readonly ConcurrentDictionary<IPEndPoint, TcpClient> _connections;
     private readonly ConcurrentDictionary<string, GameServerConnectionContext> _servers;
     private readonly ILogger<SocketServer> _logger;
-    private readonly IServerSettingsRepository _serverRepository;
     private readonly IMemoryCache _cache;
     private CancellationToken? _serverCancellationToken;
     private CancellationTokenSource? _serverReconnectCancellationTokenSource;
@@ -48,7 +47,6 @@ public class SocketServer : ISocketServer
         _port = port;
         _serverInfoFromConfig = serverInfoFromConfig;
         _globalServices = globalServices;
-        _serverRepository = globalServices.GetRequiredService<IServerSettingsRepository>();
         _cache = globalServices.GetRequiredService<IMemoryCache>();
         _logger = globalServices.GetRequiredService<ILogger<SocketServer>>();
         _logSend = logSend;
@@ -65,11 +63,14 @@ public class SocketServer : ISocketServer
     {
         return await _cache.GetOrCreateAsync<IEnumerable<ServerInfo>>(nameof(GetServerInfoAsync), async entry =>
         {
+            using var serviceScope = _globalServices.CreateScope();
+            var serverRepository = serviceScope.ServiceProvider.GetRequiredService<IServerSettingsRepository>();
+            
             // Combine server info from config and DB
             entry.AbsoluteExpiration = DateTimeOffset.Now.AddMinutes(5);
 
             var result = new List<ServerInfo>();
-            var servers = await _serverRepository.GetServersAsync();
+            var servers = await serverRepository.GetServersAsync();
             result.AddRange(servers.Select(s => new ServerInfo
             {
                 IpAddress = s.IpAddress,

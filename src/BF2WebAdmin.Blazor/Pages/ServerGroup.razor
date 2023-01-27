@@ -72,7 +72,7 @@ else
 
     private async void SetModulesAsync()
     {
-        await _adminService.SetServerGroupModulesAsync(ServerGroupName!, _activeModuleNames.ToList());
+        await _adminService.SetServerGroupModulesAsync(ServerGroupName!, _activeModuleNames.ToArray());
         _snackbar.Add("Modules have been saved", Severity.Success);
     }
 

@@ -40,6 +40,13 @@ public class ServerSettingsRepository : IServerSettingsRepository
         if (existingServer is not null)
         {
             existingServer.ServerGroup = server.ServerGroup;
+            existingServer.QueryPort = server.QueryPort;
+            existingServer.RconPort = server.RconPort;
+            existingServer.RconPassword = server.RconPassword;
+            existingServer.DiscordBotToken = server.DiscordBotToken;
+            existingServer.DiscordAdminChannel = server.DiscordAdminChannel;
+            existingServer.DiscordNotificationChannel = server.DiscordNotificationChannel;
+            existingServer.DiscordMatchResultChannel = server.DiscordMatchResultChannel;
             _context.Servers.Update(existingServer);
         }
         else

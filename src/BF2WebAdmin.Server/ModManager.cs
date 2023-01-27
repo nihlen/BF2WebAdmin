@@ -142,9 +142,9 @@ public class ModManager : IModManager
         };
     }
     
-    public T GetModule<T>() where T : IModule
+    public T? GetModule<T>() where T : IModule
     {
-        return (T)_moduleResolver.Modules[typeof(T)];
+        return (T?)(_moduleResolver.Modules.TryGetValue(typeof(T), out var result) ? result : null);
     }
 
     public T GetGlobalService<T>() where T : notnull

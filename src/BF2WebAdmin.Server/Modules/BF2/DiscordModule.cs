@@ -30,6 +30,7 @@ public class DiscordModule : BaseModule,
     IHandleEventAsync<GameStreamStartedEvent>,
     IHandleEventAsync<GameStreamStoppedEvent>,
     IHandleCommandAsync<LeaveCommand>,
+    IHandleCommandAsync<CallAdminCommand>,
     IHandleCommandAsync<StartStreamCommand>,
     IHandleCommandAsync<StopStreamCommand>
 {
@@ -642,5 +643,17 @@ public class DiscordModule : BaseModule,
     private async Task StopStreamAsync()
     {
         await _gameStreamService.StopGameStreamAsync(GameServer.IpAddress.ToString(), GameServer.GamePort);
+    }
+
+    public async ValueTask HandleAsync(CallAdminCommand command)
+    {
+        var isCommandCooldown = DateTime.UtcNow - command.Message.Player.LastAdminCall < TimeSpan.FromMinutes(30);  
+        if (isCommandCooldown)  
+            return;  
+  
+        command.Message.Player.LastAdminCall = DateTime.UtcNow;
+
+        await SendTextMessageToChannelsAsync($"@everyone Admin requested by {Sanitize(command.Message.Player.Name)}: {Sanitize(command.Reason)}");
+        _game.GameWriter.SendText($"{command.Message.Player.Name} called an admin");
     }
 }

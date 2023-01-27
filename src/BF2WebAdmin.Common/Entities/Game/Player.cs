@@ -23,6 +23,7 @@ public class Player : Entity
     // Custom/Aggregate properties from modules
     public IDictionary<int, int> PingHistory { get; } = new Dictionary<int, int>();
     public DateTime LastLeaveNotification { get; set; }
+    public DateTime LastAdminCall { get; set; }
 
     public string DisplayName => Name?.Trim();
     public string ShortName

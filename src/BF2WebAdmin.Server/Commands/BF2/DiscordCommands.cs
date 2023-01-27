@@ -9,3 +9,9 @@ public class LeaveCommand : BaseCommand
 {
     public int Minutes { get; set; }
 }
+
+[Command("calladmin <Reason>", Auth.All)]
+public class CallAdminCommand : BaseCommand
+{
+    public string Reason { get; set; }
+}

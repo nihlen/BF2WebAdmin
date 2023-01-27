@@ -98,3 +98,8 @@ public class ToggleTvLogCommand : BaseCommand
 {
     public string Name { get; set; }
 }
+
+[Command("nofences", Auth.Admin)]
+public class NoFencesCommand : BaseCommand
+{
+}

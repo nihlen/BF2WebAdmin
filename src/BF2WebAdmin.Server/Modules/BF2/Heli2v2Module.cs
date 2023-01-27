@@ -52,7 +52,8 @@ public class Heli2v2Module : BaseModule,
     IHandleCommandAsync<NasaCommand>,
     IHandleCommandAsync<GetTvMissileValuesCommand>,
     IHandleCommandAsync<SetTvMissileValueCommand>,
-    IHandleCommandAsync<SetTvMissileTypeCommand>
+    IHandleCommandAsync<SetTvMissileTypeCommand>,
+    IHandleCommandAsync<NoFencesCommand>
 {
     private readonly IGameServer _gameServer;
     private readonly IMatchRepository _matchRepository;
@@ -1632,6 +1633,50 @@ public class Heli2v2Module : BaseModule,
             _switchRounds = 0;
             SwitchAll();
         }
+    }
+
+    public async ValueTask HandleAsync(NoFencesCommand command)
+    {
+        var fenceTemplates = new[]
+        {
+            "fence_corrugated_3x12m",
+            "fence_corrugated_3x12m_broken",
+            "fence_corrugated_3x12m_broken_parts",
+            "wirefence_72m",
+            "wirefence_end",
+            "wirefence_48m",
+            "wirefence_24m",
+            "fence_corrugated_pole_3m",
+            "fence_corrugated_3x48m",
+            "fence_corrugated_3x24m",
+            "fence_corrugated_3x12m_corner_02",
+            "fence_corrugated_3x12m_corner_01",
+            "lamppost_highway_01"
+        };
+
+        var removedObjects = 0;
+
+        foreach (var fenceTemplate in fenceTemplates)
+        {
+            var response = await GameServer.GameWriter.GetRconResponseAsync("object.listObjectsOfTemplate " + fenceTemplate);
+            foreach (var line in response.Split('\b'))
+            {
+                var match = Regex.Match(line, "ID ([0-9]+)");
+                if (!match.Success)
+                    continue;
+                
+                var objectId = match.Groups[1].Value;
+                // GameServer.GameWriter.SendText(objectId + " | " + line);
+                GameServer.GameWriter.SendRcon(
+                    $"object.active id{objectId}",
+                    "object.delete"
+                );
+
+                removedObjects++;
+            }
+        }
+        
+        GameServer.GameWriter.SendText($"Removed {removedObjects} fences and lamp posts");
     }
 }
 

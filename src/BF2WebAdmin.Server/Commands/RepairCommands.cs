@@ -14,3 +14,8 @@ public class RepairCommand : BaseCommand
 {
     public string Name { get; set; }
 }
+
+[Command("autorepair|autoheal", Auth.Admin)]
+public class AutoRepairCommand : BaseCommand
+{
+}

@@ -409,6 +409,24 @@ public static class RconScript
         "ObjectTemplate.armor.hpLostWhileCriticalDamage 18"
     };
 
+    public static readonly string[] AutoRepairOn = {
+        "ObjectTemplate.activeSafe SupplyObject concreteblock_helipad_SupplyObject_helipad",  
+        "ObjectTemplate.radius 1000",  
+        // "ObjectTemplate.workOnSoldiers 1",  
+        // "ObjectTemplate.workOnVehicles 1",  
+        // "ObjectTemplate.healSpeed 3000",  
+        // "ObjectTemplate.refillAmmoSpeed 3000"
+    };
+
+    public static readonly string[] AutoRepairOff = {
+        "ObjectTemplate.activeSafe SupplyObject concreteblock_helipad_SupplyObject_helipad",  
+        "ObjectTemplate.radius 10",  
+        // "ObjectTemplate.workOnSoldiers 1",  
+        // "ObjectTemplate.workOnVehicles 1",  
+        // "ObjectTemplate.healSpeed 3000",  
+        // "ObjectTemplate.refillAmmoSpeed 3000"
+    };
+
     //def setFirearmProjectile(firearmTemp, projTemp):
     //host.rcon_invoke("ObjectTemplate.active " + firearmTemp)
     //host.rcon_invoke("ObjectTemplate.projectileTemplate " + projTemp)

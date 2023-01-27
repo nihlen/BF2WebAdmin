@@ -23,6 +23,7 @@ public class BF2Module : BaseModule,
     IHandleCommand<FlipCommand>,
     IHandleCommand<StopCommand>,
     IHandleCommand<RepairCommand>,
+    IHandleCommand<AutoRepairCommand>,
     IHandleCommand<KillCommand>,
     IHandleCommand<KillIdCommand>,
     IHandleCommand<ScoreCommand>,
@@ -303,6 +304,10 @@ public class BF2Module : BaseModule,
 
             case "flare-supply":
                 commands = activate ? RconScript.HeliSupplyFlaresOn : RconScript.HeliFlareDefault;
+                break;
+
+            case "auto-repair":
+                commands = activate ? RconScript.AutoRepairOn : RconScript.AutoRepairOff;
                 break;
 
             default:
@@ -612,7 +617,15 @@ public class BF2Module : BaseModule,
         SwitchAll();
     }
 
+    private bool _autoRepairOn = false;
+    
+    public void Handle(AutoRepairCommand command)
+    {
+        _autoRepairOn = !_autoRepairOn;
 
+        _gameServer.GameWriter.SendRcon(_autoRepairOn ? RconScript.AutoRepairOn : RconScript.AutoRepairOff);
+        _gameServer.GameWriter.SendText(_autoRepairOn ? "Auto repair on": "Auto repair off");
+    }
 }
 
 public class PlayerSnapshot

@@ -191,6 +191,10 @@ public class ModManager : IModManager
         serviceCollection.AddSingleton<IHubContext<ServerHub, IServerHubClient>>(sp => _globalServices.GetRequiredService<IHubContext<ServerHub, IServerHubClient>>());
         serviceCollection.AddSingleton<MassTransit.IBus>(sp => _globalServices.GetService<MassTransit.IBus>());
         serviceCollection.AddSingleton<IGameStreamService, RabbitMqGameStreamService>();
+        serviceCollection.AddSingleton<ILogger>(_ => _logger);
+        serviceCollection.AddSingleton<ITaskRunner, TaskRunner>();
+        serviceCollection.AddSingleton<IDelayProvider, DelayProvider>();
+        serviceCollection.AddSingleton<ITimeProvider, TimeProvider>();
         //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RabbitMqGameStreamService>());
         //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RedisGameStreamService>());
             

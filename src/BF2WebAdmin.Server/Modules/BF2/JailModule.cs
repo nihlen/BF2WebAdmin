@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands.BF2;
@@ -12,14 +13,17 @@ public class JailModule : BaseModule,
     IHandleEventAsync<PlayerLeftEvent>,
     IHandleEventAsync<PlayerSpawnEvent>
 {
+    private readonly ITaskRunner _taskRunner;
+
     // TODO: datetime when they were jailed, only keep for 1 hour
     private readonly ConcurrentDictionary<string, DateTime> _jailedPlayers = new();
     // private readonly Position _jailPosition = new(777.500, 164.000, -5.000); // dalian carrier south
     // private readonly Position _jailPosition = new(776.600, 164.000, 181.200); // dalian carrier north
     private readonly Position _jailPosition = new(784.300, 174.000, 65.400); // dalian carrier center
 
-    public JailModule(IGameServer server, ILogger<JailModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
+    public JailModule(IGameServer server, ITaskRunner taskRunner, ILogger<JailModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
+        _taskRunner = taskRunner;
     }
 
     public async ValueTask HandleAsync(JailPlayerCommand command)
@@ -35,7 +39,7 @@ public class JailModule : BaseModule,
         if (jailExists)
             return;
         
-        RunBackgroundTask("Player jail teleport", async () =>
+        _taskRunner.RunBackgroundTask("Player jail teleport", async () =>
         {
             while (!ModuleCancellationToken.IsCancellationRequested && _jailedPlayers.Any())
             {
@@ -70,7 +74,7 @@ public class JailModule : BaseModule,
 
                 await Task.Delay(2_000);
             }
-        });
+        }, ModuleCancellationToken);
     }
 
     public async ValueTask HandleAsync(FreePlayerCommand command)

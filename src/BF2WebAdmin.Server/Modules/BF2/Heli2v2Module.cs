@@ -57,6 +57,9 @@ public class Heli2v2Module : BaseModule,
 {
     private readonly IGameServer _gameServer;
     private readonly IMatchRepository _matchRepository;
+    private readonly IDelayProvider _delayProvider;
+    private readonly ITimeProvider _timeProvider;
+    private readonly ITaskRunner _taskRunner;
     private readonly IReadOnlyPolicyRegistry<string> _policyRegistry;
     private const int DefaultDelay = 25; // 1000/35 fps ~ 28.5
     private const int AltitudeOffset = 140; // Dalian?
@@ -76,10 +79,13 @@ public class Heli2v2Module : BaseModule,
     private Player _stalker;
     private Player _stalked;
 
-    public Heli2v2Module(IGameServer server, IMatchRepository matchRepository, IReadOnlyPolicyRegistry<string> policyRegistry, ILogger<Heli2v2Module> logger, CancellationTokenSource cts) : base(server, logger, cts)
+    public Heli2v2Module(IGameServer server, IMatchRepository matchRepository, IDelayProvider delayProvider, ITimeProvider timeProvider, ITaskRunner taskRunner, IReadOnlyPolicyRegistry<string> policyRegistry, ILogger<Heli2v2Module> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _gameServer = server;
         _matchRepository = matchRepository;
+        _delayProvider = delayProvider;
+        _timeProvider = timeProvider;
+        _taskRunner = taskRunner;
         _policyRegistry = policyRegistry;
         ClearMatches();
         SetupRoundEvents();
@@ -139,12 +145,12 @@ public class Heli2v2Module : BaseModule,
         var builder = new EmbedBuilder();
         builder.WithColor(Color.Blue);
 
-        var duration = (match.MatchEnd ?? DateTime.UtcNow) - match.MatchStart!.Value;
+        var duration = (match.MatchEnd ?? _timeProvider.UtcNow) - match.MatchStart!.Value;
 
         var draws = 0;
         var roundTotalDuration = 0d;
-        var biggestTvCurveKill = ((RoundPlayer)null, 0d, 0d);
-        var longestHydraKill = ((RoundPlayer)null, 0d);
+        var biggestTvCurveKill = ((RoundPlayer?)null, 0d, 0d);
+        var longestHydraKill = ((RoundPlayer?)null, 0d);
         var longestRoundDuration = 0d;
         var shortestRoundDuration = double.MaxValue;
         var teamStats = match.TeamHashes.ToDictionary(h => h, h => new TeamStats { TeamHash = h });
@@ -152,7 +158,7 @@ public class Heli2v2Module : BaseModule,
 
         foreach (var round in match.Rounds.Where(r => !r.IsActive))
         {
-            var roundDuration = ((round.RoundEnd ?? DateTime.UtcNow) - round.RoundStart!.Value).TotalSeconds;
+            var roundDuration = ((round.RoundEnd ?? _timeProvider.UtcNow) - round.RoundStart!.Value).TotalSeconds;
             roundTotalDuration += roundDuration;
 
             if (roundDuration > longestRoundDuration) longestRoundDuration = roundDuration;
@@ -249,13 +255,13 @@ public class Heli2v2Module : BaseModule,
         var sb = new StringBuilder();
 
         sb.AppendLine("```md");
-        sb.AppendLine($"# 2v2 ended after {((match.MatchEnd ?? DateTime.UtcNow) - match.MatchStart.Value).Humanize()} on {match.ServerName} #\n");
+        sb.AppendLine($"# 2v2 ended after {((match.MatchEnd ?? _timeProvider.UtcNow) - match.MatchStart.Value).Humanize()} on {match.ServerName} #\n");
 
         builder.WithTitle("View match statistics");
         builder.Url = $"https://bf2.nihlen.net/matches/{match.Id.ToString().ToLower()}";
 
-        builder.WithDescription($"2v2 ended after {((match.MatchEnd ?? DateTime.UtcNow) - match.MatchStart.Value).Humanize(2, minUnit: TimeUnit.Minute)} on {match.ServerName}\n\u200B");
-        //builder.WithDescription($"2v2 ended after {((match.MatchEnd ?? DateTime.UtcNow) - match.MatchStart.Value).Humanize(2, minUnit: TimeUnit.Minute)} on {match.ServerName}\n```md\n# Test #\n```\n");
+        builder.WithDescription($"2v2 ended after {((match.MatchEnd ?? _timeProvider.UtcNow) - match.MatchStart.Value).Humanize(2, minUnit: TimeUnit.Minute)} on {match.ServerName}\n\u200B");
+        //builder.WithDescription($"2v2 ended after {((match.MatchEnd ?? _timeProvider.UtcNow) - match.MatchStart.Value).Humanize(2, minUnit: TimeUnit.Minute)} on {match.ServerName}\n```md\n# Test #\n```\n");
 
         if (teamStats.Values.First().Wins == teamStats.Values.Last().Wins)
         {
@@ -378,12 +384,12 @@ public class Heli2v2Module : BaseModule,
         return value < 0.5 ? "0%" : $"{value:##}%";
     }
 
-    private Match GetActiveMatch()
+    private Match? GetActiveMatch()
     {
         return _matches.FirstOrDefault(m => m.IsActive);
     }
 
-    private Round GetActiveRound()
+    private Round? GetActiveRound()
     {
         return GetActiveMatch()?.Rounds.FirstOrDefault(r => r.IsActive);
     }
@@ -461,7 +467,7 @@ public class Heli2v2Module : BaseModule,
 
         roundVictim.IsAlive = false;
         roundVictim.DeathPosition = victimPosition;
-        roundVictim.DeathTime = DateTime.UtcNow;
+        roundVictim.DeathTime = _timeProvider.UtcNow;
         roundVictim.KillerWeapon = weapon ?? roundVictim.KillerWeapon;
         roundVictim.KillerPosition = attackerPosition ?? roundVictim.KillerPosition;
         roundVictim.KillerHash = round.Players.FirstOrDefault(p => p.Player.Hash == attacker?.Hash)?.Player.Hash ?? roundVictim.KillerHash;
@@ -486,10 +492,10 @@ public class Heli2v2Module : BaseModule,
 
             round.IsPendingCompletion = true;
 
-            RunBackgroundTask("Handle 2v2 round completion", async () =>
+            _taskRunner.RunBackgroundTask("Handle 2v2 round completion", async () =>
             {
                 // Wait 2 seconds and see if it's a draw
-                await Task.Delay(2000);
+                await _delayProvider.DelayAsync(2000, ModuleCancellationToken);
 
                 // Check if all players are dead or outside the heli (could be "down" but not yet dead)
                 var allPlayersDead = round.Players.All(p => !p.IsAlive || p.Player.Vehicle is null);
@@ -513,11 +519,11 @@ public class Heli2v2Module : BaseModule,
                     round.LosingTeamHash = round.Players.First(p => p.TeamHash == roundVictim.TeamHash).TeamHash;
                 }
 
-                round.RoundEnd = DateTime.UtcNow;
+                round.RoundEnd = _timeProvider.UtcNow;
 
                 //await _roundEndEvent.InvokeAsync(new RoundEndEvent { Round = round });
-                await Mediator.PublishAsync(new RoundEndEvent(round, DateTimeOffset.UtcNow));
-            });
+                await Mediator.PublishAsync(new RoundEndEvent(round, _timeProvider.OffsetUtcNow));
+            }, ModuleCancellationToken);
         }
 
         return ValueTask.CompletedTask;
@@ -742,7 +748,7 @@ public class Heli2v2Module : BaseModule,
 
     private async Task BlurAsync(long duration, params Player[] players)
     {
-        var startTime = DateTime.UtcNow;
+        var startTime = _timeProvider.UtcNow;
         var startCount = _stopCounter;
         while (IsActive(duration, startTime, startCount))
         {
@@ -751,13 +757,13 @@ public class Heli2v2Module : BaseModule,
                 _gameServer.GameWriter.SendGameEvent(player, 13, 1);
             }
 
-            await Task.Delay(DefaultDelay);
+            await _delayProvider.DelayAsync(DefaultDelay, ModuleCancellationToken);
         }
     }
 
     private bool IsActive(long duration, DateTime startTime, int startCount)
     {
-        return (DateTime.UtcNow - startTime).TotalMilliseconds < duration && startCount == _stopCounter;
+        return (_timeProvider.UtcNow - startTime).TotalMilliseconds < duration && startCount == _stopCounter;
     }
 
     public void Handle(Toggle2v2Command command)
@@ -771,12 +777,12 @@ public class Heli2v2Module : BaseModule,
     // TODO: Recording WIP - might have some use - move to own module
     private Player _playerRecordingTarget;
     private Stopwatch _playerRecordingWatch;
-    private IList<(long, Position, Rotation)> _playerRecordingPositions;
+    private IList<(long, Position, Rotation)>? _playerRecordingPositions;
     private CancellationTokenSource _playbackCancellation;
 
     public void Handle(RecordCommand command)
     {
-        if (_playerRecordingWatch != null && _playerRecordingWatch.IsRunning)
+        if (_playerRecordingWatch is { IsRunning: true })
             StopRecording();
         else
             StartRecording(command);
@@ -851,7 +857,7 @@ public class Heli2v2Module : BaseModule,
             
             //await MultimediaTimer.Delay((int)(snapshot.Item1 - previousTime));
             SpinWait.SpinUntil(() => sw.ElapsedMilliseconds > snapshot.Item1, 1000);
-            Logger.LogError("Variance: {VarianceMs}", (sw.ElapsedMilliseconds - snapshot.Item1));
+            Logger.LogError("Variance: {VarianceMs}", sw.ElapsedMilliseconds - snapshot.Item1);
             _gameServer.GameWriter.SendTeleport(_playerRecordingTarget, snapshot.Item2);
             _gameServer.GameWriter.SendRotate(_playerRecordingTarget, snapshot.Item3);
             if (_playbackCancellation.IsCancellationRequested)
@@ -1037,9 +1043,9 @@ public class Heli2v2Module : BaseModule,
         return result;
     }
 
-    private static Data.Entities.MatchRound ToRoundEntity(Round round)
+    private static MatchRound ToRoundEntity(Round round)
     {
-        var result = new Data.Entities.MatchRound
+        var result = new MatchRound
         {
             Id = round.Id,
             MatchId = round.MatchId,
@@ -1049,7 +1055,7 @@ public class Heli2v2Module : BaseModule,
             RoundEnd = round.RoundEnd
         };
 
-        if (round.Players != null && round.Players.Any())
+        if (round.Players.Any())
         {
             result.MatchRoundPlayers = round.Players.Select(p => new MatchRoundPlayer
             {
@@ -1076,20 +1082,25 @@ public class Heli2v2Module : BaseModule,
 
     public async ValueTask HandleAsync(MapChangedEvent e)
     {
+        var match = GetActiveMatch();
         if (_roundsActive)
         {
-            var match = GetActiveMatch();
             if (match != null && match.Map != e.Map.Name)
             {
-                match.MatchEnd = match.Rounds.LastOrDefault()?.RoundEnd ?? DateTime.UtcNow;
-                await Mediator.PublishAsync(new MatchEndEvent(match, DateTimeOffset.UtcNow));
+                match.MatchEnd = match.Rounds.LastOrDefault()?.RoundEnd ?? _timeProvider.UtcNow;
+                await Mediator.PublishAsync(new MatchEndEvent(match, _timeProvider.OffsetUtcNow));
             }
         }
 
         _gameServer.GameWriter.SendRcon(RconScript.InitServer);
         _gameServer.GameWriter.SendTimerInterval(DefaultPositionTrackerInterval);
         SetDefaultTvMissile();
-        ClearMatches();
+
+        // Only clear match if it's a different map, else keep counting as long as it's the same players
+        if (match?.Map != e.Map.Name)
+        {   
+            ClearMatches();
+        }
     }
 
     public async ValueTask HandleAsync(ChatMessageEvent e)
@@ -1114,11 +1125,11 @@ public class Heli2v2Module : BaseModule,
 
         var isReadyMatch = Regex.IsMatch(e.Message.Text, readyPattern, RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         var isReadyWithOtherMatch = Regex.IsMatch(e.Message.Text, readyPatternWithOtherText, RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-        if ((!isReadyMatch && !isReadyWithOtherMatch) || e.Message.Text == "yes")
+        if (!isReadyMatch && !isReadyWithOtherMatch || e.Message.Text == "yes")
             return;
 
         var teamPlayers = e.Message.Player.Vehicle?.Players ?? Array.Empty<Player>();
-        if ((teamPlayers.Count) < 2)
+        if (teamPlayers.Count < 2)
             return;
 
         if (teamPlayers!.Any(p => p.Team.Id != teamPlayers[0].Team.Id))
@@ -1135,7 +1146,7 @@ public class Heli2v2Module : BaseModule,
             return;
         }
 
-        if (_pendingRound != null && (DateTime.UtcNow - _pendingRound?.ReadyTime) > TimeSpan.FromMinutes(5))
+        if (_pendingRound != null && _timeProvider.UtcNow - _pendingRound?.ReadyTime > TimeSpan.FromMinutes(5))
         {
             Logger.LogDebug("Pending round was over 5 minutes - clearing");
             _pendingRound = null;
@@ -1147,7 +1158,7 @@ public class Heli2v2Module : BaseModule,
             _pendingRound = new Round
             {
                 Id = Guid.NewGuid(),
-                ReadyTime = DateTime.UtcNow,
+                ReadyTime = _timeProvider.UtcNow,
                 PositionTrackerInterval = _gameServer.GameWriter.CurrentTrackerInterval
             };
         }
@@ -1172,7 +1183,7 @@ public class Heli2v2Module : BaseModule,
         var team2Ready = _pendingRound.Players.Any(p => p.IsReady && p.Player.Team.Id == 2);
         if (_pendingRound.Players.Count == 4 && team1Ready && team2Ready && !_pendingRound.IsActive)
         {
-            _pendingRound.RoundStart = DateTime.UtcNow;
+            _pendingRound.RoundStart = _timeProvider.UtcNow;
             var goTeamId = e.Message.Player.Team.Id;
             foreach (var roundPlayer in _pendingRound.Players)
             {
@@ -1186,7 +1197,7 @@ public class Heli2v2Module : BaseModule,
                 await SetCurrentMatchAsync();
             }
 
-            await Mediator.PublishAsync(new RoundStartEvent(_pendingRound, DateTimeOffset.UtcNow));
+            await Mediator.PublishAsync(new RoundStartEvent(_pendingRound, _timeProvider.OffsetUtcNow));
 
             _pendingRound = null;
         }
@@ -1209,8 +1220,8 @@ public class Heli2v2Module : BaseModule,
                 var previousMatch = GetActiveMatch();
                 if (previousMatch != null)
                 {
-                    previousMatch.MatchEnd = previousMatch.Rounds.LastOrDefault()?.RoundEnd ?? DateTime.UtcNow;
-                    await Mediator.PublishAsync(new MatchEndEvent(previousMatch, DateTimeOffset.UtcNow));
+                    previousMatch.MatchEnd = previousMatch.Rounds.LastOrDefault()?.RoundEnd ?? _timeProvider.UtcNow;
+                    await Mediator.PublishAsync(new MatchEndEvent(previousMatch, _timeProvider.OffsetUtcNow));
                 }
 
                 match = new Match
@@ -1228,7 +1239,7 @@ public class Heli2v2Module : BaseModule,
                 match.Rounds.Add(_pendingRound);
                 _pendingRound.MatchId = match.Id;
 
-                await Mediator.PublishAsync(new MatchStartEvent(match, DateTimeOffset.UtcNow));
+                await Mediator.PublishAsync(new MatchStartEvent(match, _timeProvider.OffsetUtcNow));
             }
             else
             {
@@ -1247,7 +1258,7 @@ public class Heli2v2Module : BaseModule,
                 if (previousMatchDb is { MatchEnd: null })
                 {
                     previousMatchDb = await _matchRepository.GetMatchAsync(previousMatchDb.Id);
-                    var previousTeamHashesUnsorted = new []{ previousMatchDb.TeamAHash, previousMatchDb.TeamBHash };
+                    var previousTeamHashesUnsorted = new[] { previousMatchDb.TeamAHash, previousMatchDb.TeamBHash };
                     var previousMatch = new Match
                     {
                         Id = previousMatchDb.Id,
@@ -1286,9 +1297,9 @@ public class Heli2v2Module : BaseModule,
 
                     var previousTeamHashes = previousMatch.Rounds.FirstOrDefault()?.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
                     var previousMatchHasSameTeams = teamHashes.All(hash => previousTeamHashes?.Any(oldHash => oldHash == hash) ?? false);
-                    var mostRecentRoundEnd = previousMatch.Rounds.MaxBy(r => r.RoundEnd)?.RoundEnd ?? DateTime.UtcNow;
+                    var mostRecentRoundEnd = previousMatch.Rounds.MaxBy(r => r.RoundEnd)?.RoundEnd ?? _timeProvider.UtcNow;
                     var shouldResumePreviousMatch = previousMatchHasSameTeams &&
-                        (_pendingRound.RoundStart - mostRecentRoundEnd) < TimeSpan.FromMinutes(10) &&
+                        _pendingRound.RoundStart - mostRecentRoundEnd < TimeSpan.FromMinutes(10) &&
                         previousMatch.Map == _gameServer.Map.Name &&
                         previousMatch.ServerId == _gameServer.Id;
 
@@ -1346,8 +1357,8 @@ public class Heli2v2Module : BaseModule,
             var onlinePlayersCount = match.Rounds.FirstOrDefault()?.Players.Count(p => _gameServer.Players.Any(gp => gp.Hash == p.Player.Hash));
             if (onlinePlayersCount <= 2)
             {
-                match.MatchEnd = match.Rounds.LastOrDefault()?.RoundEnd ?? DateTime.UtcNow;
-                await Mediator.PublishAsync(new MatchEndEvent(match, DateTimeOffset.UtcNow));
+                match.MatchEnd = match.Rounds.LastOrDefault()?.RoundEnd ?? _timeProvider.UtcNow;
+                await Mediator.PublishAsync(new MatchEndEvent(match, _timeProvider.OffsetUtcNow));
             }
         }
     }
@@ -1359,7 +1370,7 @@ public class Heli2v2Module : BaseModule,
             var round = GetActiveRound();
             if (round != null)
             {
-                var timestamp = (DateTime.UtcNow - round.RoundStart!.Value).TotalMilliseconds;
+                var timestamp = (_timeProvider.UtcNow - round.RoundStart!.Value).TotalMilliseconds;
                 round.Players
                     .FirstOrDefault(p => p.Player.Hash == e.Player.Hash)
                     ?.MovementPath.Add(new RoundPosition
@@ -1405,7 +1416,7 @@ public class Heli2v2Module : BaseModule,
         if (!_roundsActive)
             return ValueTask.CompletedTask;
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.UtcNow;
         if (e.Projectile.Owner == null)
             return ValueTask.CompletedTask;
 
@@ -1431,13 +1442,13 @@ public class Heli2v2Module : BaseModule,
             {
                 path.Projectile = e.Projectile;
                 path.Path.Clear();
-                RunBackgroundTask("Send projectile message", async () =>
+                _taskRunner.RunBackgroundTask("Send projectile message", async () =>
                 {
                     // TODO: get max X and Y angles per s or ms and see what you can get max as default
-                    await Task.Delay(4000);
+                    await _delayProvider.DelayAsync(4000, ModuleCancellationToken);
                     var (distance, angle) = CalculateTvStats(path.Path, true);
                     _gameServer.GameWriter.SendText($"{e.Projectile.Owner.ShortName} TV: est. {distance:###} m {angle:###} degrees");
-                });
+                }, ModuleCancellationToken);
             }
 
             path.Path.Add(roundPosition);
@@ -1601,15 +1612,15 @@ public class Heli2v2Module : BaseModule,
 
             if (enableEndOfRoundTeleport)
             {
-                RunBackgroundTask("Handle end of round teleport", async () =>
+                _taskRunner.RunBackgroundTask("Handle end of round teleport", async () =>
                 {
                     var winningPlayers = e.Round.Players.Where(p => p.TeamHash == e.Round.WinningTeamHash && p.IsAlive).ToList();
                     if (winningPlayers.Any(p => _autopadPlayerHashes.ContainsKey(p.Player.Hash)))
                     {
-                        await Task.Delay(2000);
+                        await _delayProvider.DelayAsync(2000, ModuleCancellationToken);
                         await FreezeAtPadAsync(0, 0, winningPlayers.First().Player);
                     }
-                });
+                }, ModuleCancellationToken);
             }
         }
         catch (Exception ex)
@@ -1617,14 +1628,14 @@ public class Heli2v2Module : BaseModule,
             Logger.LogError(ex, "Error at end of round event");
         }
 
-        RunBackgroundTask("Save match round", async () =>
+        _taskRunner.RunBackgroundTask("Save match round", async () =>
         {
             Logger.LogInformation("Saving round {RoundId} on match {MatchId}", e.Round.Id, e.Round.MatchId);
 
             await _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
                 await _matchRepository.InsertRoundAsync(ToRoundEntity(e.Round))
             );
-        });
+        }, ModuleCancellationToken);
 
         // Switch command
         var shouldSwitchTeams = _switchRounds > 0 && ++_switchCounter >= _switchRounds;

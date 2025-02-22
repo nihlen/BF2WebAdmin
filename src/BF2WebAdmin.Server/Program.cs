@@ -1,5 +1,4 @@
-﻿using System.Reflection;
-using BF2WebAdmin.Data;
+﻿using BF2WebAdmin.Data;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Repositories;
 using BF2WebAdmin.Server;
@@ -8,8 +7,6 @@ using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Services;
 using MassTransit;
-using MediatR;
-using MediatR.Registration;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
@@ -100,10 +97,11 @@ try
     builder.Services.AddHostedService<BF2WebAdminService>();
     builder.Services.AddSignalR()
         .AddMessagePackProtocol();
-        // .AddJsonProtocol(options =>
-        // {
-        //     options.PayloadSerializerOptions.PropertyNamingPolicy = null;
-        // });
+
+    // .AddJsonProtocol(options =>
+    // {
+    //     options.PayloadSerializerOptions.PropertyNamingPolicy = null;
+    // });
 
     builder.Services.AddControllersWithViews();
 

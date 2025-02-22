@@ -2,6 +2,7 @@
 using System.Diagnostics.Metrics;
 using System.Text;
 using System.Threading.Channels;
+using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands;
@@ -42,6 +43,7 @@ public class DiscordModule : BaseModule,
 
     private readonly IGameServer _game;
     private readonly IGameStreamService _gameStreamService;
+    private readonly ITaskRunner _taskRunner;
     private readonly IDictionary<int, bool> _newPlayers = new Dictionary<int, bool>();
     private readonly Channel<(ISocketMessageChannel Channel, string? Text, Embed? Embed)> _discordMessageChannel;
     private IEnumerable<SocketTextChannel> _adminChannels;
@@ -229,10 +231,11 @@ public class DiscordModule : BaseModule,
 
     private ServerInfo.DiscordBotConfig Config => _game.ServerInfo.DiscordBot;
 
-    public DiscordModule(IGameServer server, IGameStreamService gameStreamService, ILogger<DiscordModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
+    public DiscordModule(IGameServer server, IGameStreamService gameStreamService, ITaskRunner taskRunner, ILogger<DiscordModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _game = server;
         _gameStreamService = gameStreamService;
+        _taskRunner = taskRunner;
 
         if (string.IsNullOrWhiteSpace(server.ServerInfo.DiscordBot?.Token))
             return;
@@ -251,7 +254,7 @@ public class DiscordModule : BaseModule,
         }
 
         // TODO: Start async in an event callback - proper?
-        RunBackgroundTask("Discord Bot", StartBotAsync);
+        _taskRunner.RunBackgroundTask("Discord Bot", StartBotAsync, ModuleCancellationToken);
     }
 
     private async Task StartBotAsync()
@@ -418,7 +421,7 @@ public class DiscordModule : BaseModule,
 
     private async Task UpdateActivityNameAsync()
     {
-        RunBackgroundTask("Update Discord bot activity name", async () =>
+        _taskRunner.RunBackgroundTask("Update Discord bot activity name", async () =>
         {
             if (_game.SocketState == SocketState.Disconnected)
             {
@@ -435,7 +438,7 @@ public class DiscordModule : BaseModule,
                 var name = $"{_game.Players.Count()}/{_game.MaxPlayers} - {_game.Map?.Name ?? "Unknown"}";
                 await _discord.SetActivityAsync(_streamUrl is null ? new Game(name) : new StreamingGame(name, _streamUrl));
             }
-        });
+        }, ModuleCancellationToken);
     }
 
     // Used to prevent FakeGameServer spam when fast forwarding

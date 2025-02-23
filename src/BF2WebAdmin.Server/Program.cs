@@ -1,4 +1,6 @@
-﻿using BF2WebAdmin.Data;
+﻿using System.Security.Claims;
+using AspNetCore.Authentication.ApiKey;
+using BF2WebAdmin.Data;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Repositories;
 using BF2WebAdmin.Server;
@@ -6,6 +8,7 @@ using BF2WebAdmin.Server.Controllers;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Services;
+using Google.Protobuf.WellKnownTypes;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -50,11 +53,14 @@ try
 
     // Add services to the container.
 
-    builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
-    builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Authentication"));
+    var authSettings = builder.Configuration.GetSection("Authentication").Get<AuthSettings>();
+    ArgumentNullException.ThrowIfNull(authSettings);
 
     var serverSettings = builder.Configuration.GetSection("ServerSettings").Get<ServerSettings>();
     ArgumentNullException.ThrowIfNull(serverSettings);
+
+    builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Authentication"));
+    builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
 
     var mqSettings = builder.Configuration.GetSection("RabbitMQ").Get<RabbitMqSettings>();
     if (!string.IsNullOrWhiteSpace(mqSettings?.Host))
@@ -107,18 +113,48 @@ try
 
     // TODO: DataProtection to persist logins
     builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-        .AddCookie(options =>
+        .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
         {
             options.ExpireTimeSpan = TimeSpan.FromDays(30);
             options.SlidingExpiration = true;
             options.AccessDeniedPath = "/Forbidden/";
+        })
+        .AddApiKeyInHeader(ApiKeyDefaults.AuthenticationScheme, options =>
+        {
+            options.Realm = "bf2-webadmin";
+            options.KeyName = "X-API-KEY";
+            options.Events = new ApiKeyEvents
+            {
+                OnValidateKey = async (context) =>
+                {
+                    var apiKey = authSettings.ApiKey;
+                    if (string.IsNullOrWhiteSpace(apiKey))
+                    {
+                        context.NoResult();
+                        return;
+                    }
+
+                    var isValid = apiKey.Equals(context.ApiKey, StringComparison.OrdinalIgnoreCase);
+                    if (isValid)
+                    {
+                        var claims = new[]
+                        {
+                            new Claim(ClaimTypes.NameIdentifier, "api-user", ClaimValueTypes.String, context.Options.ClaimsIssuer),
+                            new Claim(ClaimTypes.Name, "api-user", ClaimValueTypes.String, context.Options.ClaimsIssuer),
+                        };
+                        context.Principal = new ClaimsPrincipal(new ClaimsIdentity(claims, context.Scheme.Name));
+                        context.Success();
+                    }
+                    else
+                    {
+                        context.NoResult();
+                    }
+                },
+            };
         });
 
     builder.Services.AddRazorPages();
-    builder.Services.AddResponseCompression(opts =>
-    {
-        opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[] { "application/octet-stream" });
-    });
+    builder.Services.AddResponseCompression(opts => { opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[] { "application/octet-stream" }); });
 
     // Normal MediatR doesn't work with the singleton SocketServer, but we can setup it up differently 
     // This is not very nice though...

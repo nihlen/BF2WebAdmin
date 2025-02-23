@@ -162,16 +162,14 @@ public class ServerHub : Hub<IServerHubClient>
     {
         using var _ = Telemetry.StartRootActivity();
         var serverEntity = server.Adapt<Data.Entities.Server>();
-        await _serverSettingsRepository.SetServerAsync(serverEntity);
-        await _socketServer.HandleServerUpdateAsync(server.ServerId, ServerUpdateType.AddOrUpdate);
+        await _socketServer.AddOrUpdateServerAsync(serverEntity);
         await SendServerUpdatesAsync();
     }
 
     public async Task RemoveServer(string serverId)
     {
         using var _ = Telemetry.StartRootActivity();
-        await _serverSettingsRepository.RemoveServerAsync(serverId);
-        await _socketServer.HandleServerUpdateAsync(serverId, ServerUpdateType.Remove);
+        await _socketServer.RemoveServerAsync(serverId);
         await Clients.All.ServerRemoveEvent(new ServerRemoveEvent { ServerId = serverId });
     }
 

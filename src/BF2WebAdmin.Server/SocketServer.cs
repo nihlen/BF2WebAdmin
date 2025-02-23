@@ -15,10 +15,11 @@ namespace BF2WebAdmin.Server;
 public interface ISocketServer
 {
     IGameServer? GetGameServer(string serverId);
-    IEnumerable<IGameServer> GetGameServers(string? serverGroup);
+    IEnumerable<IGameServer> GetGameServers(string? serverGroup = null);
     Task<IEnumerable<ServerInfo>> GetDisconnectedServersAsync();
     Task StartAsync(CancellationToken cancellationToken);
-    Task HandleServerUpdateAsync(string serverId, ServerUpdateType type);
+    Task AddOrUpdateServerAsync(Data.Entities.Server server);
+    Task RemoveServerAsync(string serverId);
 }
 
 public class SocketServer : ISocketServer
@@ -38,7 +39,7 @@ public class SocketServer : ISocketServer
 
     public IPAddress GetIpAddress() => _ipAddress;
     public IGameServer? GetGameServer(string serverId) => _servers.TryGetValue(serverId, out var serverContext) ? serverContext.GameServer : null;
-    public IEnumerable<IGameServer> GetGameServers(string? serverGroup) => _servers.Values.Where(s => s.GameServer.ModManager?.ServerSettings?.ServerGroup == serverGroup || serverGroup is null).Select(c => c.GameServer).ToList();
+    public IEnumerable<IGameServer> GetGameServers(string? serverGroup = null) => _servers.Values.Where(s => s.GameServer.ModManager?.ServerSettings?.ServerGroup == serverGroup || serverGroup is null).Select(c => c.GameServer).ToList();
     public async Task<IEnumerable<ServerInfo>> GetDisconnectedServersAsync() => (await GetServerInfoAsync()).Where(si => !_servers.ContainsKey($"{si.IpAddress}:{si.GamePort}"));
 
     public SocketServer(IPAddress ipAddress, int port, IEnumerable<ServerInfo>? serverInfoFromConfig, IServiceProvider globalServices, bool logSend, bool logRecv)
@@ -65,7 +66,7 @@ public class SocketServer : ISocketServer
         {
             using var serviceScope = _globalServices.CreateScope();
             var serverRepository = serviceScope.ServiceProvider.GetRequiredService<IServerSettingsRepository>();
-            
+
             // Combine server info from config and DB
             entry.AbsoluteExpiration = DateTimeOffset.Now.AddMinutes(5);
 
@@ -163,7 +164,7 @@ public class SocketServer : ISocketServer
                 _logger.LogError(ex, "Game server TCP error");
             }
         }
-        
+
         if (cancellationToken.IsCancellationRequested)
             server?.Server?.Close();
 
@@ -651,8 +652,23 @@ public class SocketServer : ISocketServer
             }, cancellationToken);
     }
 
-    // public async Task Handle(ServerUpdated notification, CancellationToken cancellationToken)
-    public async Task HandleServerUpdateAsync(string serverId, ServerUpdateType type)
+    public async Task AddOrUpdateServerAsync(Data.Entities.Server server)
+    {
+        using var serviceScope = _globalServices.CreateScope();
+        var serverRepository = serviceScope.ServiceProvider.GetRequiredService<IServerSettingsRepository>();
+        await serverRepository.SetServerAsync(server);
+        await HandleServerUpdateAsync(server.ServerId, ServerUpdateType.AddOrUpdate);
+    }
+
+    public async Task RemoveServerAsync(string serverId)
+    {
+        using var serviceScope = _globalServices.CreateScope();
+        var serverRepository = serviceScope.ServiceProvider.GetRequiredService<IServerSettingsRepository>();
+        await serverRepository.RemoveServerAsync(serverId);
+        await HandleServerUpdateAsync(serverId, ServerUpdateType.Remove);
+    }
+
+    private async Task HandleServerUpdateAsync(string serverId, ServerUpdateType type)
     {
         _logger.LogDebug("Handling server {UpdateType} for {ServerId}", type, serverId);
 

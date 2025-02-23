@@ -8,6 +8,7 @@ public class ServerSnapshotEvent : IMessagePayload
 {
     // TODO: unnecessary?
     public ServerDto Server { get; set; }
+    public ServerDataDto Data { get; set; }
     public IEnumerable<MapDto> Maps { get; set; }
     public IEnumerable<TeamDto> Teams { get; set; }
     public IEnumerable<PlayerDto> Players { get; set; }

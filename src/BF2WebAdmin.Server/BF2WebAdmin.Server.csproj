@@ -39,6 +39,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="AspNetCore.Authentication.ApiKey" Version="8.0.1" />
     <PackageReference Include="Discord.Net" Version="2.3.0" />
     <PackageReference Include="Humanizer.Core" Version="2.14.1" />
     <PackageReference Include="Mapster" Version="7.3.0" />
@@ -98,7 +99,6 @@
 
   <ItemGroup>
     <Folder Include="Hubs\" />
-    <Folder Include="Controllers\" />
     <Folder Include="Data\" />
     <Folder Include="Services\" />
     <Folder Include="Properties\PublishProfiles\" />

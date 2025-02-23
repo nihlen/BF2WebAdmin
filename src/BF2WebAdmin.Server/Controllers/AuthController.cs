@@ -85,6 +85,7 @@ public class AuthController : Controller
 public class AuthSettings
 {
     public IEnumerable<AdminUser> Admins { get; set; }
+    public string ApiKey { get; set; }
 }
 
 public class AdminUser

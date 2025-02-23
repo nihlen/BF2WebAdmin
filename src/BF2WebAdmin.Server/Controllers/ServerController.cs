@@ -84,12 +84,9 @@ public class ServerController : Controller
         return Ok(result);
     }
 
-    [HttpPost("{serverId}")]
-    public async Task<IActionResult> CreateServer(string serverId, [FromBody] Data.Entities.Server server)
+    [HttpPost]
+    public async Task<IActionResult> CreateServer([FromBody] Data.Entities.Server server)
     {
-        if (serverId != server.ServerId)
-            return BadRequest();
-
         var serverEntity = server.Adapt<Data.Entities.Server>();
         await _socketServer.AddOrUpdateServerAsync(serverEntity);
         return Ok();

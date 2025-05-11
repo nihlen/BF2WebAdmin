@@ -4,6 +4,8 @@ A Battlefield 2 mod server with administration through a web interface or Discor
 
 The communication between webadmin and the ModManager module on the Battlefield 2 server  is done over an open socket, but does not require any additional open ports on the game server.
 
+![Server page screenshot](https://static.nihlen.net/bf2/media/bf2webadmin-ss-1.png)
+
 ## Features
 * Administration through the web UI
   * Restart server, restart map, toggle pause
@@ -49,6 +51,16 @@ If you need to update the game server image you can rerun the build command, and
 docker-compose pull
 ```
 and then rerun the docker-compose up-command.
+
+### Windows build
+
+To build a self-contained app for Windows, use `dotnet publish`, requires [.NET SDK 9](https://dotnet.microsoft.com/en-us/download/dotnet/9.0).
+
+```sh
+dotnet publish .\src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj -c Release -o .\publish
+```
+
+Create `Configuration/appsecrets.json` using the template further down, then run `BF2WebAdmin.Server.exe` and navigate to http://localhost:5000.
 
 ### Docker Compose Example
 

@@ -28,15 +28,15 @@
 </div>
 
 <div class="mb-8">
-    <MudChip Icon="@(_socketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
+    <MudChip T="string" Icon="@(_socketState == SocketState.Connected ? Icons.Material.Filled.Circle : Icons.Material.Filled.StopCircle)"
              IconColor="@(_socketState == SocketState.Connected ? Color.Success : Color.Error)">
         @_socketState
     </MudChip>
-    <MudChip>@_gameState</MudChip>
-    <MudChip>@_ipAddress:@_gamePort (@_queryPort)</MudChip>
-    <MudChip>@_map</MudChip>
-    <MudChip>@_currentPlayers / @_maxPlayers players</MudChip>
-    <MudChip>
+    <MudChip T="string">@_gameState</MudChip>
+    <MudChip T="string">@_ipAddress:@_gamePort (@_queryPort)</MudChip>
+    <MudChip T="string">@_map</MudChip>
+    <MudChip T="string">@_currentPlayers / @_maxPlayers players</MudChip>
+    <MudChip T="string">
         <MudLink Variant="Variant.Text" Color="Color.Info" Href="@("/servergroup/" + _serverGroup)">@_serverGroup</MudLink>
     </MudChip>
 </div>
@@ -96,7 +96,7 @@
             <MudTabs Position="Position.Top" Outlined="true" @bind-ActivePanelIndex="ActiveTabIndex">
 
                 <MudTabPanel Text="Chat" Icon="@Icons.Material.Filled.Chat" Style="width: 50px">
-                    <ul id="chatlog" class="px-4 py-4" style="overflow-y: scroll; height: 500px; max-height: 500px;">
+                    <ul id="chatlog" class="px-4 py-4" style="overflow-y: scroll; height: 500px; max-height: 500px; list-style: none;">
                         @foreach (var chat in _chatLog)
                         {
                             <li @key="chat.Message.Id" class="@GetChatClass(chat.Message)">
@@ -150,7 +150,7 @@
                 </MudTabPanel>
 
                 <MudTabPanel Text="Events" Icon="@Icons.Material.Filled.Bolt">
-                    <ul id="eventlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
+                    <ul id="eventlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px; list-style: none;">
                         @foreach (var gameEvent in _eventLog)
                         {
                             <li @key="gameEvent.Id">@GetTimestamp(gameEvent.Timestamp) @gameEvent.Message</li>
@@ -159,7 +159,7 @@
                 </MudTabPanel>
 
                 <MudTabPanel Text="Requests" Icon="@Icons.Material.Filled.DoubleArrow">
-                    <ul id="requestlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px;">
+                    <ul id="requestlog" class="px-4 py-4" style="overflow-y: scroll; height: 350px; max-height: 350px; list-style: none;">
                         @foreach (var request in _requestResponses)
                         {
                             <li class="mb-4">
@@ -182,7 +182,7 @@
                               DisableUnderLine="true"
                               Variant="Variant.Outlined"
                               Margin="Margin.Dense"
-                              OnKeyPress="OnKeyPress"/>
+                              OnKeyDown="OnKeyDown"/>
             }
         </MudPaper>
     </MudItem>
@@ -462,7 +462,7 @@
                 }
 
                 StateHasChanged();
-                var scrolled = await _jsRuntime.InvokeAsync<bool>("ScrollToBottom", "requestlog", true);
+                await _jsRuntime.InvokeVoidAsync("ScrollToBottom", "requestlog", true);
             })
         };
     }
@@ -635,7 +635,7 @@
             _snapshotReceived = false;
         }
 
-        var scrolled = await _jsRuntime.InvokeAsync<bool>("ScrollToBottom", tabId, force);
+        await _jsRuntime.InvokeVoidAsync("ScrollToBottom", tabId, force);
     }
 
     public async ValueTask DisposeAsync()
@@ -658,7 +658,7 @@
         }
     }
 
-    private async void OnKeyPress(KeyboardEventArgs e)
+    private async void OnKeyDown(KeyboardEventArgs e)
     {
         var isEnter = e.Code is "Enter" or "NumpadEnter";
         if (!isEnter)
@@ -685,7 +685,7 @@
         var dialog = _dialogService.Show<InputDialog>(text, parameters, new DialogOptions { });
         var result = await dialog.Result;
 
-        if (!result.Cancelled)
+        if (!result.Canceled)
         {
             callback?.Invoke(result.Data.ToString());
         }

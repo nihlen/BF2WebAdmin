@@ -48,9 +48,9 @@
                                 </CardHeaderActions>
                             </MudCardHeader>
                             <MudCardContent>
-                                <MudChip Size="Size.Small">@server.GameState</MudChip>
-                                <MudChip Size="Size.Small">@server.Map</MudChip>
-                                <MudChip Size="Size.Small">@server.Players / @server.MaxPlayers players</MudChip>
+                                <MudChip T="string" Size="Size.Small">@server.GameState</MudChip>
+                                <MudChip T="string" Size="Size.Small">@server.Map</MudChip>
+                                <MudChip T="string" Size="Size.Small">@server.Players / @server.MaxPlayers players</MudChip>
                             </MudCardContent>
                         </MudCard>
                     </MudLink>

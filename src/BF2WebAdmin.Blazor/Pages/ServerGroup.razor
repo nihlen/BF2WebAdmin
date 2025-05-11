@@ -19,10 +19,10 @@ else
 <MudText Typo="Typo.h5" Class="mb-8">Modules</MudText>
 
 <MudPaper MaxWidth="500px">
-    <MudList Clickable="true">
+    <MudList T="MudListItem<string>" Clickable="true">
         @foreach (var moduleName in _allModuleNames)
         {
-            <MudListItem OnClick="() => ToggleModule(moduleName)" Disabled="@(_defaultModuleNames.Contains(moduleName) || ServerGroupName == "default")" Icon="@(_activeModuleNames.Contains(moduleName) ? Icons.Filled.CheckBox : Icons.Filled.CheckBoxOutlineBlank)" IconColor="Color.Primary" Text="@moduleName">
+            <MudListItem T="string" OnClick="() => ToggleModule(moduleName)" Disabled="@(_defaultModuleNames.Contains(moduleName) || ServerGroupName == "default")" Icon="@(_activeModuleNames.Contains(moduleName) ? Icons.Material.Filled.CheckBox : Icons.Material.Filled.CheckBoxOutlineBlank)" IconColor="Color.Primary" Text="@moduleName">
                 @* <MudIcon Icon="@(_activeModuleNames.Contains(moduleName) ? Icons.Filled.Check : Icons.Filled.CheckBox)" Color="Color.Success"/> *@
                 @* <MudText>@moduleName</MudText> *@
                 @* <MudCheckBox OnClick="() => ToggleModule(moduleName)" Checked="_activeModuleNames.Contains(moduleName)" Style="display: inline-block" Label="@moduleName" StopClickPropagation="false"></MudCheckBox> *@

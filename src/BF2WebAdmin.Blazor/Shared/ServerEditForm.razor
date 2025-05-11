@@ -96,7 +96,7 @@
 
         var dialog = _dialogService.Show<ConfirmDialog>("Delete", parameters, options);
         var result = await dialog.Result;
-        if (result.Cancelled)
+        if (result.Canceled)
             return;
         
         await _adminService.RemoveServerAsync(AdminService.UrlDecodeServerId(ServerId));

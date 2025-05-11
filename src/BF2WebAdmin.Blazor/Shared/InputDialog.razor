@@ -6,7 +6,7 @@
     </TitleContent>
 
     <DialogContent>
-        <MudTextField @bind-Value="TextValue" Immediate="true" Label="@placeholder" OnKeyPress="OnKeyPress" AutoFocus="true"/>
+        <MudTextField @bind-Value="TextValue" Immediate="true" Label="@placeholder" OnKeyDown="OnKeyDown" AutoFocus="true"/>
     </DialogContent>
 
     <DialogActions>
@@ -18,7 +18,7 @@
 @code {
 
     [CascadingParameter]
-    MudDialogInstance MudDialog { get; set; }
+    IMudDialogInstance MudDialog { get; set; }
 
     [Parameter]
     public Action<string> callback { get; set; }
@@ -36,7 +36,7 @@
 
     private MudButton _sendButton;
 
-    private async void OnKeyPress(KeyboardEventArgs e)
+    private async void OnKeyDown(KeyboardEventArgs e)
     {
         var isEnter = e.Code is "Enter" or "NumpadEnter";
         if (!isEnter)

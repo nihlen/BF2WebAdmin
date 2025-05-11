@@ -1,12 +1,14 @@
 ﻿@inherits LayoutComponentBase
 
-<MudThemeProvider Theme="_currentTheme"/>
+<MudThemeProvider Theme="_currentTheme" IsDarkMode="true"/>
+<MudPopoverProvider/>
 <MudDialogProvider/>
 <MudSnackbarProvider/>
 
 <MudLayout>
     <MudAppBar Elevation="0">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())"/>
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       OnClick="@((e) => DrawerToggle())"/>
         <MudSpacer/>
 
         @if (_adminService.IsAuthenticated)
@@ -48,13 +50,13 @@
     private readonly MudTheme _darkTheme = new()
     {
         // Official https://github.com/MudBlazor/MudBlazor/blob/4ab9e29ff5ad25c4c1aba62577c487637331e781/src/MudBlazor/Themes/Models/Palette.cs
-        Palette = new Palette
+        PaletteDark = new PaletteDark
         {
             Primary = "#0bba83", // custom green
             // Primary = "#776be7", // default purple
             Black = "#27272f",
             Background = "#32333d",
-            BackgroundGrey = "#27272f",
+            BackgroundGray = "#27272f",
             Surface = "#373740",
             DrawerBackground = "#27272f",
             DrawerText = "rgba(255,255,255, 0.50)",
@@ -79,24 +81,24 @@
             Dark = "#27272f"
         }
 
-    // Alt. https://github.com/aksoftware98/mudblazorsample/blob/main/MudBlazorSample/MudBlazorSample/Shared/MainLayout.razor
-    //Palette = new Palette
-    //{
-    //    Black = "#27272f",
-    //    Background = "#32333d",
-    //    BackgroundGrey = "#27272f",
-    //    Surface = "#373740",
-    //    DrawerBackground = "#27272f",
-    //    DrawerText = "rgba(255,255,255, 0.50)",
-    //    AppbarBackground = "#27272f",
-    //    AppbarText = "rgba(255,255,255, 0.70)",
-    //    TextPrimary = "rgba(255,255,255, 0.70)",
-    //    TextSecondary = "rgba(255,255,255, 0.50)",
-    //    ActionDefault = "#adadb1",
-    //    ActionDisabled = "rgba(255,255,255, 0.26)",
-    //    ActionDisabledBackground = "rgba(255,255,255, 0.12)",
-    //    DrawerIcon = "rgba(255,255,255, 0.50)"
-    //}
+        // Alt. https://github.com/aksoftware98/mudblazorsample/blob/main/MudBlazorSample/MudBlazorSample/Shared/MainLayout.razor
+        //Palette = new Palette
+        //{
+        //    Black = "#27272f",
+        //    Background = "#32333d",
+        //    BackgroundGrey = "#27272f",
+        //    Surface = "#373740",
+        //    DrawerBackground = "#27272f",
+        //    DrawerText = "rgba(255,255,255, 0.50)",
+        //    AppbarBackground = "#27272f",
+        //    AppbarText = "rgba(255,255,255, 0.70)",
+        //    TextPrimary = "rgba(255,255,255, 0.70)",
+        //    TextSecondary = "rgba(255,255,255, 0.50)",
+        //    ActionDefault = "#adadb1",
+        //    ActionDisabled = "rgba(255,255,255, 0.26)",
+        //    ActionDisabledBackground = "rgba(255,255,255, 0.12)",
+        //    DrawerIcon = "rgba(255,255,255, 0.50)"
+        //}
     };
 
     bool _drawerOpen = true;

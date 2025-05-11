@@ -14,7 +14,7 @@
 		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.4" />
 		<PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.Json" Version="9.0.4" />
 		<PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="9.0.4" />
-		<PackageReference Include="MudBlazor" Version="6.0.19-dev1" />
+		<PackageReference Include="MudBlazor" Version="8.6.0" />
 	</ItemGroup>
 
 	<ItemGroup>

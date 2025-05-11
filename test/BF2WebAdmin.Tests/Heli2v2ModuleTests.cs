@@ -11,6 +11,7 @@ using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Modules.BF2;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Polly.Registry;
 using Xunit;
@@ -25,7 +26,7 @@ public class Heli2v2ModuleTests
 
     private DateTimeOffset _startTime;
     private IGameServer _server;
-    private ITimeProvider _timeProvider;
+    private TimeProvider _timeProvider;
     private IDelayProvider _delayProvider;
     private IMatchRepository _matchRepository;
     private FakeTaskRunner _taskRunner;
@@ -34,14 +35,12 @@ public class Heli2v2ModuleTests
     {
         _server = Substitute.For<IGameServer>();
         _matchRepository = Substitute.For<IMatchRepository>();
-        _timeProvider = Substitute.For<ITimeProvider>();
         _startTime = new DateTimeOffset(new DateTime(2023, 5, 24, 21, 0, 0, 0), TimeSpan.Zero);
+        _timeProvider = new FakeTimeProvider(_startTime);
         _delayProvider = Substitute.For<IDelayProvider>();
 
         _server.GameWriter.SendText(Arg.Do<string>(s => testOutputHelper.WriteLine("SendText: " + s)));
         // _server.GameWriter.SendText(Arg.Do<string>(s => Console.WriteLine("SendText: " + s)));
-        _timeProvider.UtcNow.Returns(_startTime.DateTime);
-        _timeProvider.OffsetUtcNow.Returns(_startTime);
         _server.Map.Returns(new Map { Index = 0, Size = 16, Name = "dalian_2_v_2" });
         _server.Id.Returns("Test server");
 
@@ -75,7 +74,7 @@ public class Heli2v2ModuleTests
         var previousMatch = new BF2WebAdmin.Data.Entities.Match
         {
             Id = Guid.Parse("5ca17380-3f24-48f0-8210-f48b540e7166"),
-            MatchStart = _startTime.DateTime,
+            MatchStart = _startTime.UtcDateTime,
             MatchEnd = null,
             Map = _server.Map?.Name,
             ServerId = _server.Id,
@@ -85,8 +84,8 @@ public class Heli2v2ModuleTests
             {
                 new()
                 {
-                    RoundStart = _startTime.DateTime,
-                    RoundEnd = _startTime.DateTime.AddMinutes(9),
+                    RoundStart = _startTime.UtcDateTime,
+                    RoundEnd = _startTime.UtcDateTime.AddMinutes(9),
                     WinningTeamId = players[0].Team.Id,
                     MatchRoundPlayers = players.Select(p => new MatchRoundPlayer
                     {

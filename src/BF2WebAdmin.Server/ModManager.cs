@@ -194,7 +194,7 @@ public class ModManager : IModManager
         serviceCollection.AddSingleton<ILogger>(_ => _logger);
         serviceCollection.AddSingleton<ITaskRunner, TaskRunner>();
         serviceCollection.AddSingleton<IDelayProvider, DelayProvider>();
-        serviceCollection.AddSingleton<ITimeProvider, TimeProvider>();
+        serviceCollection.AddSingleton(TimeProvider.System);
         //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RabbitMqGameStreamService>());
         //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RedisGameStreamService>());
             

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
 namespace Nihlen.Common.Telemetry;
@@ -26,66 +27,51 @@ public static class TelemetryExtensions
         if (services is null)
             return null;
 
-        var resourceBuilder = Telemetry.GetResourceBuilder(ref serviceName, ref serviceVersion, ref otlpEndpoint);
+        // var resourceBuilder = Telemetry.GetResourceBuilder(ref serviceName, ref serviceVersion, ref otlpEndpoint);
 
-        services.AddOpenTelemetryTracing(b => b
-            .AddSource(serviceName)
-            .SetResourceBuilder(resourceBuilder)
-            .AddOtlpExporter(o =>
-            {
-                o.Endpoint = new Uri(otlpEndpoint);
-                o.Protocol = OtlpExportProtocol.Grpc;
-            })
-            .AddAspNetCoreInstrumentation(o =>
-            {
-                o.RecordException = true;
-            })
-            .AddHttpClientInstrumentation(o =>
-            {
-                o.RecordException = true;
-            })
-            .AddSqlClientInstrumentation(o =>
-            {
-                o.SetDbStatementForText = true;
-                o.SetDbStatementForStoredProcedure = true;
-                o.EnableConnectionLevelAttributes = true;
-                o.RecordException = true;
-            })
-            .AddEntityFrameworkCoreInstrumentation(o =>
-            {
-                o.SetDbStatementForText = true;
-                o.SetDbStatementForStoredProcedure = true;
-            })
+        services.AddOpenTelemetry()
+            .ConfigureResource(r => r.AddService(serviceName, serviceVersion, otlpEndpoint))
+            .WithTracing(b => b
+                .AddOtlpExporter(o =>
+                {
+                    o.Endpoint = new Uri(otlpEndpoint);
+                    o.Protocol = OtlpExportProtocol.Grpc;
+                })
+                .AddAspNetCoreInstrumentation(o => { o.RecordException = true; })
+                .AddHttpClientInstrumentation(o => { o.RecordException = true; })
+                .AddSqlClientInstrumentation(o =>
+                {
+                    o.SetDbStatementForText = true;
+                    o.SetDbStatementForStoredProcedure = true;
+                    o.EnableConnectionLevelAttributes = true;
+                    o.RecordException = true;
+                })
+                .AddEntityFrameworkCoreInstrumentation(o =>
+                {
+                    o.SetDbStatementForText = true;
+                    o.SetDbStatementForStoredProcedure = true;
+                }))
+            .WithMetrics(b => b
+                .AddOtlpExporter(o =>
+                {
+                    o.Endpoint = new Uri(otlpEndpoint);
+                    o.Protocol = OtlpExportProtocol.Grpc;
+                })
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
 
-        // .SetSampler(new ParentBasedSampler(new TraceIdRatioBasedSampler(0.1))) // sample 10 % of root spans fully
-        );
-
-        services.AddOpenTelemetryMetrics(b => b
-            .AddMeter(serviceName)
-            .SetResourceBuilder(resourceBuilder)
-            .AddOtlpExporter(o =>
-            {
-                o.Endpoint = new Uri(otlpEndpoint);
-                o.Protocol = OtlpExportProtocol.Grpc;
-            })
-            .AddAspNetCoreInstrumentation()
-            .AddHttpClientInstrumentation()
-
-            // Not stable yet, seems to cause some memory leaks
-            // .AddEventCounterMetrics(options =>
-            // {
-            //     options.RefreshIntervalSecs = 10;
-            // })
-            .AddRuntimeInstrumentation()
-        );
+                // Not stable yet, seems to cause some memory leaks
+                // .AddEventCounterMetrics(options =>
+                // {
+                //     options.RefreshIntervalSecs = 10;
+                // })
+                .AddRuntimeInstrumentation()
+            );
 
         services.AddLogging(logging =>
         {
             logging.ClearProviders();
-            logging.Configure(options =>
-            {
-                options.ActivityTrackingOptions = ActivityTrackingOptions.SpanId | ActivityTrackingOptions.TraceId | ActivityTrackingOptions.ParentId | ActivityTrackingOptions.Baggage | ActivityTrackingOptions.Tags;
-            });
+            logging.Configure(options => { options.ActivityTrackingOptions = ActivityTrackingOptions.SpanId | ActivityTrackingOptions.TraceId | ActivityTrackingOptions.ParentId | ActivityTrackingOptions.Baggage | ActivityTrackingOptions.Tags; });
             logging.AddFilter("Microsoft.AspNetCore.*", LogLevel.Warning);
             logging.AddConsole();
 

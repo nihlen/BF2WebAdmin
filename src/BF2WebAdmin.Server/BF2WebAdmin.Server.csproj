@@ -14,6 +14,20 @@
     <DockerfileTag>bf2-webadmin</DockerfileTag>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <LangVersion>default</LangVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <UseAppHost>true</UseAppHost>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    
+    <!-- Complains about config files  -->
+    <!--    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>-->
+    <!-- Not prepared for trimming yet, trims too much -->
+    <!--<PublishTrimmed>true</PublishTrimmed>-->
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <BlazorWebAssemblyOmitDebugProxyOutput>true</BlazorWebAssemblyOmitDebugProxyOutput>
   </PropertyGroup>
 
   <!--<PropertyGroup>
@@ -55,8 +69,6 @@
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.2" />
     <PackageReference Include="Polly" Version="8.5.2" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageReference Include="SixLabors.ImageSharp" Version="1.0.0-beta0006" />
-    <PackageReference Include="SkiaSharp" Version="2.88.2" />
     <PackageReference Include="StackExchange.Redis" Version="2.6.66" />
     <PackageReference Include="System.Collections.Concurrent" Version="4.3.0" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.4" />

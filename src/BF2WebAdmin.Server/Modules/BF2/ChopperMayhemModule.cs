@@ -3,7 +3,6 @@ using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
-using SixLabors.ImageSharp;
 
 namespace BF2WebAdmin.Server.Modules.BF2;
 
@@ -166,33 +165,34 @@ public class ChopperMayhemModule : BaseModule,
             }
         }
 
-        if (message.Text == ".nudes")
-        {
-            var startX = 900;
-            var startZ = 310;
-            var distanceX = 12.5;
-            var distanceZ = 11.5;
-            var i2 = 0;
-
-            var rotation = Rotation.Neutral;
-            using var image = Image.Load(@"C:\Users\Alex\Pictures\bf2text.png");
-            for (var ix = 0; ix < image.Width; ix++)
-            {
-                for (var iy = 0; iy < image.Height; iy++)
-                {
-                    var pixel = image[ix, iy];
-                    if (pixel.A == 0)
-                        continue;
-
-                    Logger.LogInformation("Pixel found at {x},{y}", ix, iy);
-
-                    var xPos = startX - ix * distanceX;
-                    var zPos = startZ - iy * distanceZ;
-                    await Task.Delay(100);
-                    SpawnObject("concrete_pillar_wall", new Position(xPos, zPos, -320), rotation, false);
-                }
-            }
-        }
+        // SixLabors.SkiaSharp
+        // if (message.Text == ".nudes")
+        // {
+        //     var startX = 900;
+        //     var startZ = 310;
+        //     var distanceX = 12.5;
+        //     var distanceZ = 11.5;
+        //     var i2 = 0;
+        //
+        //     var rotation = Rotation.Neutral;
+        //     using var image = Image.Load(@"C:\Users\Alex\Pictures\bf2text.png");
+        //     for (var ix = 0; ix < image.Width; ix++)
+        //     {
+        //         for (var iy = 0; iy < image.Height; iy++)
+        //         {
+        //             var pixel = image[ix, iy];
+        //             if (pixel.A == 0)
+        //                 continue;
+        //
+        //             Logger.LogInformation("Pixel found at {x},{y}", ix, iy);
+        //
+        //             var xPos = startX - ix * distanceX;
+        //             var zPos = startZ - iy * distanceZ;
+        //             await Task.Delay(100);
+        //             SpawnObject("concrete_pillar_wall", new Position(xPos, zPos, -320), rotation, false);
+        //         }
+        //     }
+        // }
     }
         
     public async ValueTask HandleAsync(MapChangedEvent e)

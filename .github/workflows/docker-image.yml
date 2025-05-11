@@ -1,46 +1,33 @@
-name: Docker Image CI
+name: Build & Publish Container
 
 on:
   push:
-    branches: [ "master" ]
-  #pull_request:
-  #  branches: [ "master" ]
+    branches: [ master ]
 
 jobs:
-
-  build:
-
+  publish:
     runs-on: ubuntu-latest
 
     steps:
-    
-    - uses: actions/checkout@v3
-    
-    - name: Move Dockerfile to solution directory
-      run: mv ./src/BF2WebAdmin.Server/Dockerfile .
-      
-    #- name: Build the Docker image
-    #  run: docker build . --file Dockerfile --tag bf2-webadmin:$(date +%s)
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Log in to Docker Hub
-      uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Install .NET 9
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '9.0.x'
 
-    - name: Extract metadata (tags, labels) for Docker
-      id: meta
-      uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
-      with:
-        images: nihlen/bf2-webadmin
-        tags: |
-          type=sha
-          type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'master') }}
-  
-    - name: Build and push Docker image
-      uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
-      with:
-        context: .
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+      - name: Run tests
+        run: dotnet test
+
+      - name: Build & push container to Docker Hub
+        env:
+          # set these in your repo secrets
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          dotnet publish -c Release \
+            -p:ContainerRegistry=docker.io \
+            -p:ContainerRepository=nihlen/bf2-webadmin \
+            -p:ContainerImageTags=latest,sha-${{ github.sha }} \
+            -p:ContainerPush=true

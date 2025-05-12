@@ -32,7 +32,7 @@ jobs:
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           dotnet publish -c Release \
+            -t:PublishContainer
             -p:ContainerRegistry=docker.io \
             -p:ContainerRepository=nihlen/bf2-webadmin \
-            -p:ContainerImageTags='"latest;$SHORT_SHA"' \
-            -p:ContainerPush=true
+            -p:ContainerImageTags='"latest;$SHORT_SHA"'

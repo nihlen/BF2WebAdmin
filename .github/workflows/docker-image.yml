@@ -31,5 +31,4 @@ jobs:
             -p:RuntimeIdentifier=linux-x64 \
             -p:ContainerRegistry=docker.io \
             -p:ContainerRepository=nihlen/bf2-webadmin \
-            -p:ContainerImageTags='"latest;sha-${{ github.sha }}"' \
-            --no-self-contained
+            -p:ContainerImageTags='"latest;sha-${{ github.sha }}"'

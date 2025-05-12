@@ -5,6 +5,9 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<LangVersion>default</LangVersion>
+		<PublishSelfContained>true</PublishSelfContained>
+		<SelfContained>true</SelfContained>
+		<RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
 	</PropertyGroup>
 
 	<ItemGroup>

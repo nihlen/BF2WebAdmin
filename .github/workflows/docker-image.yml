@@ -20,11 +20,6 @@ jobs:
       - name: Run tests
         run: dotnet test
 
-
-      - name: Get Short SHA
-        id: get_short_sha
-        run: echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
-
       - name: Build & push container to Docker Hub
         env:
           # set these in your repo secrets
@@ -37,4 +32,5 @@ jobs:
             -p:RuntimeIdentifier=linux-x64 \
             -p:ContainerRegistry=docker.io \
             -p:ContainerRepository=nihlen/bf2-webadmin \
-            -p:ContainerImageTags='"latest;$SHORT_SHA"'
+            -p:ContainerImageTags='"latest;${{ github.sha }}"'
+            --no-self-contained

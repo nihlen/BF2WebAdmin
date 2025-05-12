@@ -29,5 +29,5 @@ jobs:
           dotnet publish -c Release \
             -p:ContainerRegistry=docker.io \
             -p:ContainerRepository=nihlen/bf2-webadmin \
-            -p:ContainerImageTags=latest,sha-${{ github.sha }} \
+            -p:ContainerImageTags="latest,sha-${{ github.sha::8 }}" \
             -p:ContainerPush=true

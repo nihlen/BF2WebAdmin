@@ -22,9 +22,8 @@ jobs:
 
       - name: Build & push container to Docker Hub
         env:
-          # set these in your repo secrets
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          DOTNET_CONTAINER_REGISTRY_UNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOTNET_CONTAINER_REGISTRY_PWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           dotnet publish "src/BF2WebAdmin.Server/BF2WebAdmin.Server.csproj" \
             -c Release \
@@ -32,5 +31,5 @@ jobs:
             -p:RuntimeIdentifier=linux-x64 \
             -p:ContainerRegistry=docker.io \
             -p:ContainerRepository=nihlen/bf2-webadmin \
-            -p:ContainerImageTags='"latest;${{ github.sha }}"'
+            -p:ContainerImageTags='"latest;sha-${{ github.sha }}"'
             --no-self-contained

@@ -31,8 +31,10 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
-          dotnet publish -c Release \
-            -t:PublishContainer
+          dotnet publish "src/BF2WebAdmin.Server/BF2WebAdmin.Server.csproj" \
+            -c Release \
+            -t:PublishContainer \
+            -p:RuntimeIdentifier=linux-x64 \
             -p:ContainerRegistry=docker.io \
             -p:ContainerRepository=nihlen/bf2-webadmin \
             -p:ContainerImageTags='"latest;$SHORT_SHA"'

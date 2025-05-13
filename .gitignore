@@ -259,3 +259,7 @@ Logs/
 
 # Test data
 **/Data/*.txt
+
+# Examples
+!examples/*/appsecrets.*
+examples/docker-compose/bf2

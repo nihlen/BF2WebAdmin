@@ -24,6 +24,7 @@ public class ModuleResolver : IModuleResolver
 
     // Parses different command aliases and parameters to their respective ICommand(s)
     public IDictionary<string, IList<Func<string[], ICommand>>> CommandParsers => _commandParsers;
+
     private static IDictionary<string, IList<Func<string[], ICommand>>> _commandParsers =
         new Dictionary<string, IList<Func<string[], ICommand>>>();
 
@@ -46,7 +47,16 @@ public class ModuleResolver : IModuleResolver
     {
         CommandDocumentation = new StringBuilder();
         ScanAssembly();
-        File.WriteAllText("commands.txt", CommandDocumentation.ToString());
+#if DEBUG
+        try
+        {
+            File.WriteAllText("commands.txt", CommandDocumentation.ToString());
+        }
+        catch (Exception)
+        {
+            // Ignore, just used for reference when building locally
+        }
+#endif
     }
 
     public ModuleResolver(ILogger<ModuleResolver> logger)
@@ -120,7 +130,7 @@ public class ModuleResolver : IModuleResolver
                             _logger.LogError(e, "Command handling failed for {Message} (sync)", matchedCommand.Message.Text);
                             activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text}");
                         }
-                             
+
                         AppDiagnostics.TrackCommand(commandType.Name, moduleType, startTime);
                     }
 
@@ -154,7 +164,7 @@ public class ModuleResolver : IModuleResolver
                             _logger.LogError(ex, "Command handling failed for {Message} (async)", matchedCommand.Message.Text);
                             activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text} {ex.Message}");
                         }
-                                             
+
                         AppDiagnostics.TrackCommand(commandType.Name, moduleType, startTime);
                     }
                 });
@@ -224,7 +234,7 @@ public class ModuleResolver : IModuleResolver
                         using var activity = TraceEventType(eventType.Name) ? Telemetry.ActivitySource.StartActivity("AsyncEventHandler:" + moduleType) : null;
                         activity?.SetTag("bf2wa.event-type", eventType.Name);
                         activity?.SetTag("bf2wa.module-type", moduleType);
-                        
+
                         try
                         {
                             await asyncHandler.HandleAsync(matchedEvent);
@@ -234,7 +244,7 @@ public class ModuleResolver : IModuleResolver
                             _logger.LogError(ex, "Event handling failed for {Event} (async)", matchedEvent);
                             activity?.SetStatus(ActivityStatusCode.Error, $"Event failed: {eventType.Name}, {ex.Message}");
                         }
-                                                          
+
                         AppDiagnostics.TrackEvent(eventType.Name, moduleType, startTime);
                     }
                 });
@@ -246,7 +256,7 @@ public class ModuleResolver : IModuleResolver
 
         if (handlerCount == 0)
             _logger.LogTrace("No event handlers registered for {EventName}", typeof(TEvent).Name);
-        
+
         static bool TraceEventType(string? eventType) => eventType != nameof(PlayerPositionEvent) && eventType != nameof(ProjectilePositionEvent);
     }
 
@@ -303,8 +313,7 @@ public class ModuleResolver : IModuleResolver
 
                 // Assign the rest of the string to the last parameter?
                 var shouldCombineRemainingParameters = attr.Parameters.Length == (index + 1) && attr.CombineLast;
-                var argumentValue = shouldCombineRemainingParameters ?
-                    string.Join(" ", args.Skip(index)) : args[index++];
+                var argumentValue = shouldCombineRemainingParameters ? string.Join(" ", args.Skip(index)) : args[index++];
 
                 var convertedValue = Convert.ChangeType(argumentValue, propertyInfo.PropertyType);
                 propertyInfo.SetValue(command, convertedValue);
@@ -399,10 +408,14 @@ public class ModuleResolver : IModuleResolver
 
 public class CommandArgumentCountException : Exception
 {
-    public CommandArgumentCountException(string message) : base(message) { }
+    public CommandArgumentCountException(string message) : base(message)
+    {
+    }
 }
 
 public class CommandParseException : Exception
 {
-    public CommandParseException(string message) : base(message) { }
+    public CommandParseException(string message) : base(message)
+    {
+    }
 }

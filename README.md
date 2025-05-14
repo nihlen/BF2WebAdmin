@@ -69,4 +69,4 @@ Create `Configuration/appsecrets.json` using the template further down, then run
 
 ## Examples
 
-See the [docker compose example](examples/docker-compose/README.md)
+See the [docker compose example](examples/docker-compose)

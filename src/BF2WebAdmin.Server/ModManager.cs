@@ -161,7 +161,8 @@ public class ModManager : IModManager
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
             .AddJsonFile($"appsettings.{profile}.json", optional: true, reloadOnChange: false)
             .AddJsonFile("appsecrets.json", optional: false, reloadOnChange: false)
-            .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false);
+            .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false)
+            .AddEnvironmentVariables();
 
         Configuration = builder.Build();
     }

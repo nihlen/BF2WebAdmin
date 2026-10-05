@@ -1,34 +1,40 @@
 name: Build & Publish Container
 
 on:
-  push:
-    branches: [ master ]
+  release:
+    types: [published]
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Install .NET 9
-        uses: actions/setup-dotnet@v3
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
 
       - name: Run tests
         run: dotnet test
 
+      - name: Docker login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
       - name: Build & push container to Docker Hub
-        env:
-          DOTNET_CONTAINER_REGISTRY_UNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOTNET_CONTAINER_REGISTRY_PWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          export ContainerImageTags="${VERSION};latest"
           dotnet publish "src/BF2WebAdmin.Server/BF2WebAdmin.Server.csproj" \
             -c Release \
-            -t:PublishContainer \
-            -p:RuntimeIdentifier=linux-x64 \
-            -p:ContainerRegistry=docker.io \
-            -p:ContainerRepository=nihlen/bf2-webadmin \
-            -p:ContainerImageTags='"latest;sha-${{ github.sha }}"'
+            -p Version=$VERSION \
+            -p RuntimeIdentifier=linux-x64 \
+            -p ContainerRegistry=docker.io \
+            -p ContainerRepository=nihlen/bf2-webadmin \
+            /t:PublishContainer

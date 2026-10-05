@@ -30,7 +30,8 @@ try
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
         .AddJsonFile($"appsettings.{profile}.json", optional: true, reloadOnChange: false)
         .AddJsonFile("appsecrets.json", optional: false, reloadOnChange: false)
-        .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false);
+        .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false)
+        .AddEnvironmentVariables();
 
     builder.Services.AddCustomTelemetry("bf2-webadmin", otlpEndpoint: builder.Configuration["Telemetry:OtlpEndpoint"]);
 

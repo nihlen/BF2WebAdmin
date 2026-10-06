@@ -1,7 +1,7 @@
 ﻿using System;
+using BF2WebAdmin.Common.External;
 using MaxMind.GeoIP2;
 using MaxMind.GeoIP2.Responses;
-using Nihlen.Common.Telemetry;
 
 namespace BF2WebAdmin.Common;
 

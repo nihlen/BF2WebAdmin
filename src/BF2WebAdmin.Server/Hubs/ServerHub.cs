@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Modules.BF2;
@@ -8,8 +9,6 @@ using BF2WebAdmin.Shared.Communication.Events;
 using Mapster;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using Nihlen.Common.Telemetry;
-using Nihlen.Gamespy;
 
 namespace BF2WebAdmin.Server.Hubs;
 

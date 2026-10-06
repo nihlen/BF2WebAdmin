@@ -1,5 +1,5 @@
-﻿using BF2WebAdmin.Server.Abstractions;
-using Nihlen.Common.Telemetry;
+﻿using BF2WebAdmin.Common.External;
+using BF2WebAdmin.Server.Abstractions;
 
 namespace BF2WebAdmin.Server;
 

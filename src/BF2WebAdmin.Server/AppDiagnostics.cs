@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
-using Nihlen.Common.Telemetry;
+using BF2WebAdmin.Common.External;
 
 namespace BF2WebAdmin.Server;
 

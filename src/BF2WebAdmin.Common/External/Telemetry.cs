@@ -11,7 +11,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-namespace Nihlen.Common.Telemetry;
+namespace BF2WebAdmin.Common.External;
 
 public static class Telemetry
 {

@@ -2,6 +2,7 @@
 using System.Text.RegularExpressions;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
+using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Data;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Entities;
@@ -17,7 +18,6 @@ using BF2WebAdmin.Server.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Nihlen.Common.Telemetry;
 using Polly;
 using Polly.Registry;
 

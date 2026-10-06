@@ -1,13 +1,13 @@
 ﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Shared;
 using Microsoft.Extensions.Caching.Memory;
-using Nihlen.Common.Telemetry;
 using Polly;
 
 namespace BF2WebAdmin.Server;

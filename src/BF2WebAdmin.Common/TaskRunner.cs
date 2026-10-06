@@ -2,8 +2,8 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using BF2WebAdmin.Common.External;
 using Microsoft.Extensions.Logging;
-using Nihlen.Common.Telemetry;
 
 namespace BF2WebAdmin.Common;
 

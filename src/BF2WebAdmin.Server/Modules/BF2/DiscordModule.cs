@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Channels;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
+using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Commands.BF2;
@@ -11,7 +12,6 @@ using BF2WebAdmin.Server.Services;
 using BF2WebAdmin.Shared;
 using Discord;
 using Discord.WebSocket;
-using Nihlen.Common.Telemetry;
 using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;
 
 namespace BF2WebAdmin.Server.Modules.BF2;

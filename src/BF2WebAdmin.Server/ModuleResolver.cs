@@ -2,9 +2,9 @@
 using System.Reflection;
 using System.Text;
 using BF2WebAdmin.Common;
+using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Extensions;
-using Nihlen.Common.Telemetry;
 
 namespace BF2WebAdmin.Server;
 

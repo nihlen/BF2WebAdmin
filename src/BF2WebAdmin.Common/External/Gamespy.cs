@@ -9,7 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 
-namespace Nihlen.Gamespy;
+namespace BF2WebAdmin.Common.External;
 
 public static class AsyncExtensions
 {

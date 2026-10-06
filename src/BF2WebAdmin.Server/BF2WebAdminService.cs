@@ -1,6 +1,6 @@
 ﻿using System.Net;
+using BF2WebAdmin.Common.External;
 using Microsoft.Extensions.Options;
-using Nihlen.Common.Telemetry;
 
 namespace BF2WebAdmin.Server;
 

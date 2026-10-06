@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
+using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Server.Configuration.Models;
 using Microsoft.Extensions.Options;
-using Nihlen.Common.Telemetry;
 
 namespace BF2WebAdmin.Server.Logging;
 
@@ -36,7 +36,7 @@ public class DiscordChatLogger : IChatLogger
         try
         {
             var tasks = _discordClients
-                .Where(c => (serverGroup?.Contains(c.ServerGroupFilter) ?? false) && (messageType?.Contains(c.MessageTypeFilter) ?? false))
+                .Where(c => MatchesFilter(serverGroup, c.ServerGroupFilter) && MatchesFilter(messageType, c.MessageTypeFilter))
                 .Select(c => c.Client.SendMessageAsync(message));
 
             await Task.WhenAll(tasks);
@@ -48,11 +48,16 @@ public class DiscordChatLogger : IChatLogger
         }
     }
 
+    private static bool MatchesFilter(string? value, string? filter)
+    {
+        return value is not null && (string.IsNullOrEmpty(filter) || value.Contains(filter));
+    }
+
     private class DiscordClientWrapper
     {
         public DiscordClient Client { get; set; }
-        public string ServerGroupFilter { get; set; }
-        public string MessageTypeFilter { get; set; }
+        public string? ServerGroupFilter { get; set; }
+        public string? MessageTypeFilter { get; set; }
     }
 
     private class DiscordClient : IDisposable

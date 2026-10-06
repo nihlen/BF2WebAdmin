@@ -1,5 +1,6 @@
 ﻿using System.Security.Claims;
 using AspNetCore.Authentication.ApiKey;
+using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Data;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Repositories;
@@ -12,7 +13,6 @@ using MassTransit;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
-using Nihlen.Common.Telemetry;
 
 // Log.Logger = new LoggerConfiguration()
 //     .WriteTo.Console()

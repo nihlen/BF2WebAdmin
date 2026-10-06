@@ -3,8 +3,8 @@ using System.Diagnostics.Metrics;
 using System.Text;
 using System.Threading.Channels;
 using BF2WebAdmin.Common.Entities.Game;
+using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Server.Abstractions;
-using Nihlen.Common.Telemetry;
 
 namespace BF2WebAdmin.Server;
 

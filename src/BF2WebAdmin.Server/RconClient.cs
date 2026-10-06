@@ -3,8 +3,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Server.Abstractions;
-using Nihlen.Common.Telemetry;
 
 namespace BF2WebAdmin.Server;
 

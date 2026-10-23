@@ -225,3 +225,5 @@ already ships, so nothing was installed.
 | `start-webadmin.ps1` | Skips the BF2 container restart when the OpenBF2 variant runs |
 | `tools\hubclient` | Modes `--watch <s>`, `--rcon "<cmd>"`, `--get-server`, `--set-admin-key <hex>` |
 | `README.md` | The OpenBF2 variant |
+| `openbf2\build.sh` (2026-10-23, play session) | Module default `0d5967f` (protocol v3 + launch number); `ldd --version \| head -1` under `pipefail` could die of SIGPIPE (exit 141), now `sed -n 1p` |
+| `play-2v2.ps1`, `grant-admin.ps1`, `sidecar\` (2026-10-23) | New: a human plays 2v2 against bf2-bots' sidecar (published into `sidecar\`), `-Mode Pilot\|Gunner\|Status\|Stop`, WebAdmin in the background, logs in `logs\play\`; `grant-admin.ps1 -Name <n>` writes `name:<n>` into `ServerPlayerAuth` (B6) and restarts that WebAdmin, which reads auth only at start. README "Play session" |

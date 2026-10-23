@@ -130,12 +130,30 @@ BEGIN
 CREATE TABLE [dbo].[Server](
 	[ServerId] [nvarchar](20) NOT NULL,
 	[ServerGroup] [nvarchar](50) NOT NULL,
+	[IpAddress] [nvarchar](100) NULL,
+	[GamePort] [int] NOT NULL,
+	[QueryPort] [int] NOT NULL,
+	[RconPort] [int] NOT NULL,
+	[RconPassword] [nvarchar](100) NULL,
+	[DiscordBotToken] [nvarchar](200) NULL,
+	[DiscordAdminChannel] [nvarchar](50) NULL,
+	[DiscordNotificationChannel] [nvarchar](50) NULL,
+	[DiscordMatchResultChannel] [nvarchar](50) NULL,
+	[AdminKey] [nvarchar](128) NULL,
+	[IsTestServer] [bit] NOT NULL CONSTRAINT [DF_Server_IsTestServer] DEFAULT 0,
  CONSTRAINT [PK_Server] PRIMARY KEY CLUSTERED 
 (
 	[ServerId] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 END
+GO
+-- Admin channel (OpenBF2 serverext): the per-server key, and the test-server flag that allows name keys for players without a CD-key hash.
+IF COL_LENGTH(N'[dbo].[Server]', N'AdminKey') IS NULL
+	ALTER TABLE [dbo].[Server] ADD [AdminKey] [nvarchar](128) NULL;
+GO
+IF COL_LENGTH(N'[dbo].[Server]', N'IsTestServer') IS NULL
+	ALTER TABLE [dbo].[Server] ADD [IsTestServer] [bit] NOT NULL CONSTRAINT [DF_Server_IsTestServer] DEFAULT 0;
 GO
 /****** Object:  Table [dbo].[ServerModule]    Script Date: 2022-08-06 02:21:05 ******/
 SET ANSI_NULLS ON

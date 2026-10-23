@@ -10,7 +10,13 @@ public class Player : Entity
     public string Name { get; set; }
     public int Index { get; set; }
     public IPAddress IpAddress { get; set; }
+    /// <summary>
+    /// The player key: the CD-key hash when the server has one, else (test servers only) <see cref="NameKeyPrefix"/> + name.
+    /// Empty when the player has no key.
+    /// </summary>
     public string Hash { get; set; }
+    public bool IsBot { get; set; }
+    public int Squad { get; set; }
     public Country Country { get; } = new Country();
     public Rank Rank { get; set; }
     public Vehicle Vehicle { get; set; }
@@ -35,6 +41,10 @@ public class Player : Entity
         }
     }
 
+    public const string NameKeyPrefix = "name:";
+
+    public bool HasNameKey => Hash?.StartsWith(NameKeyPrefix) ?? false;
+
     public override string ToString() => $"{Name} ({Hash})";
 }
 
@@ -44,6 +54,7 @@ public class Score
     public int Team { get; set; }
     public int Kills { get; set; }
     public int Deaths { get; set; }
+    public int TeamKills { get; set; }
     public int Ping { get; set; }
 }
 

@@ -15,7 +15,7 @@ namespace BF2WebAdmin.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "7.0.0");
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.4");
 
             modelBuilder.Entity("BF2WebAdmin.Data.Entities.MapMod", b =>
                 {
@@ -199,6 +199,9 @@ namespace BF2WebAdmin.Data.Migrations
                     b.Property<string>("ServerId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AdminKey")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DiscordAdminChannel")
                         .HasColumnType("TEXT");
 
@@ -216,6 +219,9 @@ namespace BF2WebAdmin.Data.Migrations
 
                     b.Property<string>("IpAddress")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsTestServer")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("QueryPort")
                         .HasColumnType("INTEGER");

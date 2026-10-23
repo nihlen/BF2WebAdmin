@@ -387,11 +387,11 @@ public class WebModule : BaseModule,
     {
         // Save log files in /app/Data
         var path = Path.Combine("./Data/", $"gameevents-{GameServer.Id.Replace(".", "-").Replace(":", "-")}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.txt");
-        GameServer.GameReader.StartRecording(path);
+        GameServer.StartRecording(path);
     }
 
     public async ValueTask HandleAsync(StopEventRecordingCommand command)
     {
-        GameServer.GameReader.StopRecording();
+        GameServer.StopRecording();
     }
 }

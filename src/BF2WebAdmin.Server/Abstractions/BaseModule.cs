@@ -30,7 +30,7 @@ public abstract class BaseModule : IModule
         };
 
         var script = RconScript.AddObject.Select(line => line.ReplacePlaceholders(replacements));
-        GameServer.GameWriter.SendRcon(script.ToArray());
+        GameServer.GameWriter.SendConsole(script.ToArray());
 
         if (showMessage)
             GameServer.GameWriter.SendText($"{count} Spawned '{template}' at {position}");
@@ -38,7 +38,7 @@ public abstract class BaseModule : IModule
 
     protected virtual void KillPlayer(Player player)
     {
-        GameServer.GameWriter.SendHealth(player, 1);
+        GameServer.GameWriter.SendKill(player, destroyVehicle: true);
     }
 
     protected void SwitchAll()
@@ -51,8 +51,8 @@ public abstract class BaseModule : IModule
 
     protected void SwitchPlayer(Player player)
     {
-        GameServer.GameWriter.SendTeam(player, player.Team.Id == 1 ? 2 : 1);
-        GameServer.GameWriter.SendHealth(player, 1);
+        // SetTeam with its kill flag: the switch and the kill run in one tick
+        GameServer.GameWriter.SendTeam(player, player.Team.Id == 1 ? 2 : 1, kill: true);
     }
 
     protected static string GetRconCommand(string text)
@@ -83,7 +83,7 @@ public abstract class BaseModule : IModule
 
     protected async Task<string> SendRconCommandAsync(string command)
     {
-        var rcon = new RconClient(GameServer.ConnectedIpAddress, GameServer.ServerInfo.RconPort, GameServer.ServerInfo.RconPassword, Logger);
+        var rcon = new RconClient(GameServer.IpAddress, GameServer.ServerInfo.RconPort, GameServer.ServerInfo.RconPassword, Logger);
         return await rcon.SendAsync(command);
     }
 

@@ -1,4 +1,5 @@
 ﻿using MassTransit;
+using BF2WebAdmin.Server.AdminChannel;
 using Nihlen.Message;
 
 namespace BF2WebAdmin.Server;
@@ -7,12 +8,12 @@ public class GameStreamConsumer :
     IConsumer<GameStreamStarted>,
     IConsumer<GameStreamStopped>
 {
-    private readonly ISocketServer _socketServer;
+    private readonly IGameServerRegistry _registry;
     private readonly ILogger<GameStreamConsumer> _logger;
 
-    public GameStreamConsumer(ISocketServer socketServer, ILogger<GameStreamConsumer> logger)
+    public GameStreamConsumer(IGameServerRegistry registry, ILogger<GameStreamConsumer> logger)
     {
-        _socketServer = socketServer;
+        _registry = registry;
         _logger = logger;
     }
 
@@ -21,7 +22,7 @@ public class GameStreamConsumer :
         var serverId = $"{context.Message.GameServerIp}:{context.Message.GameServerPort}";
         _logger.LogInformation("Received GameStreamStarted message for {ServerId}", serverId);
 
-        var gameServer = _socketServer.GetGameServer(serverId);
+        var gameServer = _registry.GetGameServer(serverId);
         if (gameServer is null)
             throw new ArgumentException(nameof(serverId));
 
@@ -35,7 +36,7 @@ public class GameStreamConsumer :
         var serverId = $"{context.Message.GameServerIp}:{context.Message.GameServerPort}";
         _logger.LogInformation("Received GameStreamStopped message for {ServerId}", serverId);
 
-        var gameServer = _socketServer.GetGameServer(serverId);
+        var gameServer = _registry.GetGameServer(serverId);
         if (gameServer is null)
             throw new ArgumentException(nameof(serverId));
 

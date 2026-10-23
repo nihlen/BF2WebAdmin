@@ -47,6 +47,8 @@ public class ServerSettingsRepository : IServerSettingsRepository
             existingServer.DiscordAdminChannel = server.DiscordAdminChannel;
             existingServer.DiscordNotificationChannel = server.DiscordNotificationChannel;
             existingServer.DiscordMatchResultChannel = server.DiscordMatchResultChannel;
+            existingServer.AdminKey = server.AdminKey;
+            existingServer.IsTestServer = server.IsTestServer;
             _context.Servers.Update(existingServer);
         }
         else

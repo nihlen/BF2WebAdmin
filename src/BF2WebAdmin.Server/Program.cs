@@ -5,6 +5,7 @@ using BF2WebAdmin.Data;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Repositories;
 using BF2WebAdmin.Server;
+using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Controllers;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Hubs;
@@ -93,12 +94,10 @@ try
         builder.Services.AddSingleton<GameStreamConsumer>();
     }
 
-    builder.Services.AddSingleton<ISocketServer>(services =>
-    {
-        // TODO: resolve ip somewhere else
-        var serverIp = serverSettings.IpAddress.GetIpAddressAsync().GetAwaiter().GetResult();
-        return new SocketServer(serverIp, serverSettings.Port, serverSettings.GameServers, services, serverSettings.PrintSendLog, serverSettings.PrintRecvLog);
-    });
+    builder.Services.AddSingleton(services => new GameServerRegistry(serverSettings.GameServers, services));
+    builder.Services.AddSingleton<IGameServerRegistry>(services => services.GetRequiredService<GameServerRegistry>());
+    builder.Services.AddSingleton(services => new AdminListener(serverSettings.AdminChannel, services.GetRequiredService<GameServerRegistry>(),
+        services.GetRequiredService<ILoggerFactory>()));
 
     builder.Services.AddHostedService<BF2WebAdminService>();
     builder.Services.AddSignalR()

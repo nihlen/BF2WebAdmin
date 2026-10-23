@@ -13,4 +13,6 @@ public class ServerDataDto
     public string DiscordAdminChannel { get; set; }
     public string DiscordNotificationChannel { get; set; }
     public string DiscordMatchResultChannel { get; set; }
+    public string? AdminKey { get; set; }
+    public bool IsTestServer { get; set; }
 }

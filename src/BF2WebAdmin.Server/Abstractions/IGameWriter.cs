@@ -1,26 +1,70 @@
 ﻿using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
+using BF2WebAdmin.Server.AdminChannel;
 
 namespace BF2WebAdmin.Server.Abstractions;
 
+/// <summary>
+/// Commands to the game server. Every command goes out on the admin channel in call order, and the
+/// module runs them in arrival order, so raw console lines and typed commands never overtake each other.
+/// Fire-and-forget methods log a refusal; the async ones throw <see cref="AdminCommandException"/>.
+/// </summary>
 public interface IGameWriter
 {
+    /// <summary>The player position stream interval in seconds (see <see cref="SendTimerInterval"/>).</summary>
     double CurrentTrackerInterval { get; }
 
-    Task<string> GetRconResponseAsync(string command);
-    void SetRconResponse(string responseCode, string value);
-    void SendGameEvent(Player player, int eventType, int data);
-    void SendHealth(Player player, int health);
-    void SendHudEvent(Player player, int eventType, int data);
-    void SendMedal(Player player, int medalNumber, int medalValue);
-    void SendPrivateMessage(Player player, string message);
-    void SendRank(Player player, Rank rank, bool rankEvent);
-    void SendRcon(params string[] command);
-    void SendRotate(Player player, Rotation rotation);
-    void SendScore(Player player, int totalScore, int teamScore, int kills, int deaths);
-    void SendTeam(Player player, int teamId);
-    void SendTeleport(Player player, Position position);
+    /// <summary>Run raw console lines (one line each) in order.</summary>
+    void SendConsole(params string[] lines);
+
+    /// <summary>Run one raw console line and return its output lines.</summary>
+    Task<IReadOnlyList<string>> ConsoleAsync(string line);
+
     void SendText(string text, bool useServerName = true, bool sanitize = true);
+    void SendPrivateMessage(Player player, string message);
+
+    /// <summary>Move the player's root object (its vehicle when seated); the rotation is kept.</summary>
+    void SendTeleport(Player player, Position position);
+
+    /// <summary>Rotate the player's root object; the position is kept.</summary>
+    void SendRotate(Player player, Rotation rotation);
+
+    void SendTeleport(Player player, Position position, Rotation rotation);
+
+    /// <summary>Set the hit points of the player's root object. Zero on an occupied object is refused by the module.</summary>
+    void SendHealth(Player player, double hitPoints);
+
+    /// <summary>Set the player's root object's health as a fraction of its maximum (1 = full repair).</summary>
+    void SendHealthFraction(Player player, double fraction);
+
+    /// <summary>Kill the player; with <paramref name="destroyVehicle"/> its vehicle is wrecked when nobody else is in it.</summary>
+    void SendKill(Player player, bool destroyVehicle = false);
+
+    /// <summary>Move the player to a team, killing it like mm_webadmin's team command did unless <paramref name="kill"/> is false.</summary>
+    void SendTeam(Player player, int teamId, bool kill = true);
+
+    void SendScore(Player player, int totalScore, int teamScore, int kills, int deaths);
+    void SendRank(Player player, Rank rank, bool rankEvent);
+    void SendMedal(Player player, int medalNumber, int medalValue);
+    void SendGameEvent(Player player, int eventType, int data);
+    void SendHudEvent(Player player, int eventType, int data);
+
+    void SendKick(Player player, string reason);
+    void SendBan(Player player, bool byCdKey, TimeSpan? duration, string reason);
+
+    /// <summary>Restart the current round (admin.restartMap).</summary>
+    void SendRestartMap();
+
+    /// <summary>Make an object the console's active object for the raw console lines that follow (object.active idN).</summary>
+    void SendSetObjectActive(long consoleId);
+
+    Task<IReadOnlyList<ObjectListEntry>> ListObjectsAsync(string template, int maxEntries = 4096);
+    Task<ObjectSpawned> SpawnObjectAsync(string template, Position position, Rotation rotation, int team = 0);
+    void SendDeleteObject(long consoleId);
+
+    /// <summary>Set the player and projectile stream interval in seconds (1/30 to 1).</summary>
     void SendTimerInterval(double timerInterval);
+
+    /// <summary>Ping the module; the reply comes from the game thread, so it also shows the server is ticking.</summary>
     void SendHeartbeat();
 }

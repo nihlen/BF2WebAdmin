@@ -1,20 +1,20 @@
-﻿using System.Net;
-using BF2WebAdmin.Common.External;
+﻿using BF2WebAdmin.Common.External;
+using BF2WebAdmin.Server.AdminChannel;
 using Microsoft.Extensions.Options;
 
 namespace BF2WebAdmin.Server;
 
 public class BF2WebAdminService : BackgroundService
 {
-    private readonly ISocketServer _server;
+    private readonly AdminListener _listener;
     private readonly IHostApplicationLifetime _applicationLifetime;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<BF2WebAdminService> _logger;
     private readonly ServerSettings _settings;
 
-    public BF2WebAdminService(IOptions<ServerSettings> settings, ISocketServer server, IHostApplicationLifetime applicationLifetime, ILoggerFactory loggerFactory)
+    public BF2WebAdminService(IOptions<ServerSettings> settings, AdminListener listener, IHostApplicationLifetime applicationLifetime, ILoggerFactory loggerFactory)
     {
-        _server = server;
+        _listener = listener;
         _applicationLifetime = applicationLifetime;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<BF2WebAdminService>();
@@ -29,7 +29,7 @@ public class BF2WebAdminService : BackgroundService
 
         try
         {
-            await _server.StartAsync(stoppingToken);
+            await _listener.RunAsync(stoppingToken);
         }
         catch (Exception ex)
         {
@@ -58,16 +58,31 @@ public class BF2WebAdminService : BackgroundService
 public class ServerSettings
 {
     public string IpAddress { get; set; }
-    public int Port { get; set; }
+
+    /// <summary>The OpenBF2 serverext admin channel listener (replaces the mm_webadmin text socket).</summary>
+    public AdminChannelSettings AdminChannel { get; set; } = new();
     public List<ServerInfo> GameServers { get; set; }
     public string ServerLogDirectory { get; set; }
-    public bool PrintSendLog { get; set; }
-    public bool PrintRecvLog { get; set; }
     public bool ForceHttps { get; set; } = true;
 }
 
 public class ServerInfo
 {
+    private string? _serverId;
+
+    /// <summary>Server.ServerId, the module's adminServerId. Defaults to "IpAddress:GamePort" for servers from the config file.</summary>
+    public string ServerId
+    {
+        get => _serverId ?? $"{IpAddress}:{GamePort}";
+        set => _serverId = value;
+    }
+
+    /// <summary>The admin channel key (hex), as serverext.cfg's adminKey.</summary>
+    public string? AdminKey { get; set; }
+
+    /// <summary>Players without a CD-key hash are keyed by name (decision B6).</summary>
+    public bool IsTestServer { get; set; }
+
     public string IpAddress { get; set; }
     public int GamePort { get; set; }
     public int QueryPort { get; set; }

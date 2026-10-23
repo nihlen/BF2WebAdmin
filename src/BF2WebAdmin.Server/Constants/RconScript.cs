@@ -277,9 +277,9 @@ public static class RconScript
         "object.delete"
     };
 
+    // Run after IGameWriter.SendSetObjectActive with the vehicle's console id
     public static readonly string[] NoclipOn = {
         // Remove object collision
-        "object.active id{OBJECT_ID}",
         "object.hasCollision 0",
         "object.armor.hpLostWhileUpSideDown 0",
         "object.armor.hpLostWhileInWater 0",
@@ -289,7 +289,6 @@ public static class RconScript
 
     public static readonly string[] NoclipOff = {
         // Re-add object collision
-        "object.active id{OBJECT_ID}",
         "object.hasCollision 1",
         "object.armor.hpLostWhileUpSideDown 350",
         "object.armor.hpLostWhileInWater 500",

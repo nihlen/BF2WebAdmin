@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
@@ -37,15 +38,15 @@ public interface IServerHubClient
 [Authorize(Roles = "Administrator")]
 public class ServerHub : Hub<IServerHubClient>
 {
-    private readonly ISocketServer _socketServer;
+    private readonly IGameServerRegistry _registry;
     private readonly IServerSettingsRepository _serverSettingsRepository;
     private readonly IServiceProvider _serviceProvider;
 
     // TODO: remove socketserver dependency and use mediatr instead?
     // TODO: possibly user the server-specific mediator instead of WebModule directly
-    public ServerHub(ISocketServer socketServer, IServerSettingsRepository serverSettingsRepository, IServiceProvider serviceProvider)
+    public ServerHub(IGameServerRegistry registry, IServerSettingsRepository serverSettingsRepository, IServiceProvider serviceProvider)
     {
-        _socketServer = socketServer;
+        _registry = registry;
         _serverSettingsRepository = serverSettingsRepository;
         _serviceProvider = serviceProvider;
     }
@@ -63,10 +64,10 @@ public class ServerHub : Hub<IServerHubClient>
             await module.SendServerInfo(GetUserId(), false);
         }
 
-        var disconnectedServers = await _socketServer.GetDisconnectedServersAsync();
+        var disconnectedServers = await _registry.GetDisconnectedServersAsync();
         foreach (var serverInfo in disconnectedServers)
         {
-            var serverId = $"{serverInfo.IpAddress}:{serverInfo.GamePort}";
+            var serverId = serverInfo.ServerId;
             await Clients.All.ServerUpdateEvent(new Shared.Communication.Events.ServerUpdateEvent
             {
                 Id = serverId,
@@ -98,7 +99,7 @@ public class ServerHub : Hub<IServerHubClient>
     private WebModule GetWebModule(string serverId)
     {
         // TODO: send new event type via mediator instead like GameStreamConsumer?
-        var module = _socketServer.GetGameServer(serverId)?.ModManager.GetModule<WebModule>();
+        var module = _registry.GetGameServer(serverId)?.ModManager.GetModule<WebModule>();
         if (module == null)
             throw new Exception("WebModule not found for" + serverId);
 
@@ -108,7 +109,7 @@ public class ServerHub : Hub<IServerHubClient>
     private IEnumerable<WebModule> GetWebModules(string? serverGroup = null)
     {
         // TODO: send new event type via mediator instead like GameStreamConsumer?
-        return _socketServer.GetGameServers(serverGroup).Select(s => s.ModManager.GetModule<WebModule>());
+        return _registry.GetGameServers(serverGroup).Select(s => s.ModManager.GetModule<WebModule>());
     }
 
     private string GetUserId()
@@ -161,14 +162,14 @@ public class ServerHub : Hub<IServerHubClient>
     {
         using var _ = Telemetry.StartRootActivity();
         var serverEntity = server.Adapt<Data.Entities.Server>();
-        await _socketServer.AddOrUpdateServerAsync(serverEntity);
+        await _registry.AddOrUpdateServerAsync(serverEntity);
         await SendServerUpdatesAsync();
     }
 
     public async Task RemoveServer(string serverId)
     {
         using var _ = Telemetry.StartRootActivity();
-        await _socketServer.RemoveServerAsync(serverId);
+        await _registry.RemoveServerAsync(serverId);
         await Clients.All.ServerRemoveEvent(new ServerRemoveEvent { ServerId = serverId });
     }
 
@@ -230,7 +231,7 @@ public class ServerHub : Hub<IServerHubClient>
     public async Task ReloadServerGroupModules(string serverGroup)
     {
         using var _ = Telemetry.StartRootActivity();
-        var gameServers = _socketServer.GetGameServers(serverGroup);
+        var gameServers = _registry.GetGameServers(serverGroup);
         foreach (var gameServer in gameServers)
         {
             await ReloadModulesAsync(gameServer);

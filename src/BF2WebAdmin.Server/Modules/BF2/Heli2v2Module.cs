@@ -554,13 +554,13 @@ public class Heli2v2Module : BaseModule,
     {
         if (command.Value == 0)
         {
-            _gameServer.GameWriter.SendRcon(RconScript.MgOff);
+            _gameServer.GameWriter.SendConsole(RconScript.MgOff);
             _gameServer.GameWriter.SendText("Heli MG off");
         }
 
         if (command.Value == 1)
         {
-            _gameServer.GameWriter.SendRcon(RconScript.MgOn);
+            _gameServer.GameWriter.SendConsole(RconScript.MgOn);
             _gameServer.GameWriter.SendText("Heli MG on");
         }
     }
@@ -571,37 +571,25 @@ public class Heli2v2Module : BaseModule,
         if (player == null)
             return;
 
-        var objectId = player.Vehicle.RootVehicleId;
+        if (player.Vehicle == null)
+            return;
+
         var hasCollision = command.Value == 1 ? 0 : 1;
         player.Vehicle.HasCollision = hasCollision == 1;
 
-        var replacements = new Dictionary<string, string>
-        {
-            { "{OBJECT_ID}", objectId.ToString() }
-        };
-
-        var script = player.Vehicle.HasCollision ? RconScript.NoclipOff : RconScript.NoclipOn;
-        script = script.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
-
-        _gameServer.GameWriter.SendRcon(script);
+        // The console's object commands act on the active object, selected by its console (grid) id
+        _gameServer.GameWriter.SendSetObjectActive(player.Vehicle.ConsoleId);
+        _gameServer.GameWriter.SendConsole(player.Vehicle.HasCollision ? RconScript.NoclipOff : RconScript.NoclipOn);
     }
 
     private ValueTask RemoveNoClipAsync(Player? player, Vehicle? vehicle)
     {
-        if (vehicle is not null || player is null || player.PreviousVehicle.HasCollision && player.PreviousVehicle.Players.Any())
+        if (vehicle is not null || player?.PreviousVehicle is null || player.PreviousVehicle.HasCollision && player.PreviousVehicle.Players.Any())
             return ValueTask.CompletedTask;
 
-        var objectId = player.PreviousVehicle.RootVehicleId;
         player.PreviousVehicle.HasCollision = true;
-
-        var replacements = new Dictionary<string, string>
-        {
-            { "{OBJECT_ID}", objectId.ToString() }
-        };
-
-        var script = RconScript.NoclipOff.Select(line => line.ReplacePlaceholders(replacements)).ToArray();
-
-        _gameServer.GameWriter.SendRcon(script);
+        _gameServer.GameWriter.SendSetObjectActive(player.PreviousVehicle.ConsoleId);
+        _gameServer.GameWriter.SendConsole(RconScript.NoclipOff);
 
         return ValueTask.CompletedTask;
     }
@@ -621,7 +609,7 @@ public class Heli2v2Module : BaseModule,
         StopRecording();
         _playbackCancellation?.Cancel();
 
-        _gameServer.GameWriter.SendRcon(RconScript.InitServer);
+        _gameServer.GameWriter.SendConsole(RconScript.InitServer);
     }
 
     public async ValueTask HandleAsync(PadCommand command)
@@ -649,13 +637,11 @@ public class Heli2v2Module : BaseModule,
             _gameServer.GameWriter.SendHealth(player, 875);
             if (player.Team.Id == 1)
             {
-                _gameServer.GameWriter.SendTeleport(player, chPadPos);
-                _gameServer.GameWriter.SendRotate(player, chPadRot);
+                _gameServer.GameWriter.SendTeleport(player, chPadPos, chPadRot);
             }
             else if (player.Team.Id == 2)
             {
-                _gameServer.GameWriter.SendTeleport(player, usPadPos);
-                _gameServer.GameWriter.SendRotate(player, usPadRot);
+                _gameServer.GameWriter.SendTeleport(player, usPadPos, usPadRot);
             }
         }
 
@@ -669,7 +655,7 @@ public class Heli2v2Module : BaseModule,
         //    // TODO: to script file
         //    // Not very stable if I remember correctly
         //    var objectId = player.SubVehicle.RootVehicleId;
-        //    _gameServer.GameWriter.SendRcon(
+        //    _gameServer.GameWriter.SendConsole(
         //        $"object.active id{objectId}",
         //        $"object.setIsDisabledRecursive 1",
         //        $"object.setIsDisabledRecursive 0"
@@ -857,8 +843,7 @@ public class Heli2v2Module : BaseModule,
             //await MultimediaTimer.Delay((int)(snapshot.Item1 - previousTime));
             SpinWait.SpinUntil(() => sw.ElapsedMilliseconds > snapshot.Item1, 1000);
             Logger.LogError("Variance: {VarianceMs}", sw.ElapsedMilliseconds - snapshot.Item1);
-            _gameServer.GameWriter.SendTeleport(_playerRecordingTarget, snapshot.Item2);
-            _gameServer.GameWriter.SendRotate(_playerRecordingTarget, snapshot.Item3);
+            _gameServer.GameWriter.SendTeleport(_playerRecordingTarget, snapshot.Item2, snapshot.Item3);
             if (_playbackCancellation.IsCancellationRequested)
                 break;
             //previousTime = snapshot.Item1;
@@ -885,11 +870,10 @@ public class Heli2v2Module : BaseModule,
         var result = new List<(string, string, string)>();
         foreach (var defaultSetting in DefaultTvMissileSettings)
         {
-            _gameServer.GameWriter.SendRcon("ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv");
-            var value = await _gameServer.GameWriter.GetRconResponseAsync(
-                defaultSetting.Template.Split(' ').FirstOrDefault()
-            );
-            result.Add((defaultSetting.Name, value, defaultSetting.DefaultValue));
+            // Commands run in order, so the getter reads the template made active just before it
+            _gameServer.GameWriter.SendConsole("ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv");
+            var lines = await _gameServer.GameWriter.ConsoleAsync(defaultSetting.Template.Split(' ').First());
+            result.Add((defaultSetting.Name, string.Join(" ", lines).Trim(), defaultSetting.DefaultValue));
         }
 
         _gameServer.GameWriter.SendText($"TV missile settings: {string.Join(", ", result.Take(6).Select(r => $"{r.Item1}: {r.Item2} ({r.Item3})"))}");
@@ -910,7 +894,7 @@ public class Heli2v2Module : BaseModule,
             return ValueTask.CompletedTask;
         }
 
-        _gameServer.GameWriter.SendRcon(
+        _gameServer.GameWriter.SendConsole(
             "ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv",
             string.Format(matchingSetting.Template, command.Value)
         );
@@ -933,7 +917,7 @@ public class Heli2v2Module : BaseModule,
         }
         else if (command.Type == "test")
         {
-            _gameServer.GameWriter.SendRcon(
+            _gameServer.GameWriter.SendConsole(
                 "ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv",
                 "ObjectTemplate.seek.trackingDelay 0.2", // 0.2
                 "ObjectTemplate.follow.maxYaw 1.5", // 1.5
@@ -959,7 +943,7 @@ public class Heli2v2Module : BaseModule,
 
     private void SetDefaultTvMissile()
     {
-        _gameServer.GameWriter.SendRcon(
+        _gameServer.GameWriter.SendConsole(
             "ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv",
             "ObjectTemplate.seek.trackingDelay 0.2",
             "ObjectTemplate.follow.maxYaw 1.5",
@@ -1087,7 +1071,7 @@ public class Heli2v2Module : BaseModule,
             }
         }
 
-        _gameServer.GameWriter.SendRcon(RconScript.InitServer);
+        _gameServer.GameWriter.SendConsole(RconScript.InitServer);
         _gameServer.GameWriter.SendTimerInterval(DefaultPositionTrackerInterval);
         SetDefaultTvMissile();
 
@@ -1129,8 +1113,7 @@ public class Heli2v2Module : BaseModule,
 
         if (teamPlayers!.Any(p => p.Team.Id != teamPlayers[0].Team.Id))
         {
-            var isFixed = await _gameServer.FixTeamMismatchAsync(teamPlayers);
-            if (!isFixed)
+            // The admin channel reports every team change (any source), so a mismatch is real; nothing to re-query
             {
                 // TODO: figure ut why this is not 100% fixed
                 _gameServer.GameWriter.SendText($"Team mismatch for {string.Join(" & ", teamPlayers.Select(p => $"{p.ShortName}"))} - switch team to fix match");
@@ -1665,20 +1648,11 @@ public class Heli2v2Module : BaseModule,
 
         foreach (var fenceTemplate in fenceTemplates)
         {
-            var response = await GameServer.GameWriter.GetRconResponseAsync("object.listObjectsOfTemplate " + fenceTemplate);
-            foreach (var line in response.Split('\b'))
+            // Static map objects have a console (grid) id and usually no networkable id
+            var objects = await GameServer.GameWriter.ListObjectsAsync(fenceTemplate);
+            foreach (var o in objects)
             {
-                var match = Regex.Match(line, "ID ([0-9]+)");
-                if (!match.Success)
-                    continue;
-
-                var objectId = match.Groups[1].Value;
-                // GameServer.GameWriter.SendText(objectId + " | " + line);
-                GameServer.GameWriter.SendRcon(
-                    $"object.active id{objectId}",
-                    "object.delete"
-                );
-
+                GameServer.GameWriter.SendDeleteObject(o.ConsoleId);
                 removedObjects++;
             }
         }

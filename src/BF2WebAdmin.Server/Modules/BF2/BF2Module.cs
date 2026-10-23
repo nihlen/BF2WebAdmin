@@ -127,14 +127,14 @@ public class BF2Module : BaseModule,
         if (player == null)
             return;
 
-        _gameServer.GameWriter.SendHealth(player, 10000);
+        _gameServer.GameWriter.SendHealthFraction(player, 1);
     }
 
     public void Handle(RepairAllCommand command)
     {
         foreach (var player in _gameServer.Players)
         {
-            _gameServer.GameWriter.SendHealth(player, 10000);
+            _gameServer.GameWriter.SendHealthFraction(player, 1);
         }
     }
 
@@ -144,7 +144,7 @@ public class BF2Module : BaseModule,
         if (player == null)
             return;
 
-        _gameServer.GameWriter.SendHealth(player, 1);
+        _gameServer.GameWriter.SendKill(player, destroyVehicle: true);
     }
 
     public void Handle(KillIdCommand command)
@@ -153,7 +153,7 @@ public class BF2Module : BaseModule,
         if (player == null)
             return;
 
-        _gameServer.GameWriter.SendHealth(player, 1);
+        _gameServer.GameWriter.SendKill(player, destroyVehicle: true);
     }
 
     public void Handle(ScoreCommand command)
@@ -198,14 +198,14 @@ public class BF2Module : BaseModule,
     public void Handle(GravityDefaultCommand command)
     {
         // TODO: to script file
-        _gameServer.GameWriter.SendRcon("physics.gravity -14.73");
+        _gameServer.GameWriter.SendConsole("physics.gravity -14.73");
         _gameServer.GameWriter.SendText("Gravity: -14.73 (Default)");
     }
 
     public void Handle(GravityCommand command)
     {
         // TODO: to script file
-        _gameServer.GameWriter.SendRcon($"physics.gravity {command.Value}");
+        _gameServer.GameWriter.SendConsole($"physics.gravity {command.Value}");
         _gameServer.GameWriter.SendText($"Gravity: {command.Value}");
     }
 
@@ -316,7 +316,7 @@ public class BF2Module : BaseModule,
         }
 
         _gameServer.GameWriter.SendText($"OK");
-        _gameServer.GameWriter.SendRcon(commands);
+        _gameServer.GameWriter.SendConsole(commands);
     }
 
     public async ValueTask HandleAsync(DanceCommand command)
@@ -343,16 +343,14 @@ public class BF2Module : BaseModule,
             foreach (var playerSnapshot in snapshots)
             {
                 var newRotation = new Rotation(_random.Next(-180, 180), _random.Next(-180, 180), _random.Next(-180, 180));
-                _gameServer.GameWriter.SendTeleport(playerSnapshot.Player, playerSnapshot.Position);
-                _gameServer.GameWriter.SendRotate(playerSnapshot.Player, newRotation);
+                _gameServer.GameWriter.SendTeleport(playerSnapshot.Player, playerSnapshot.Position, newRotation);
             }
             await Task.Delay(DefaultDelay);
         }
 
         foreach (var playerSnapshot in snapshots)
         {
-            _gameServer.GameWriter.SendTeleport(playerSnapshot.Player, playerSnapshot.Position);
-            _gameServer.GameWriter.SendRotate(playerSnapshot.Player, new Rotation(playerSnapshot.Rotation.Yaw, 0, 0));
+            _gameServer.GameWriter.SendTeleport(playerSnapshot.Player, playerSnapshot.Position, new Rotation(playerSnapshot.Rotation.Yaw, 0, 0));
         }
     }
 
@@ -378,11 +376,8 @@ public class BF2Module : BaseModule,
                 continue;
 
             // TODO: to script file
-            var objectId = player.Vehicle.RootVehicleId;
-            _gameServer.GameWriter.SendRcon(
-                $"object.active id{objectId}",
-                $"object.setIsDisabledRecursive 1"
-            );
+            _gameServer.GameWriter.SendSetObjectActive(player.Vehicle.ConsoleId);
+            _gameServer.GameWriter.SendConsole("object.setIsDisabledRecursive 1");
             player.Vehicle.IsDisabled = true;
         }
 
@@ -400,11 +395,8 @@ public class BF2Module : BaseModule,
                 continue;
 
             // TODO: to script file
-            var objectId = vehicle.RootVehicleId;
-            _gameServer.GameWriter.SendRcon(
-                $"object.active id{objectId}",
-                $"object.setIsDisabledRecursive 0"
-            );
+            _gameServer.GameWriter.SendSetObjectActive(vehicle.ConsoleId);
+            _gameServer.GameWriter.SendConsole("object.setIsDisabledRecursive 0");
             vehicle.IsDisabled = false;
         }
     }
@@ -455,7 +447,7 @@ public class BF2Module : BaseModule,
         _gameServer.GameWriter.SendText("1", false);
 
         var script = RconScript.AddObject.Select(line => line.ReplacePlaceholders(replacements));
-        _gameServer.GameWriter.SendRcon(script.ToArray());
+        _gameServer.GameWriter.SendConsole(script.ToArray());
     }
 
     public async ValueTask HandleAsync(GetAuthCommand command)
@@ -511,7 +503,7 @@ public class BF2Module : BaseModule,
             return;
         }
 
-        var rconClient = new RconClient(_gameServer.ConnectedIpAddress, _gameServer.ServerInfo.RconPort, _gameServer.ServerInfo.RconPassword, Logger);
+        var rconClient = new RconClient(_gameServer.IpAddress, _gameServer.ServerInfo.RconPort, _gameServer.ServerInfo.RconPassword, Logger);
 
         // Delete existing admins and add new admins from DB
         var ingameAdminResponse = await rconClient.SendAsync("iga listAdmins");
@@ -520,7 +512,8 @@ public class BF2Module : BaseModule,
         
         var commands = new List<string>();
         commands.AddRange(ingameAdmins.Select(a => $"iga delAdmin {a}"));
-        commands.AddRange(admins.Select(a => $"iga addAdmin {a.PlayerHash} all"));
+        // Name keys (test servers) are not CD-key hashes, so ModManager's admin list cannot use them
+        commands.AddRange(admins.Where(a => !a.PlayerHash.StartsWith(Player.NameKeyPrefix)).Select(a => $"iga addAdmin {a.PlayerHash} all"));
         var response = await rconClient.SendAsync(commands);
     }
 
@@ -623,7 +616,7 @@ public class BF2Module : BaseModule,
     {
         _autoRepairOn = !_autoRepairOn;
 
-        _gameServer.GameWriter.SendRcon(_autoRepairOn ? RconScript.AutoRepairOn : RconScript.AutoRepairOff);
+        _gameServer.GameWriter.SendConsole(_autoRepairOn ? RconScript.AutoRepairOn : RconScript.AutoRepairOff);
         _gameServer.GameWriter.SendText(_autoRepairOn ? "Auto repair on": "Auto repair off");
     }
 }

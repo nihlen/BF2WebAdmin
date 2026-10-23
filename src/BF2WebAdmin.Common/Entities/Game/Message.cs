@@ -13,7 +13,7 @@ public class Message
         get { return _text; }
         set
         {
-            _text = value.Replace("�", "§").Replace("§C1001", "").Replace("§3", "").Trim();
+            _text = value.Replace("§C1001", "").Replace("§3", "").Trim();
         }
     }
 }

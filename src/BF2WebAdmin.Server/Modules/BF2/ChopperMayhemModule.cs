@@ -99,23 +99,15 @@ public class ChopperMayhemModule : BaseModule,
         if (isAstronaut && !isExistingAstronaut)
         {
             _astronauts.Add(player.Index, DateTime.UtcNow);
-            var objectId = player.Vehicle?.RootVehicleId;
-            GameServer.GameWriter.SendRcon(
-                $"object.active id{objectId}"
-                //"object.hasMobilePhysics 0"
-                //"object.setIsDisabledRecursive 1"
-            );
+            GameServer.GameWriter.SendSetObjectActive(player.Vehicle?.ConsoleId ?? -1);
+            //GameServer.GameWriter.SendConsole("object.hasMobilePhysics 0", "object.setIsDisabledRecursive 1");
             //GameServer.GameWriter.SendText($"NASA detected ({player.Name.Trim()})");
         }
         else if (!isAstronaut && isExistingAstronaut)
         {
             _astronauts.Remove(player.Index);
-            var objectId = player.Vehicle?.RootVehicleId;
-            GameServer.GameWriter.SendRcon(
-                $"object.active id{objectId}"
-                //"object.hasMobilePhysics 1"
-                //"object.setIsDisabledRecursive 0"
-            );
+            GameServer.GameWriter.SendSetObjectActive(player.Vehicle?.ConsoleId ?? -1);
+            //GameServer.GameWriter.SendConsole("object.hasMobilePhysics 1", "object.setIsDisabledRecursive 0");
             //GameServer.GameWriter.SendText($"No NASA detected ({player.Name.Trim()})");
         }
 
@@ -197,8 +189,8 @@ public class ChopperMayhemModule : BaseModule,
         
     public async ValueTask HandleAsync(MapChangedEvent e)
     {
-        GameServer.GameWriter.SendRcon(RconScript.HeliLessBsDamageOn);
-        GameServer.GameWriter.SendRcon(
+        GameServer.GameWriter.SendConsole(RconScript.HeliLessBsDamageOn);
+        GameServer.GameWriter.SendConsole(
             // No J10 damage
             "ObjectTemplate.activeSafe GenericProjectile AIR_J10_Cannon_Projectile",
             "ObjectTemplate.detonation.explosionDamage 0",
@@ -260,8 +252,8 @@ public class ChopperMayhemModule : BaseModule,
 
     public ValueTask HandleAsync(PlayerKillEvent e)
     {
-        // victimPosition bugged
-        var victimPosition = e.Victim.Position;
+        // The admin channel reports the victim's own root position (mm_webadmin's was wrong)
+        var victimPosition = e.VictimPosition ?? e.Victim.Position;
 
         var hasSafeAreas = MapSafeAreas.TryGetValue(GameServer.Map.Name.ToLower(), out var safeAreas);
         if (!hasSafeAreas)
@@ -295,8 +287,7 @@ public class ChopperMayhemModule : BaseModule,
         if (inPortal == null)
             return ValueTask.CompletedTask;
 
-        GameServer.GameWriter.SendRotate(e.Player, inPortal.OutRotation);
-        GameServer.GameWriter.SendTeleport(e.Player, inPortal.OutPosition);
+        GameServer.GameWriter.SendTeleport(e.Player, inPortal.OutPosition, inPortal.OutRotation);
 
         return ValueTask.CompletedTask;
     }

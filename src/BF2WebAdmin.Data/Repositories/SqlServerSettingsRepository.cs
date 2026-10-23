@@ -42,6 +42,8 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
                 ,[DiscordAdminChannel]
                 ,[DiscordNotificationChannel]
                 ,[DiscordMatchResultChannel]
+                ,[AdminKey]
+                ,[IsTestServer]
             FROM [dbo].[Server]"
         );
     }
@@ -61,6 +63,8 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
                 ,[DiscordAdminChannel]
                 ,[DiscordNotificationChannel]
                 ,[DiscordMatchResultChannel]
+                ,[AdminKey]
+                ,[IsTestServer]
             FROM [dbo].[Server]
             WHERE [ServerId] = @ServerId",
             new { ServerId = serverId }
@@ -85,7 +89,9 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
 	                ,[DiscordBotToken]
 	                ,[DiscordAdminChannel]
 	                ,[DiscordNotificationChannel]
-	                ,[DiscordMatchResultChannel])
+	                ,[DiscordMatchResultChannel]
+	                ,[AdminKey]
+	                ,[IsTestServer])
                 VALUES
 	                (@ServerId
 	                ,@ServerGroup
@@ -97,7 +103,9 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
 	                ,@DiscordBotToken
 	                ,@DiscordAdminChannel
 	                ,@DiscordNotificationChannel
-	                ,@DiscordMatchResultChannel)",
+	                ,@DiscordMatchResultChannel
+	                ,@AdminKey
+	                ,@IsTestServer)",
                 new
                 {
                     ServerId = server.ServerId, 
@@ -110,7 +118,9 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
                     DiscordBotToken = server.DiscordBotToken,
                     DiscordAdminChannel = server.DiscordAdminChannel,
                     DiscordNotificationChannel = server.DiscordNotificationChannel,
-                    DiscordMatchResultChannel = server.DiscordMatchResultChannel
+                    DiscordMatchResultChannel = server.DiscordMatchResultChannel,
+                    AdminKey = server.AdminKey,
+                    IsTestServer = server.IsTestServer
                 }
             );
         }
@@ -126,6 +136,8 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
 	                ,[DiscordAdminChannel] = @DiscordAdminChannel
 	                ,[DiscordNotificationChannel] = @DiscordNotificationChannel
 	                ,[DiscordMatchResultChannel] = @DiscordMatchResultChannel
+	                ,[AdminKey] = @AdminKey
+	                ,[IsTestServer] = @IsTestServer
                 WHERE [ServerId] = @ServerId",
                 new
                 {
@@ -137,7 +149,9 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
                     DiscordBotToken = server.DiscordBotToken,
                     DiscordAdminChannel = server.DiscordAdminChannel,
                     DiscordNotificationChannel = server.DiscordNotificationChannel,
-                    DiscordMatchResultChannel = server.DiscordMatchResultChannel
+                    DiscordMatchResultChannel = server.DiscordMatchResultChannel,
+                    AdminKey = server.AdminKey,
+                    IsTestServer = server.IsTestServer
                 }
             );
         }

@@ -1,4 +1,5 @@
 ﻿using AspNetCore.Authentication.ApiKey;
+using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Common.Communication;
 using BF2WebAdmin.Shared.Communication.DTOs;
 using BF2WebAdmin.Shared.Communication.Events;
@@ -13,17 +14,17 @@ namespace BF2WebAdmin.Server.Controllers;
 [Route("/api/v1/servers")]
 public class ServerController : Controller
 {
-    private readonly ISocketServer _socketServer;
+    private readonly IGameServerRegistry _registry;
 
-    public ServerController(ISocketServer socketServer)
+    public ServerController(IGameServerRegistry registry)
     {
-        _socketServer = socketServer;
+        _registry = registry;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetServers()
     {
-        var servers = _socketServer.GetGameServers().Select(s => new Shared.Communication.Events.ServerUpdateEvent
+        var servers = _registry.GetGameServers().Select(s => new Shared.Communication.Events.ServerUpdateEvent
         {
             Id = s.Id,
             Name = s.Name,
@@ -43,7 +44,7 @@ public class ServerController : Controller
     [HttpGet("{serverId}")]
     public async Task<IActionResult> GetServer(string serverId)
     {
-        var server = _socketServer.GetGameServer(serverId);
+        var server = _registry.GetGameServer(serverId);
         var result = new ServerSnapshotEvent
         {
             Server = new ServerDto
@@ -62,7 +63,7 @@ public class ServerController : Controller
             },
             Data = new ServerDataDto
             {
-                ServerId = $"{server.ServerInfo.IpAddress}:{server.ServerInfo.GamePort}",
+                ServerId = server.ServerInfo.ServerId,
                 ServerGroup = server.ServerInfo.ServerGroup,
                 IpAddress = server.ServerInfo.IpAddress,
                 GamePort = server.ServerInfo.GamePort,
@@ -72,7 +73,9 @@ public class ServerController : Controller
                 DiscordBotToken = server.ServerInfo.DiscordBot.Token,
                 DiscordAdminChannel = server.ServerInfo.DiscordBot.AdminChannel,
                 DiscordNotificationChannel = server.ServerInfo.DiscordBot.NotificationChannel,
-                DiscordMatchResultChannel = server.ServerInfo.DiscordBot.MatchResultChannel
+                DiscordMatchResultChannel = server.ServerInfo.DiscordBot.MatchResultChannel,
+                AdminKey = server.ServerInfo.AdminKey,
+                IsTestServer = server.ServerInfo.IsTestServer
             },
             Maps = server.Maps.Select(m => m.ToDto()),
             Teams = server.Teams.Select(t => t.ToDto()),
@@ -88,7 +91,7 @@ public class ServerController : Controller
     public async Task<IActionResult> CreateServer([FromBody] Data.Entities.Server server)
     {
         var serverEntity = server.Adapt<Data.Entities.Server>();
-        await _socketServer.AddOrUpdateServerAsync(serverEntity);
+        await _registry.AddOrUpdateServerAsync(serverEntity);
         return Ok();
     }
 
@@ -99,14 +102,14 @@ public class ServerController : Controller
             return BadRequest();
 
         var serverEntity = server.Adapt<Data.Entities.Server>();
-        await _socketServer.AddOrUpdateServerAsync(serverEntity);
+        await _registry.AddOrUpdateServerAsync(serverEntity);
         return Ok();
     }
 
     [HttpDelete("{serverId}")]
     public async Task<IActionResult> DeleteServer(string serverId)
     {
-        await _socketServer.RemoveServerAsync(serverId);
+        await _registry.RemoveServerAsync(serverId);
         return Ok();
     }
 }

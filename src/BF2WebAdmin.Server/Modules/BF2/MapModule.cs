@@ -144,7 +144,7 @@ public class MapModule : IModule,
         };
 
         var script = RconScript.AddObject.Select(line => line.ReplacePlaceholders(replacements));
-        _gameServer.GameWriter.SendRcon(script.ToArray());
+        _gameServer.GameWriter.SendConsole(script.ToArray());
         _mapObjects.Add(new MapModObject
         {
             Id = Guid.NewGuid(),
@@ -161,7 +161,7 @@ public class MapModule : IModule,
     public async ValueTask HandleAsync(MapClearCommand command)
     {
         var playerScores = _gameServer.Players.Select(p => (p, new[] { p.Score.Total, p.Score.Team, p.Score.Kills, p.Score.Deaths }));
-        _gameServer.GameWriter.SendRcon(RconScript.RestartMap);
+        _gameServer.GameWriter.SendRestartMap();
         _mapObjects.Clear();
 
         _gameServer.GameWriter.SendText("Cleared map");
@@ -177,7 +177,7 @@ public class MapModule : IModule,
 
     public void Handle(MapUndoCommand command)
     {
-        _gameServer.GameWriter.SendRcon(RconScript.RestartMap);
+        _gameServer.GameWriter.SendRestartMap();
         var oldObjects = _mapObjects.Take(_mapObjects.Count - command.Count).ToList();
         _mapObjects.Clear();
 

@@ -3,6 +3,7 @@ using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
+using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Constants;
@@ -49,7 +50,9 @@ public class BF2Module : BaseModule,
     IHandleCommandAsync<GetAuthCommand>,
     IHandleCommand<SwitchCommand>,
     IHandleCommand<SwitchIdCommand>,
-    IHandleCommand<SwitchAllCommand>
+    IHandleCommand<SwitchAllCommand>,
+    IHandleCommandAsync<KickCommand>,
+    IHandleCommandAsync<BanCommand>
 {
     private readonly IGameServer _gameServer;
     private readonly ICountryResolver _countryResolver;
@@ -145,6 +148,48 @@ public class BF2Module : BaseModule,
             return;
 
         _gameServer.GameWriter.SendKill(player, destroyVehicle: true);
+    }
+
+    public async ValueTask HandleAsync(KickCommand command)
+    {
+        var player = _gameServer.GetPlayerByName(command.Name);
+        if (player == null)
+        {
+            _gameServer.GameWriter.SendText("Player not found");
+            return;
+        }
+
+        try
+        {
+            await _gameServer.GameWriter.KickAsync(player, $"Kicked by {command.Message.Player.DisplayName}");
+            _gameServer.GameWriter.SendText($"Kicked {player.DisplayName}");
+        }
+        catch (AdminCommandException ex)
+        {
+            _gameServer.GameWriter.SendText($"Kick refused: {ex.Message}");
+        }
+    }
+
+    public async ValueTask HandleAsync(BanCommand command)
+    {
+        var player = _gameServer.GetPlayerByName(command.Name);
+        if (player == null)
+        {
+            _gameServer.GameWriter.SendText("Player not found");
+            return;
+        }
+
+        try
+        {
+            // By CD key when the player has one, else by address (LAN and test servers have no CD-key hashes)
+            var byCdKey = !string.IsNullOrEmpty(player.Hash) && !player.HasNameKey;
+            await _gameServer.GameWriter.BanAsync(player, byCdKey, null, $"Banned by {command.Message.Player.DisplayName}");
+            _gameServer.GameWriter.SendText($"Banned {player.DisplayName}");
+        }
+        catch (AdminCommandException ex)
+        {
+            _gameServer.GameWriter.SendText($"Ban refused: {ex.Message}");
+        }
     }
 
     public void Handle(KillIdCommand command)

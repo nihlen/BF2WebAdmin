@@ -170,19 +170,21 @@ public class AdminGameWriter : IGameWriter
             Fire(id => new CmdHudEvent(id, Id(player), (byte)eventType, data));
     }
 
-    public void SendKick(Player player, string reason)
-    {
-        if (IsReal(player))
-            Fire(id => new CmdKick(id, Id(player), reason));
-    }
-
-    public void SendBan(Player player, bool byCdKey, TimeSpan? duration, string reason)
+    public async Task KickAsync(Player player, string reason)
     {
         if (!IsReal(player))
-            return;
+            throw new AdminCommandException($"no player {player.Index}", AdminErrorCode.UnknownPlayer);
+
+        await RequestAsync(id => new CmdKick(id, Id(player), reason));
+    }
+
+    public async Task BanAsync(Player player, bool byCdKey, TimeSpan? duration, string reason)
+    {
+        if (!IsReal(player))
+            throw new AdminCommandException($"no player {player.Index}", AdminErrorCode.UnknownPlayer);
 
         var (kind, seconds) = duration == null ? (CmdBan.DurationPermanent, 0u) : (CmdBan.DurationSeconds, (uint)duration.Value.TotalSeconds);
-        Fire(id => new CmdBan(id, Id(player), byCdKey ? CmdBan.ByCdKey : CmdBan.ByAddress, kind, seconds, reason));
+        await RequestAsync(id => new CmdBan(id, Id(player), byCdKey ? CmdBan.ByCdKey : CmdBan.ByAddress, kind, seconds, reason));
     }
 
     public void SendRestartMap() => Fire(id => new CmdMap(id, CmdMap.ActionRestart, 0, "", "", 0));

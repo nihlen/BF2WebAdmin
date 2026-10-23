@@ -60,6 +60,15 @@ try
     var serverSettings = builder.Configuration.GetSection("ServerSettings").Get<ServerSettings>();
     ArgumentNullException.ThrowIfNull(serverSettings);
 
+    if (args.Contains("--admin-pin"))
+    {
+        // Creates the admin channel certificate if needed and prints the adminCertSha256 value for serverext.cfg
+        using var certificate = AdminCertificate.LoadOrCreate(serverSettings.AdminChannel.CertificatePath, serverSettings.AdminChannel.CertificatePassword,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        Console.WriteLine(AdminCertificate.Pin(certificate));
+        return;
+    }
+
     builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Authentication"));
     builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
 

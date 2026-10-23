@@ -49,8 +49,11 @@ public interface IGameWriter
     void SendGameEvent(Player player, int eventType, int data);
     void SendHudEvent(Player player, int eventType, int data);
 
-    void SendKick(Player player, string reason);
-    void SendBan(Player player, bool byCdKey, TimeSpan? duration, string reason);
+    /// <summary>Kick a connected human player. The module refuses bots (AI-flagged players) with <see cref="AdminErrorCode.Refused"/>.</summary>
+    Task KickAsync(Player player, string reason);
+
+    /// <summary>Ban a connected human player, permanently when <paramref name="duration"/> is null. Bots and a CD-key ban without a hash are refused.</summary>
+    Task BanAsync(Player player, bool byCdKey, TimeSpan? duration, string reason);
 
     /// <summary>Restart the current round (admin.restartMap).</summary>
     void SendRestartMap();

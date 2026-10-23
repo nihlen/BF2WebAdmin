@@ -109,6 +109,13 @@ public class MapModule : IModule,
         }
 
         var player = command.Message.Player;
+        if (player?.Position == null || player.Rotation == null)
+        {
+            // Web and Discord users have no position in the game
+            _gameServer.GameWriter.SendText("Error: .o needs an in-game player position");
+            return;
+        }
+
         if (command.Template == "carrier")
         {
             var midPos = player.Position;

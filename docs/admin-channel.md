@@ -115,10 +115,113 @@ Discord, and the web UI's rcon box. `MapModule`'s object spawning keeps the cons
 (`RconScript.AddObject`): the typed `SpawnObject` creates server-only objects for templates without a networkable
 (the module's finding 17), and the script makes the template networkable first.
 
-## Results
+## Results (2026-10-23)
 
-(Filled in after the end-to-end run.)
+### Unit tests
+
+`test/BF2WebAdmin.Tests`: 220 pass (5 existing, 215 new).
+
+- **Golden file.** `Fixtures/admin-v1-golden.txt` is openbf2-server-ext `tests/fixtures/admin-v1-golden.txt` at
+  `0aab582`. All 60 frames are encoded from the same sample values as `adminclient.py golden_samples()` and match
+  byte for byte; all 60 also decode and re-encode identically.
+- **Malformed input.** Every payload cut short at each byte and one byte too long is rejected. Also rejected:
+  oversize and nonzero-reserved frames, unknown types, and five invalid UTF-8 forms (truncated, a bare 0xA7, overlong,
+  surrogate, beyond U+10FFFF).
+- **Byte-at-a-time framing.** All 60 frames fed one byte at a time decode.
+- **Handshake.** The transcript layout is checked, and an HMAC proof against a Python `hmac` reference value. Over
+  loopback TCP against a fake module: the right key passes; the module refuses another key; a wrong module proof
+  gets `Error` 8; an unknown id gets `Error` 8; version 2 gets `Error` 1; key parsing is checked.
+- **TLS 1.3.** A generated certificate passes with a client that pins the SPKI exactly as the module does.
+- **Session.** A gap brings one `RequestSnapshot`; after the snapshot, events at or below `lastSeq` are dropped.
+  Replies and an `Error` reply arrive as `AdminCommandException`. `Ping` gets a `Pong`. Commands keep call order. A
+  malformed frame gets `Error` 2 and closes the link. Stream frames are latest-wins.
+- **B6 key.** A hash, a name key on a test server, and no key elsewhere.
+
+### End to end (localtest, OpenBF2 variant)
+
+**Setup**
+
+| Item | Value |
+|---|---|
+| WebAdmin | This branch, published by `setup.ps1 -Repo <worktree> -OpenBF2`, on Windows 11 (`SslStream`/SChannel TLS 1.3) |
+| Server | Container `bf2wa-localtest-openbf2`: OpenBF2 `873d1b1` and module `0aab582`, built on bullseye against OpenSSL 1.1.1w |
+| Map and content | netsky content, `dalian_2_v_2` |
+| Ports | game 16569, GameSpy 29901, rcon 4721, bot channel 127.0.0.1:16705 |
+| Admin channel | Dials `host.docker.internal:4310` |
+| Clients | Bots from openbf2-server-ext `tools/testclient/serverext_client.py` at `0aab582`; web actions through `tools\hubclient`, i.e. the same hub methods the Blazor UI uses |
+
+**Build on OpenSSL 1.1.1.** This was new ground; phase 1 only ran 3.0.2. The module built with no warnings and its
+ctest suites (including the TLS test) passed. It links `libssl.so.1.1`/`libcrypto.so.1.1`, which the base image
+already ships, so nothing was installed.
+
+| Check | Result |
+|---|---|
+| TLS 1.3 with the pin | **Pass.** `TLS_AES_256_GCM_SHA384`, "certificate pin matches". The peer pin the module printed when it was given a wrong pin equals the pin WebAdmin logs, so both sides compute the SPKI hash the same way |
+| Handshake, Welcome, Snapshot, subscriptions | **Pass.** Welcome 1029 B with 34 maps (`MapsChanged` lists all 34 with mode and size) and capabilities 7. Streams 1 and 3 at 4 Hz, 2 and 4 at 1 Hz. None of the 30 `InitServer` console lines was refused |
+| Wrong key | **Pass.** The key was changed through the edit form's hub `SetServer`. The link closed, the module refused WebAdmin's proof (`Error` 8), and WebAdmin logged "adminKey differs from the Server.AdminKey". After the key was restored, the module reconnected within its 60 s backoff |
+| Wrong pin | **Pass.** The container was recreated with a bad `adminCertSha256`. The module aborted TLS and WebAdmin logged `UnknownCA`. Restored afterwards |
+| Players, positions, scores live | **Pass.** Bots appear with name keys `name:[BOT] alpha` on the test server (B6), teams CH/US, spawns, `PlayerVehicleEvent` (`ahe_z10`, `ahe_ah1z`) and scores. `PlayerPositionEvent` reaches the hub at 4 Hz per player, with the bots' own yaw/pitch/roll. Server list and snapshot are correct over REST and the hub |
+| Kill, death, crash | **Pass.** The bot client's `damage --crash` scenario passed 18/18. In WebAdmin: `PlayerKillEvent` (A → C, `ahe_z10_S8Launcher`), then `PlayerDeathEvent` C `IsSuicide=False`. The crash is a `NoAttacker` kill, then `PlayerDeathEvent` `IsSuicide=True`; `VehicleDestroyed` and bot created/removed events also arrived |
+| Heli2v2 `.pad` | **Pass.** Both helis were teleported (position and rotation) to their team's pad with `SetHealth` 875. It also works after a reconnect, where the snapshot seated the players |
+| Heli2v2 `.noclip` on/off, `.mg 0/1` | **Pass.** No refusal (`SetObjectActive` by console id, then the console lines) |
+| Heli2v2 `.tv` (TV-missile getters) | **Pass.** All 10 values were read through ordered `activeSafe` + `ConsoleAsync` |
+| Heli2v2 `.nofences` | **Pass.** 71 fences and lamp posts listed and deleted by console id (`ListObjects` + `DeleteObject`) |
+| `.repair` | **Pass.** No refusal (`SetHealth` fraction 1) |
+| `.kick`, `.ban` on bots | **Pass (refused).** `Error` 6 "bots cannot be kicked or banned", said in chat |
+| `.load localtest-towers` | **Pass.** Three `coolingtower_01` spawned with the console `ObjectSpawner` script |
+| `.clear` | **Pass.** Typed `Map` restart: game status 1 → 3 → 1, `RoundStart`, the bots respawned |
+| `.o` from the web | Refused in chat ("needs an in-game player position"). It used to throw `NullReferenceException`. In-game `.o` needs a human |
+| Chat, WebAdmin → game | **Pass.** Web chat → `Say` → it came back as `Chat` channel 12, with `§` intact (UTF-8) |
+| Chat, game → WebAdmin | **Pass** for server chat: `exec game.sayAll ...` from the web rcon box arrived in WebAdmin's chat log. Player chat needs a human (bots cannot chat) |
+| Map change | **Pass.** `!map daqing_2_v_2 gpm_cq 16` (web rcon box) gave EndGame, `RoundEnd`, PreGame, Playing, `RoundStart`, `MapChangedEvent 1,daqing_2_v_2`. The link stayed up through the level load, and the map was changed back afterwards |
+| WebAdmin restart | **Pass.** The module redialled with backoff (1, 2.3, 4.2 s ...). Session 2's snapshot rebuilt both bots, in their helis |
+| Game server restart | **Pass.** A new server process gave session 1; the snapshot had 0 players, so the stale bots left through `PlayerLeftEvent` |
+| Module cost | p50 10 µs, p99 30-140 µs per tick. 0 events dropped |
+
+**Not exercised: needs a human client or an internet server**
+
+- Heli2v2 rounds and matches. They start on player chat (`rdy`/`go` in Global), and bots cannot chat. Kill tracking,
+  `.pad`, `.noclip`, `.nofences` and the TV values were exercised; a full 2v2 round was not.
+- Human chat on channels 0/1 (Global/Team): the channel name WebAdmin gets, and the `HUD_TEXT_CHAT_*` stripping.
+- In-game `.o`, `Revive`, `ControlPoint` captures, a real kick or ban (and its `Kick`/`Ban` events and disconnect
+  reason).
+- The CD-key hash (internet server only), country lookup from a real IP, and the `iga addAdmin` sync of real hashes.
+- A sequence gap at runtime. It is covered by unit tests; the module's own phase-1 test exercised the drop path.
+- Discord: not configured locally.
+- The Blazor pages themselves were not looked at. Their data path (the hub events and methods) was exercised with
+  hubclient.
 
 ## Contract points that proved wrong or need attention
 
-(Filled in after the end-to-end run.)
+1. **Bot channel chat is not UTF-8.** The bot channel's `Chat` delivered `§` (0xA7) as U+FFFD (`[�C1001netsky…`) to
+   the bot client, and the Windows console crashed printing it. The admin channel converts correctly. This is a
+   module finding for the bot channel, not for WebAdmin.
+2. **The typed `SpawnObject` does not fit map mods.** Most map-mod templates have no networkable, so
+   `createObjectOnAllClients` creates server-only objects (phase-1 finding 17). `MapModule` keeps the console
+   `ObjectSpawner` script, which needs `adminAllowConsole 1`. With `adminAllowConsole 0`, map mods, noclip, freeze,
+   gravity, TV-missile settings and `InitServer` all stop working. The `Welcome` capability bit is logged as a warning.
+3. **Changing a key costs up to a minute.** After a failed attempt the module backs off up to 60 s, so a key fixed
+   in the edit form takes effect at the next retry.
+4. **Teleport rotation.** The module applies it (it logs `position rotation`), but a hovering bot's heading hold
+   turned the heli back within seconds. Whether a human's heli keeps the pad heading is unverified.
+5. **`Server.ServerId` is `nvarchar(20)`.** It is one character short of `255.255.255.255:65535`, and it is now the
+   module's `adminServerId`. This is a latent limit, unchanged.
+6. **The key is visible to edit-form users.** `GetServer` returns `AdminKey` to Administrator-role users of the edit
+   form (shown as a password field). It cannot be hashed: HMAC needs the raw key.
+7. **Kick and ban.** The web UI and Discord still kick and ban through ModManager's `iga` (classic rcon). The typed
+   commands are reached only through the new `.kick`/`.ban` chat commands.
+
+## Local test environment changes (`BF2WebAdmin-localtest`, not a git repo; originals in `scratch\orig-2026-10-23\`)
+
+| File | Change |
+|---|---|
+| `setup.ps1` | `-Repo <tree>` (default `..\BF2WebAdmin`, unchanged) and `-OpenBF2` |
+| `.env` | `ADMIN_KEY` generated once (`setup.ps1`); `ADMIN_CERT_SHA256` written from `BF2WebAdmin.Server.exe --admin-pin` |
+| `appsecrets.json` | `AdminChannel` (port 4310, certificate in `secrets\admin-channel.pfx`) |
+| Containers | With `-OpenBF2`, the `bf2` container is stopped and `bf2-openbf2` recreated; without it, the reverse |
+| `docker-compose.openbf2.yml` | New: service `bf2-openbf2` (profile `openbf2`, container `bf2wa-localtest-openbf2`, image `bf2wa-localtest-openbf2`). Ports 16569/udp, 29901/udp, 127.0.0.1:4721→4711, 127.0.0.1:16705 (bot channel). `SERVEREXT_CFG_EXTRA` carries `adminConnect host.docker.internal:4310`, `adminServerId 127.0.0.1:16569`, the key, the pin, `allowTeleport 1`, `allowRoundRestart 1`. `docker-compose.yml` is unchanged |
+| `openbf2\build.sh`, `openbf2\Dockerfile` | New: `git archive` of OpenBF2 `873d1b1` and openbf2-server-ext `0aab582` into a docker volume. Builds in `debian:bullseye` with `libssl-dev`, runs ctest, then builds the image FROM `cr.nihlen.net/library/bf2-netsky:2v2-nocheck`: binaries replaced, `openbf2.addModDll serverext`, `mm_webadmin` not loaded (ModManager and its rcon kept), `sv.internet 0`, the `SERVEREXT_CFG_EXTRA` hook, and an `ldd` check (`libssl1.1` is in the base image) |
+| `init-db.sql` | `AdminKey` and `IsTestServer` columns (create, or `ALTER` on an existing database). The local server row gets `AdminKey = $(AdminKey)` and `IsTestServer = 1` |
+| `start-webadmin.ps1` | Skips the BF2 container restart when the OpenBF2 variant runs |
+| `tools\hubclient` | Modes `--watch <s>`, `--rcon "<cmd>"`, `--get-server`, `--set-admin-key <hex>` |
+| `README.md` | The OpenBF2 variant |

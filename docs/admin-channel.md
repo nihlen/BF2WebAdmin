@@ -172,7 +172,7 @@ already ships, so nothing was installed.
 | `.clear` | **Pass.** Typed `Map` restart: game status 1 → 3 → 1, `RoundStart`, the bots respawned |
 | `.o` from the web | Refused in chat ("needs an in-game player position"). It used to throw `NullReferenceException`. In-game `.o` needs a human |
 | Chat, WebAdmin → game | **Pass.** Web chat → `Say` → it came back as `Chat` channel 12, with `§` intact (UTF-8) |
-| Chat, game → WebAdmin | **Pass** for server chat: `exec game.sayAll ...` from the web rcon box arrived in WebAdmin's chat log. Player chat needs a human (bots cannot chat) |
+| Chat, game → WebAdmin | **Pass** for server chat: `exec game.sayAll ...` from the web rcon box arrived in WebAdmin's chat log. Bot player chat (bot channel `Say`) arrives as player chat since 2026-10-24; human chat is untested |
 | Map change | **Pass.** `!map daqing_2_v_2 gpm_cq 16` (web rcon box) gave EndGame, `RoundEnd`, PreGame, Playing, `RoundStart`, `MapChangedEvent 1,daqing_2_v_2`. The link stayed up through the level load, and the map was changed back afterwards |
 | WebAdmin restart | **Pass.** The module redialled with backoff (1, 2.3, 4.2 s ...). Session 2's snapshot rebuilt both bots, in their helis |
 | Game server restart | **Pass.** A new server process gave session 1; the snapshot had 0 players, so the stale bots left through `PlayerLeftEvent` |
@@ -180,8 +180,9 @@ already ships, so nothing was installed.
 
 **Not exercised: needs a human client or an internet server**
 
-- Heli2v2 rounds and matches. They start on player chat (`rdy`/`go` in Global), and bots cannot chat. Kill tracking,
-  `.pad`, `.noclip`, `.nofences` and the TV values were exercised; a full 2v2 round was not.
+- Heli2v2 rounds and matches with a human. They start on player chat (`rdy`/`go` in Global). Since 2026-10-24 bots
+  chat as players (bot channel `Say`, openbf2-server-ext module `100d53e`), and Heli2v2 started, ended and stored 11
+  rounds of bot crews on a separate instance; no human has played a round yet.
 - Human chat on channels 0/1 (Global/Team): the channel name WebAdmin gets, and the `HUD_TEXT_CHAT_*` stripping.
 - In-game `.o`, `Revive`, `ControlPoint` captures, a real kick or ban (and its `Kick`/`Ban` events and disconnect
   reason).

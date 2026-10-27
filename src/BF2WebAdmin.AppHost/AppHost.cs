@@ -1,5 +1,8 @@
-// Local development: the server and the web UI's Vite dev server, which proxies /api and /hubs to the server.
+// Local development: the server, the web UI's Vite dev server (it proxies /api and /hubs to the server) and an optional
+// OpenBF2 game server with the server extension (OpenBF2.cs), started from the dashboard.
 // Publishing (aspire publish / aspire deploy): one image, the server with the web UI's build in its wwwroot.
+using BF2WebAdmin.AppHost;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 builder.AddDockerComposeEnvironment("compose");
@@ -12,7 +15,10 @@ if (builder.ExecutionContext.IsRunMode)
     // The admin channel listener of the dev server. Not the default 4310: the localtest's play WebAdmin listens there,
     // and the server stops when it cannot bind. Point a dev game server's adminConnect at this port, or change it with
     // AdminChannelPort in this project's appsettings or user secrets.
-    server.WithEnvironment("ServerSettings__AdminChannel__Port", builder.Configuration["AdminChannelPort"] ?? "4314");
+    var adminChannelPort = builder.Configuration["AdminChannelPort"] ?? "4314";
+    server.WithEnvironment("ServerSettings__AdminChannel__Port", adminChannelPort);
+
+    builder.AddOpenBF2Server(server, int.Parse(adminChannelPort));
 }
 else
 {

@@ -26,7 +26,7 @@ deploy or test against a game server.
 |---|---|
 | `src/BF2WebAdmin.Server` | The host (`Program.cs`): web API for the web UI (`Api/ApiEndpoints.cs`: queries and commands), SignalR hub (`Hubs/ServerHub.cs`: live updates only), `AdminChannel/` (listener, handshake, session, protocol codec, state applier), game modules (`Modules/BF2/`: `Heli2v2Module`, `MapModule`, `ChopperMayhemModule`, ...), `RconClient` (ModManager rcon), configuration in `Configuration/` (`appsettings.json`, `appsettings.<profile>.json`; a published build runs profile `release`, log level Information) plus an `appsecrets.json` |
 | `src/BF2WebAdmin.Web` | The web UI: Vite, React, TypeScript, TanStack Query and Router, shadcn/ui on Base UI, Tailwind CSS. Talks to the web API (types generated from its OpenAPI document into `src/api/`) and to the hub (event types in `src/api/events.ts`, by hand). See its README |
-| `src/BF2WebAdmin.AppHost` | Aspire AppHost: runs the server and the Vite dev server; publishes one server image with the web UI in `wwwroot` |
+| `src/BF2WebAdmin.AppHost` | Aspire AppHost: runs the server, the Vite dev server and an optional OpenBF2 game server (`OpenBF2.cs`, started from the dashboard); publishes one server image with the web UI in `wwwroot` |
 | `src/BF2WebAdmin.Common`, `src/BF2WebAdmin.Shared` | Shared types and helpers |
 | `src/BF2WebAdmin.Data` | Data access, EF migrations (SQLite), `Schema.sql` (SQL Server) |
 | `test/BF2WebAdmin.Tests` | Unit tests (admin codec against the golden file `Fixtures/admin-v1-golden.txt`, handshake, TLS, session, Heli2v2) |
@@ -56,6 +56,17 @@ npm run api                                # after changing the web API: regener
 The server's admin-channel listener defaults to port 4310, which the localtest's play WebAdmin holds; the server stops
 when it cannot bind its port. Under `aspire run` the AppHost gives it 4314 instead (`AdminChannelPort` in the AppHost's
 configuration). Running the server without Aspire next to the localtest needs `ServerSettings__AdminChannel__Port`.
+
+The `openbf2` resource in the Aspire dashboard is a game server container (OpenBF2 with the server extension) that
+starts only when you press Start; nothing is pulled or created before. Its image is local and never pulled:
+`bf2wa-localtest-openbf2:latest`, built by the localtest's `openbf2/build.sh`; other machines set `OpenBF2:Image`.
+The AppHost connects both ends: the container's `adminConnect` (the dev admin port), `adminServerId 127.0.0.1:16575`, a
+new admin key per run and the pin of the dev certificate (`%LOCALAPPDATA%\BF2WebAdmindmin-channel.pfx`, created by
+the AppHost if missing), and the matching `ServerSettings:GameServers` entry for the server, so the game server is in
+the server list without adding it. Ports: game 16575/udp, query 29907/udp, rcon 127.0.0.1:4727, bot channel
+127.0.0.1:16708. Configuration section `OpenBF2` in the AppHost (`Image`, `GamePort`, `QueryPort`, `RconPort`,
+`BotPort`, `AdminKey`, `RconPassword`, `ServerGroup`, `ServerName`, `CertificatePath`). Do not save that server in the
+edit form: a database row wins over the configured entry and keeps a key from an earlier run.
 
 End-to-end tests run in the localtest; see `system.md`. `setup.ps1` publishes this working tree, so uncommitted changes
 are included; it records the commit and the changed paths in its `app\source.txt`.

@@ -35,8 +35,7 @@ deploy or test against a game server.
 ## Build and test
 
 The projects target .NET 9 (the AppHost .NET 10) and build with the installed .NET 10 SDK. Build and test projects,
-not `BF2WebAdmin.sln`: the author's uncommitted copy of the solution lists an untracked `BF2WebAdmin.AppHost` in the
-repository root (an older one, not `src/BF2WebAdmin.AppHost`), and the solution does not list the web UI.
+not `BF2WebAdmin.sln`: the solution still lists the removed `BF2WebAdmin.Blazor` and not the AppHost or the web UI.
 
 The web UI needs Node 24, pinned in its `package.json` for Volta (the machine default is Node 20, too old for Vite).
 `dotnet publish` of the server runs `npm ci` and `npm run build` in `src/BF2WebAdmin.Web` and publishes `dist` as
@@ -62,8 +61,7 @@ are included; it records the commit and the changed paths in its `app\source.txt
 
 ## Rules
 
-- The author has uncommitted work here (at the moment `BF2WebAdmin.sln`,
-  `src/BF2WebAdmin.Server/Constants/RconScript.cs` and the untracked `BF2WebAdmin.AppHost/`). Never stage, commit,
+- The author has uncommitted work here (at the moment `src/BF2WebAdmin.Server/Constants/RconScript.cs`). Never stage, commit,
   revert or modify files you did not change; commit with explicit paths.
 - Local commits are allowed. Don't push, don't merge `admin-channel` into `master`, and don't open PRs or issues.
 - Port 16567 is reserved for the author's sessions. WebAdmin's admin-channel port must never be 16567.

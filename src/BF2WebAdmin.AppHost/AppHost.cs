@@ -7,7 +7,14 @@ builder.AddDockerComposeEnvironment("compose");
 var server = builder.AddProject<Projects.BF2WebAdmin_Server>("server")
     .WithExternalHttpEndpoints();
 
-if (builder.ExecutionContext.IsPublishMode)
+if (builder.ExecutionContext.IsRunMode)
+{
+    // The admin channel listener of the dev server. Not the default 4310: the localtest's play WebAdmin listens there,
+    // and the server stops when it cannot bind. Point a dev game server's adminConnect at this port, or change it with
+    // AdminChannelPort in this project's appsettings or user secrets.
+    server.WithEnvironment("ServerSettings__AdminChannel__Port", builder.Configuration["AdminChannelPort"] ?? "4314");
+}
+else
 {
     // The admin channel listener (ServerSettings:AdminChannel:Port, 4310 by default), dialed by the game servers' module.
     // Only published: in development the server listens on it directly.

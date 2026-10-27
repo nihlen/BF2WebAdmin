@@ -1,7 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect } from '@tanstack/react-router'
-import { api, isUnauthorized } from '@/api/client'
+import { createRootRouteWithContext, createRoute, createRouter, type ErrorComponentProps, Outlet, redirect, useRouter } from '@tanstack/react-router'
+import { api, errorMessage, isUnauthorized } from '@/api/client'
 import { AppLayout } from '@/components/app-layout'
+import { Button } from '@/components/ui/button'
 import { DashboardPage } from '@/pages/dashboard'
 import { LoginPage } from '@/pages/login'
 import { ServerPage } from '@/pages/server'
@@ -13,6 +14,30 @@ export const meQuery = api.queryOptions('get', '/api/auth/me')
 const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: Outlet,
 })
+
+/** Shown while a route's beforeLoad runs longer than a moment, such as the login check on a slow or stopped server. */
+function PendingPage() {
+  return <div className="flex min-h-svh items-center justify-center text-muted-foreground">Connecting to the server…</div>
+}
+
+/** A route that could not load, such as the login check failing because the server is down. */
+function ErrorPage({ error, reset }: ErrorComponentProps) {
+  const router = useRouter()
+  return (
+    <div className="flex min-h-svh flex-col items-center justify-center gap-4 p-6 text-center">
+      <p className="text-lg font-medium">The server could not be reached</p>
+      <p className="text-sm text-muted-foreground">{errorMessage(error)}</p>
+      <Button
+        onClick={() => {
+          reset()
+          void router.invalidate()
+        }}
+      >
+        Try again
+      </Button>
+    </div>
+  )
+}
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -27,7 +52,8 @@ const appRoute = createRoute({
   component: AppLayout,
   beforeLoad: async ({ context }) => {
     try {
-      await context.queryClient.ensureQueryData(meQuery)
+      // No retries: when the server is down, show the error page instead of waiting through them
+      await context.queryClient.ensureQueryData({ ...meQuery, retry: false })
     } catch (error) {
       if (isUnauthorized(error)) throw redirect({ to: '/login' })
       throw error
@@ -75,6 +101,8 @@ export function createAppRouter(queryClient: QueryClient) {
     routeTree,
     context: { queryClient },
     defaultPreload: 'intent',
+    defaultPendingComponent: PendingPage,
+    defaultErrorComponent: ErrorPage,
     // React Query caches the data; the router only needs to run beforeLoad
     defaultPreloadStaleTime: 0,
   })

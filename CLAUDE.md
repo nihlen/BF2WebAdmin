@@ -53,8 +53,9 @@ npm run build                              # type check and build the web UI
 npm run api                                # after changing the web API: regenerate src/api/openapi.json and schema.d.ts
 ```
 
-The server's admin-channel listener defaults to port 4310, which the localtest's play WebAdmin holds. To run a dev
-server next to it, set `ServerSettings__AdminChannel__Port` (for example 4314) in the environment of `aspire run`.
+The server's admin-channel listener defaults to port 4310, which the localtest's play WebAdmin holds; the server stops
+when it cannot bind its port. Under `aspire run` the AppHost gives it 4314 instead (`AdminChannelPort` in the AppHost's
+configuration). Running the server without Aspire next to the localtest needs `ServerSettings__AdminChannel__Port`.
 
 End-to-end tests run in the localtest; see `system.md`. `setup.ps1` publishes this working tree, so uncommitted changes
 are included; it records the commit and the changed paths in its `app\source.txt`.

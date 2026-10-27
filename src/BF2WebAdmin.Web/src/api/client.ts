@@ -54,8 +54,18 @@ const throwOnError: Middleware = {
   },
 }
 
+const requestTimeoutMs = 15_000
+
+// A request that gets no answer fails instead of waiting for good: Aspire's proxy accepts connections even while the
+// server behind it is stopped
+const timeout: Middleware = {
+  onRequest({ request }) {
+    return new Request(request, { signal: AbortSignal.any([request.signal, AbortSignal.timeout(requestTimeoutMs)]) })
+  },
+}
+
 export const fetchClient = createFetchClient<paths>({ baseUrl: '/', credentials: 'same-origin' })
-fetchClient.use(throwOnError)
+fetchClient.use(timeout, throwOnError)
 
 /** Typed React Query hooks for the web API: api.useQuery('get', '/api/servers'), api.useMutation('post', ...). */
 export const api = createClient(fetchClient)
@@ -66,4 +76,7 @@ export const isUnauthorized = (error: unknown) => error instanceof ApiError && e
  * The message of a failed query or mutation. The API documents no error bodies, so openapi-react-query types the
  * errors as never; they are the ApiErrors from throwOnError (or fetch's own errors).
  */
-export const errorMessage = (error: unknown) => (error instanceof Error ? error.message : 'Request failed')
+export const errorMessage = (error: unknown) => {
+  if (error instanceof DOMException && error.name === 'TimeoutError') return 'The server did not answer'
+  return error instanceof Error ? error.message : 'Request failed'
+}

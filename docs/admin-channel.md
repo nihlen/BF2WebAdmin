@@ -207,7 +207,8 @@ already ships, so nothing was installed.
    turned the heli back within seconds. Whether a human's heli keeps the pad heading is unverified.
 5. **`Server.ServerId` is `nvarchar(20)`.** It is one character short of `255.255.255.255:65535`, and it is now the
    module's `adminServerId`. This is a latent limit, unchanged.
-6. **The key is visible to edit-form users.** `GetServer` returns `AdminKey` to Administrator-role users of the edit
+6. **The key is visible to edit-form users.** `GET /api/servers/{id}/settings` (the hub's `GetServer` before the React
+   web UI) returns `AdminKey` to Administrator-role users of the edit
    form (shown as a password field). It cannot be hashed: HMAC needs the raw key.
 7. **Kick and ban.** The web UI and Discord still kick and ban through ModManager's `iga` (classic rcon). The typed
    commands are reached only through the new `.kick`/`.ban` chat commands.
@@ -224,7 +225,7 @@ already ships, so nothing was installed.
 | `openbf2\build.sh`, `openbf2\Dockerfile` | New: `git archive` of OpenBF2 `873d1b1` and openbf2-server-ext `0aab582` into a docker volume. Builds in `debian:bullseye` with `libssl-dev`, runs ctest, then builds the image FROM `cr.nihlen.net/library/bf2-netsky:2v2-nocheck`: binaries replaced, `openbf2.addModDll serverext`, `mm_webadmin` not loaded (ModManager and its rcon kept), `sv.internet 0`, the `SERVEREXT_CFG_EXTRA` hook, and an `ldd` check (`libssl1.1` is in the base image) |
 | `init-db.sql` | `AdminKey` and `IsTestServer` columns (create, or `ALTER` on an existing database). The local server row gets `AdminKey = $(AdminKey)` and `IsTestServer = 1` |
 | `start-webadmin.ps1` | Skips the BF2 container restart when the OpenBF2 variant runs |
-| `tools\hubclient` | Modes `--watch <s>`, `--rcon "<cmd>"`, `--get-server`, `--set-admin-key <hex>` |
+| `tools\hubclient` | Modes `--watch <s>`, `--rcon "<cmd>"`, `--get-server`, `--set-admin-key <hex>`. Uses the form login `/api/login`, MessagePack and the hub methods (`UserConnect`, `SelectServer`, `SendRconCommand`, `GetServer`, `SetServer`, `SendChatMessage`) that the React web UI replaced with the web API on 2026-10-27; it needs porting before it works again (`--watch` only needs `Subscribe` instead of `SelectServer`, JSON instead of MessagePack and the JSON login `POST /api/auth/login`) |
 | `README.md` | The OpenBF2 variant |
 | `openbf2\build.sh` (2026-10-23, play session) | Module default `0d5967f` (protocol v3 + launch number); `ldd --version \| head -1` under `pipefail` could die of SIGPIPE (exit 141), now `sed -n 1p` |
 | `play-2v2.ps1`, `grant-admin.ps1`, `sidecar\` (2026-10-23) | New: a human plays 2v2 against bf2-bots' sidecar (published into `sidecar\`), `-Mode Pilot\|Gunner\|Status\|Stop`, WebAdmin in the background, logs in `logs\play\`; `grant-admin.ps1 -Name <n>` writes `name:<n>` into `ServerPlayerAuth` (B6) and restarts that WebAdmin, which reads auth only at start. README "Play session" |

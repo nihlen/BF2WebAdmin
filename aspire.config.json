@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "src/BF2WebAdmin.AppHost/BF2WebAdmin.AppHost.csproj"
+  }
+}

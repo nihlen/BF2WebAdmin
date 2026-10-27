@@ -253,9 +253,16 @@ public static class RconScript
     };
 
     public static readonly string[] AddObject = {
+        // Networkable info with a negative base priority. The server registers these objects as static ghosts and
+        // sends each one to a client once, instead of re-sending it at top priority every time it enters the
+        // client's view distance. The info is server-only: clients create the object from their own template and
+        // ignore the ghost. Infos last until map change, so this is repeated per spawn (a duplicate name is a no-op).
+        "networkableInfo.createNewInfo StaticObjectInfo",
+        "networkableInfo.setBasePriority -1",
+
         // Make this template networkable
         "objecttemplate.active {TEMPLATE}",
-        "objecttemplate.setNetworkableInfo BasicInfo",
+        "objecttemplate.setNetworkableInfo StaticObjectInfo",
 
         // Create an object spawner template
         "objecttemplate.create ObjectSpawner tmp_spawner_{TEMPLATE}",
@@ -265,7 +272,7 @@ public static class RconScript
         "objecttemplate.setObjectTemplate 0 {TEMPLATE}",
         "objecttemplate.setObjectTemplate 1 {TEMPLATE}",
         "objecttemplate.setObjectTemplate 2 {TEMPLATE}",
-        "objecttemplate.setNetworkableInfo BasicInfo",
+        "objecttemplate.setNetworkableInfo StaticObjectInfo",
 
         // Create the object spawner
         "object.create tmp_spawner_{TEMPLATE}",

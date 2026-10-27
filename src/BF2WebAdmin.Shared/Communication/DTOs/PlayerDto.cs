@@ -12,10 +12,7 @@ public class PlayerDto
     public int Rank { get; set; }
     public int Team { get; set; }
     public bool IsAlive { get; set; }
-    public ScoreDto? Score { get; set; }
+    public ScoreDto Score { get; set; } = new();
     public Vector3? Position { get; set; }
     public Vector3? Rotation { get; set; }
-    public Vector3? PreviousPosition { get; set; }
-    public Vector3? PreviousRotation { get; set; }
-    public long? UpdateTimestamp { get; set; }
 }

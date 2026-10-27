@@ -2,6 +2,7 @@
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
+using BF2WebAdmin.Server.Api;
 using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Shared.Communication.DTOs;
@@ -37,7 +38,6 @@ public class WebModule : BaseModule,
 
     private IServerHubClient ClientsAll => _serverHub.Clients.All;
     private IServerHubClient ClientsGroup => _serverHub.Clients.Group(_gameServer.Id);
-    private IServerHubClient ClientsUser(string userId) => _serverHub.Clients.All; // TODO: fix user messaging - doesn't send anything?
 
     public WebModule(IGameServer server, IHubContext<ServerHub, IServerHubClient> serverHub, IServerSettingsRepository serverSettingsRepository, ILogger<WebModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
@@ -46,72 +46,9 @@ public class WebModule : BaseModule,
         _serverSettingsRepository = serverSettingsRepository;
     }
 
-    public async Task SendServerInfo(string userId, bool fullInfo)
-    {
-        // Send server info to new user
-        await ClientsUser(userId).ServerUpdateEvent(
-            new Shared.Communication.Events.ServerUpdateEvent
-            {
-                Id = _gameServer.Id,
-                Name = _gameServer.Name,
-                IpAddress = _gameServer.IpAddress.ToString(),
-                GamePort = _gameServer.GamePort,
-                QueryPort = _gameServer.QueryPort,
-                Map = _gameServer.Map?.Name,
-                Players = _gameServer.Players.Count(),
-                MaxPlayers = _gameServer.MaxPlayers,
-                GameState = _gameServer.State,
-                SocketState = _gameServer.SocketState,
-                ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup
-            }
-        );
-
-        if (!fullInfo)
-            return;
-
-        await ClientsUser(userId).ServerSnapshotEvent(
-            new ServerSnapshotEvent
-            {
-                Server = new ServerDto
-                {
-                    Id = _gameServer.Id,
-                    Name = _gameServer.Name,
-                    IpAddress = _gameServer.IpAddress.ToString(),
-                    GamePort = _gameServer.GamePort,
-                    QueryPort = _gameServer.QueryPort,
-                    Map = _gameServer.Map?.Name,
-                    Players = _gameServer.Players.Count(),
-                    MaxPlayers = _gameServer.MaxPlayers,
-                    GameState = _gameServer.State,
-                    SocketState = _gameServer.SocketState,
-                    ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup
-                },
-                Maps = _gameServer.Maps.Select(m => m.ToDto()),
-                Teams = _gameServer.Teams.Select(t => t.ToDto()),
-                Players = _gameServer.Players.Select(p => p.ToDto()).ToList(),
-                EventLog = _gameServer.Events.Select(e => new EventLogDto { Message = e.Message, Timestamp = e.Time }),
-                ChatLog = _gameServer.Messages.Select(m => new ChatLogDto { Message = m.Message, Timestamp = m.Time })
-            }
-        );
-    }
-        
     public async ValueTask HandleAsync(ServerUpdateEvent e)
     {
-        await ClientsGroup.ServerUpdateEvent(new Shared.Communication.Events.ServerUpdateEvent
-        {
-            Id = _gameServer.Id,
-            Name = e.Name,
-            IpAddress = _gameServer.IpAddress.ToString(),
-            GamePort = e.GamePort,
-            QueryPort = e.QueryPort,
-            Map = _gameServer.Map?.Name,
-            Players = _gameServer.Players.Count(),
-            MaxPlayers = e.MaxPlayers,
-            GameState = _gameServer.State,
-            SocketState = _gameServer.SocketState,
-            ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup,
-            TimeStamp = e.TimeStamp
-        });
+        await ClientsAll.ServerUpdateEvent(_gameServer.ToServerUpdate(e.TimeStamp));
     }
 
     public async ValueTask HandleAsync(PlayerPositionEvent e)
@@ -137,23 +74,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(PlayerJoinEvent e)
     {
-        await ClientsAll.ServerUpdateEvent(
-            new Shared.Communication.Events.ServerUpdateEvent
-            {
-                Id = _gameServer.Id,
-                Name = _gameServer.Name,
-                IpAddress = _gameServer.IpAddress.ToString(),
-                GamePort = _gameServer.GamePort,
-                QueryPort = _gameServer.QueryPort,
-                Map = _gameServer.Map?.Name,
-                Players = _gameServer.Players.Count(),
-                MaxPlayers = _gameServer.MaxPlayers,
-                GameState = _gameServer.State,
-                SocketState = _gameServer.SocketState,
-                ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup,
-                TimeStamp = e.TimeStamp
-            }
-        );
+        await ClientsAll.ServerUpdateEvent(_gameServer.ToServerUpdate(e.TimeStamp));
 
         await ClientsGroup.PlayerJoinEvent(new Shared.Communication.Events.PlayerJoinEvent
         {
@@ -164,23 +85,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(PlayerLeftEvent e)
     {
-        await ClientsAll.ServerUpdateEvent(
-            new Shared.Communication.Events.ServerUpdateEvent
-            {
-                Id = _gameServer.Id,
-                Name = _gameServer.Name,
-                IpAddress = _gameServer.IpAddress.ToString(),
-                GamePort = _gameServer.GamePort,
-                QueryPort = _gameServer.QueryPort,
-                Map = _gameServer.Map?.Name,
-                Players = _gameServer.Players.Count(),
-                MaxPlayers = _gameServer.MaxPlayers,
-                GameState = _gameServer.State,
-                SocketState = _gameServer.SocketState,
-                ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup,
-                TimeStamp = e.TimeStamp
-            }
-        );
+        await ClientsAll.ServerUpdateEvent(_gameServer.ToServerUpdate(e.TimeStamp));
 
         await ClientsGroup.PlayerLeftEvent(new Shared.Communication.Events.PlayerLeftEvent
         {
@@ -280,23 +185,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(MapChangedEvent e)
     {
-        await ClientsAll.ServerUpdateEvent(
-            new Shared.Communication.Events.ServerUpdateEvent
-            {
-                Id = _gameServer.Id,
-                Name = _gameServer.Name,
-                IpAddress = _gameServer.IpAddress.ToString(),
-                GamePort = _gameServer.GamePort,
-                QueryPort = _gameServer.QueryPort,
-                Map = _gameServer.Map?.Name,
-                Players = _gameServer.Players.Count(),
-                MaxPlayers = _gameServer.MaxPlayers,
-                GameState = _gameServer.State,
-                SocketState = _gameServer.SocketState,
-                ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup,
-                TimeStamp = e.TimeStamp
-            }
-        );
+        await ClientsAll.ServerUpdateEvent(_gameServer.ToServerUpdate(e.TimeStamp));
 
         await ClientsGroup.MapChangeEvent(new MapChangeEvent
         {
@@ -310,23 +199,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(SocketStateChangedEvent e)
     {
-        await ClientsAll.ServerUpdateEvent(
-            new Shared.Communication.Events.ServerUpdateEvent
-            {
-                Id = _gameServer.Id,
-                Name = _gameServer.Name,
-                IpAddress = _gameServer.IpAddress.ToString(),
-                GamePort = _gameServer.GamePort,
-                QueryPort = _gameServer.QueryPort,
-                Map = _gameServer.Map?.Name,
-                Players = _gameServer.Players.Count(),
-                MaxPlayers = _gameServer.MaxPlayers,
-                GameState = _gameServer.State,
-                SocketState = _gameServer.SocketState,
-                ServerGroup = _gameServer.ModManager.ServerSettings.ServerGroup,
-                TimeStamp = e.TimeStamp
-            }
-        );
+        await ClientsAll.ServerUpdateEvent(_gameServer.ToServerUpdate(e.TimeStamp));
 
         await ClientsGroup.SocketStateEvent(new SocketStateEvent
         {
@@ -335,36 +208,28 @@ public class WebModule : BaseModule,
         });
     }
 
-    public ValueTask HandleAdminChatAsync(string userId, string message)
+    /// <summary>A message from the web chat box: "." runs a custom command, "!" an rcon command (its response is returned), anything else is said in game.</summary>
+    public async ValueTask<string?> HandleAdminChatAsync(string userId, string message)
     {
         if (message.StartsWith("."))
         {
-            return HandleCustomCommandAsync(userId, message);
+            await HandleCustomCommandAsync(userId, message);
+            return null;
         }
 
         if (message.StartsWith("!"))
-        {
-            return HandleRconCommandAsync(userId, message);
-        }
+            return await HandleRconCommandAsync(message);
 
         GameServer.GameWriter.SendText($"[§C1001{userId}§C1001] {message}", false, true);
-
-        return ValueTask.CompletedTask;
+        return null;
     }
 
-    public async ValueTask HandleRconCommandAsync(string userId, string message)
+    /// <summary>Runs an rcon command ("!" shortcuts such as "!k" are expanded) and returns its response with IP addresses removed.</summary>
+    public async ValueTask<string> HandleRconCommandAsync(string message)
     {
         var command = GetRconCommand(message);
         var response = await SendRconCommandAsync(command);
-        var obfuscatedResponse = GetObfuscatedResponse(response);
-
-        await ClientsUser(userId).RequestResponseEvent(
-            new Shared.Communication.Events.RequestResponseEvent
-            {
-                Request = message,
-                Response = obfuscatedResponse
-            }
-        );
+        return GetObfuscatedResponse(response);
     }
 
     public async ValueTask HandleCustomCommandAsync(string userId, string message)

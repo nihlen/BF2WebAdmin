@@ -26,15 +26,39 @@
     <!--<PublishTrimmed>true</PublishTrimmed>-->
   </PropertyGroup>
 
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <BlazorWebAssemblyOmitDebugProxyOutput>true</BlazorWebAssemblyOmitDebugProxyOutput>
-  </PropertyGroup>
-
   <!--<PropertyGroup>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
     <StartupObject>BF2WebAdmin.Server.Program</StartupObject>
   </PropertyGroup>-->
+
+  <!-- The OpenAPI document of the web API, for the web UI's TypeScript types. Written by "npm run api" in
+       src/BF2WebAdmin.Web, which builds with OpenApiGenerateDocuments=true; normal builds skip it. -->
+  <PropertyGroup>
+    <OpenApiGenerateDocuments>false</OpenApiGenerateDocuments>
+    <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)\..\BF2WebAdmin.Web\src\api</OpenApiDocumentsDirectory>
+    <OpenApiGenerateDocumentsOptions>--file-name openapi</OpenApiGenerateDocumentsOptions>
+  </PropertyGroup>
+
+  <!-- The web UI (src/BF2WebAdmin.Web): "dotnet publish" builds it with npm and publishes its dist folder as wwwroot.
+       Container images built by Aspire get it from the AppHost (PublishWithContainerFiles) instead, and
+       -p:SkipWebBuild=true skips it. -->
+  <PropertyGroup>
+    <WebRoot>$(MSBuildProjectDirectory)\..\BF2WebAdmin.Web\</WebRoot>
+  </PropertyGroup>
+
+  <Target Name="PublishWeb" AfterTargets="ComputeFilesToPublish" Condition="'$(SkipWebBuild)' != 'true'">
+    <Exec WorkingDirectory="$(WebRoot)" Command="npm ci" />
+    <Exec WorkingDirectory="$(WebRoot)" Command="npm run build" />
+    <ItemGroup>
+      <WebDist Include="$(WebRoot)dist\**" />
+      <ResolvedFileToPublish Include="@(WebDist->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>wwwroot\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 
   <!-- Fix for publish error detected package downgrade -->
   <PropertyGroup>
@@ -46,7 +70,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\BF2WebAdmin.Blazor\BF2WebAdmin.Blazor.csproj" />
     <ProjectReference Include="..\BF2WebAdmin.Common\BF2WebAdmin.Common.csproj" />
     <ProjectReference Include="..\BF2WebAdmin.Data\BF2WebAdmin.Data.csproj" />
     <ProjectReference Include="..\BF2WebAdmin.Shared\BF2WebAdmin.Shared.csproj" />
@@ -60,9 +83,11 @@
     <PackageReference Include="MassTransit.AspNetCore" Version="7.3.1" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="7.3.0" />
     <PackageReference Include="MediatR.Extensions.Microsoft.DependencyInjection" Version="11.0.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="9.0.4" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.Json" Version="9.0.4" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="9.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.11" />
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="9.0.11">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.4" />

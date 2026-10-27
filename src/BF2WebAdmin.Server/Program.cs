@@ -1,4 +1,5 @@
 ﻿using System.Security.Claims;
+using System.Text.Json.Serialization;
 using AspNetCore.Authentication.ApiKey;
 using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Data;
@@ -6,12 +7,14 @@ using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Repositories;
 using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.AdminChannel;
+using BF2WebAdmin.Server.Api;
 using BF2WebAdmin.Server.Controllers;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Services;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 
@@ -109,15 +112,14 @@ try
         services.GetRequiredService<ILoggerFactory>()));
 
     builder.Services.AddHostedService<BF2WebAdminService>();
+    // The web UI uses JSON with camelCase names and enums as strings, for both the API and the hub
+    builder.Services.Configure<JsonOptions>(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
     builder.Services.AddSignalR()
-        .AddMessagePackProtocol();
-
-    // .AddJsonProtocol(options =>
-    // {
-    //     options.PayloadSerializerOptions.PropertyNamingPolicy = null;
-    // });
+        .AddJsonProtocol(options => options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
     builder.Services.AddControllersWithViews();
+    builder.Services.AddProblemDetails();
+    builder.Services.AddOpenApi();
 
     // TODO: DataProtection to persist logins
     builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -125,7 +127,17 @@ try
         {
             options.ExpireTimeSpan = TimeSpan.FromDays(30);
             options.SlidingExpiration = true;
-            options.AccessDeniedPath = "/Forbidden/";
+            // The web UI is a single-page app: answer with status codes instead of redirecting to login pages
+            options.Events.OnRedirectToLogin = context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            };
+            options.Events.OnRedirectToAccessDenied = context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return Task.CompletedTask;
+            };
         })
         .AddApiKeyInHeader(ApiKeyDefaults.AuthenticationScheme, options =>
         {
@@ -161,7 +173,13 @@ try
             };
         });
 
-    builder.Services.AddRazorPages();
+    builder.Services.AddAuthorization(options =>
+    {
+        options.AddPolicy(ApiEndpoints.AdminPolicy, policy => policy
+            .AddAuthenticationSchemes(CookieAuthenticationDefaults.AuthenticationScheme, ApiKeyDefaults.AuthenticationScheme)
+            .RequireAuthenticatedUser());
+    });
+
     builder.Services.AddResponseCompression(opts => { opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[] { "application/octet-stream" }); });
 
     // Normal MediatR doesn't work with the singleton SocketServer, but we can setup it up differently 
@@ -202,13 +220,9 @@ try
     app.UseResponseCompression();
 
     // Configure the HTTP request pipeline.
-    if (app.Environment.IsDevelopment())
+    if (!app.Environment.IsDevelopment())
     {
-        app.UseWebAssemblyDebugging();
-    }
-    else
-    {
-        app.UseExceptionHandler("/Error");
+        app.UseExceptionHandler();
 
         if (serverSettings.ForceHttps)
         {
@@ -217,18 +231,35 @@ try
         }
     }
 
-    app.UseBlazorFrameworkFiles();
-    app.UseStaticFiles();
+    // The web UI (src/BF2WebAdmin.Web, built into wwwroot on publish). Vite puts a content hash in the names of the files in
+    // assets/, so they can be cached for good; index.html is checked on every load.
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        OnPrepareResponse = context =>
+        {
+            context.Context.Response.Headers.CacheControl = context.Context.Request.Path.StartsWithSegments("/assets")
+                ? "public, max-age=31536000, immutable"
+                : "no-cache";
+        }
+    });
 
     app.UseRouting();
 
     app.UseAuthentication();
     app.UseAuthorization();
 
-    app.MapRazorPages();
     app.MapControllers();
+    app.MapApi();
     app.MapHub<ServerHub>("/hubs/server");
-    app.MapFallbackToFile("index.html");
+    if (app.Environment.IsDevelopment())
+        app.MapOpenApi();
+
+    // Unknown API paths are 404s, everything else is a route of the web UI
+    app.Map("/api/{**path}", () => Results.NotFound());
+    app.MapFallbackToFile("index.html", new StaticFileOptions
+    {
+        OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache"
+    });
 
     app.Run();
 }

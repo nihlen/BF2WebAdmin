@@ -227,7 +227,7 @@ public class BF2Module : BaseModule,
         if (player == null)
             return;
 
-        _gameServer.GameWriter.SendTeleport(player, new Position(0, 300, 0));
+        _gameServer.GameWriter.SendTeleport(player, new Position(0, 300, 0), LevelRotation(player));
     }
 
     public void Handle(TeleportCoordinatesCommand command)
@@ -237,8 +237,11 @@ public class BF2Module : BaseModule,
             return;
 
         var newPosition = new Position(command.X, command.Altitude, command.Y);
-        _gameServer.GameWriter.SendTeleport(player, newPosition);
+        _gameServer.GameWriter.SendTeleport(player, newPosition, LevelRotation(player));
     }
+
+    // Keeps the heading but clears pitch and roll, so a tilted vehicle doesn't arrive tilted
+    private static Rotation LevelRotation(Player player) => new(player.Rotation?.Yaw ?? 0, 0, 0);
 
     public void Handle(GravityDefaultCommand command)
     {

@@ -621,10 +621,11 @@ public class Heli2v2Module : BaseModule,
     private Task FreezeAtPadAsync(int duration, int requesterPlayerIndex, params Player[] players)
     {
         var usPadPos = new Position(239.8, 166.0, -249.9);
-        var usPadRot = new Rotation(-56.8, 0.0, 0.0);
-
         var chPadPos = new Position(-222.8, 166.0, 151.0);
-        var chPadRot = new Rotation(133.5, 0.0, 0.0);
+
+        // Level, facing the other pad
+        var usPadRot = new Rotation(YawTowards(usPadPos, chPadPos), 0.0, 0.0);
+        var chPadRot = new Rotation(YawTowards(chPadPos, usPadPos), 0.0, 0.0);
 
         foreach (var player in players)
         {
@@ -664,6 +665,10 @@ public class Heli2v2Module : BaseModule,
 
         return Task.CompletedTask;
     }
+
+    // BF2 yaw in degrees: 0 faces +Z (Position.Y), 90 faces +X
+    private static double YawTowards(Position from, Position to) =>
+        Math.Atan2(to.X - from.X, to.Y - from.Y) * 180 / Math.PI;
 
     public ValueTask HandleAsync(AutoPadCommand command)
     {

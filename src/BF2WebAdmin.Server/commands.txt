@@ -1,6 +1,8 @@
 auth <Name> <Level>	Admin	(SetAuthCommand)
 auth <Name>	Admin	(GetAuthCommand)
 define <Term>	All	(DefineCommand)
+kick <Name>	Admin	(KickCommand)
+ban <Name>	SuperAdmin	(BanCommand)
 kill <Name>	Admin	(KillCommand)
 killid <PlayerId>	Admin	(KillIdCommand)
 ping 	All	(PingSelfCommand)

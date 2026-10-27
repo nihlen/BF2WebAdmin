@@ -55,13 +55,24 @@ export function useServerLive(serverId: string) {
     [queryClient, serverId],
   )
 
+  // A server that connects (or reconnects) brings maps, teams and players that no event carries: fetch a new snapshot
+  const refetchOnSocketChange = (socketState: ServerSnapshot['server']['socketState']) => {
+    const current = queryClient.getQueryData<ServerSnapshot>(query.queryKey)
+    if (current && current.server.socketState !== socketState) {
+      positions.current.clear()
+      void queryClient.invalidateQueries({ queryKey: query.queryKey })
+    }
+  }
+
   useHubEvent('ServerUpdateEvent', (e) => {
     if (e.id !== serverId) return
+    refetchOnSocketChange(e.socketState)
     const { timeStamp: _, ...server } = e
     update((s) => ({ ...s, server }))
   })
 
   useHubEvent('SocketStateEvent', (e) => {
+    refetchOnSocketChange(e.state)
     update((s) => ({ ...s, server: { ...s.server, socketState: e.state } }))
     log(`Socket ${e.state}`, e.timeStamp)
   })

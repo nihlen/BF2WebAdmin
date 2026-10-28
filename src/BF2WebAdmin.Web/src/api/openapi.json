@@ -407,6 +407,82 @@
         }
       }
     },
+    "/api/servers/{serverId}/missiles": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MissileSummaryDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/missiles/{key}": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissileReplayDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/modules": {
       "get": {
         "tags": [
@@ -704,6 +780,307 @@
           },
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "MissileCollisionDto": {
+        "required": [
+          "tick",
+          "kind",
+          "flags",
+          "root",
+          "rootTemplate",
+          "partTemplate",
+          "partPlayer",
+          "p",
+          "n",
+          "speed",
+          "material",
+          "latency",
+          "partP",
+          "partR",
+          "rootP",
+          "rootR"
+        ],
+        "type": "object",
+        "properties": {
+          "tick": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "kind": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "flags": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "root": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "rootTemplate": {
+            "type": "string"
+          },
+          "partTemplate": {
+            "type": "string"
+          },
+          "partPlayer": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "p": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "n": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "speed": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "material": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "latency": {
+            "type": "number",
+            "format": "float"
+          },
+          "partP": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "partR": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "rootP": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "rootR": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            }
+          }
+        }
+      },
+      "MissileReplayDto": {
+        "required": [
+          "summary",
+          "samples",
+          "collisions"
+        ],
+        "type": "object",
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/MissileSummaryDto"
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissileSampleDto"
+            }
+          },
+          "collisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissileCollisionDto"
+            }
+          }
+        }
+      },
+      "MissileSampleDto": {
+        "required": [
+          "p",
+          "v",
+          "lag",
+          "t"
+        ],
+        "type": "object",
+        "properties": {
+          "p": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "v": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "lag": {
+            "type": "number",
+            "format": "float"
+          },
+          "t": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              }
+            }
+          }
+        }
+      },
+      "MissileSummaryDto": {
+        "required": [
+          "key",
+          "projectileId",
+          "template",
+          "shooter",
+          "shooterName",
+          "shooterTeam",
+          "shooterVehicle",
+          "firstTick",
+          "samples",
+          "flags",
+          "outcome",
+          "hitPart",
+          "hitRoot",
+          "hitPlayer",
+          "hitRewound",
+          "lagMs",
+          "targets",
+          "time"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "projectileId": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "template": {
+            "type": "string"
+          },
+          "shooter": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "shooterName": {
+            "type": "string"
+          },
+          "shooterTeam": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "shooterVehicle": {
+            "type": "string"
+          },
+          "firstTick": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "samples": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "flags": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "hitPart": {
+            "type": "string",
+            "nullable": true
+          },
+          "hitRoot": {
+            "type": "string",
+            "nullable": true
+          },
+          "hitPlayer": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hitRewound": {
+            "type": "boolean"
+          },
+          "lagMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissileTargetDto"
+            }
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MissileTargetDto": {
+        "required": [
+          "netId",
+          "template",
+          "crew",
+          "closestTested",
+          "closestCurrent",
+          "moved"
+        ],
+        "type": "object",
+        "properties": {
+          "netId": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "template": {
+            "type": "string"
+          },
+          "crew": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "closestTested": {
+            "type": "number",
+            "format": "float"
+          },
+          "closestCurrent": {
+            "type": "number",
+            "format": "float"
+          },
+          "moved": {
+            "type": "boolean"
           }
         }
       },

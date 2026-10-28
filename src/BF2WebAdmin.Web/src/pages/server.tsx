@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Ban as BanIcon, Bolt, Map as MapIcon, MessageSquare, MoreVertical, Pause, RefreshCw, RotateCcw, Send, Settings, Trash2 } from 'lucide-react'
+import { Ban as BanIcon, Bolt, Box, Map as MapIcon, MessageSquare, MoreVertical, Pause, RefreshCw, RotateCcw, Send, Settings, Trash2 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, errorMessage, type ChatLogEntry, type Player, type RconResponse, type ServerSnapshot, type Team } from '@/api/client'
@@ -49,14 +49,25 @@ export function ServerPage() {
 
       <div className="flex items-center justify-between gap-4">
         <h1 className="truncate text-3xl font-semibold">{server.name}</h1>
-        <Button
-          variant="outline"
-          size="icon-lg"
-          nativeButton={false}
-          render={<Link to="/server/$serverId/edit" params={{ serverId: encodeServerId(serverId) }} />}
-        >
-          <Settings />
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="lg"
+            nativeButton={false}
+            render={<Link to="/server/$serverId/viewer" params={{ serverId: encodeServerId(serverId) }} />}
+          >
+            <Box data-icon="inline-start" />
+            3D viewer
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-lg"
+            nativeButton={false}
+            render={<Link to="/server/$serverId/edit" params={{ serverId: encodeServerId(serverId) }} />}
+          >
+            <Settings />
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

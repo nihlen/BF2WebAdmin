@@ -40,7 +40,7 @@ public sealed class AdminSession
     private readonly Channel<byte[]> _outbound = Channel.CreateUnbounded<byte[]>(); // Count needs the multi-reader channel
     private readonly Channel<AdminMessage?> _inbound = Channel.CreateUnbounded<AdminMessage?>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
     private readonly ConcurrentDictionary<uint, TaskCompletionSource<AdminMessage>> _pending = new();
-    private readonly AdminMessage?[] _latestStreams = new AdminMessage?[4];
+    private readonly AdminMessage?[] _latestStreams = new AdminMessage?[5];
     private readonly object _recordingLock = new();
     private StreamWriter? _recording;
     private int _nextRequestId;
@@ -333,7 +333,7 @@ public sealed class AdminSession
                     _logger.LogDebug("Admin channel {ServerId}: reply {Type} to unknown request {RequestId}", ServerId, message.Type, requestId);
                 break;
 
-            case PlayerStream or VehicleStream or ProjectileStream or GameStream:
+            case PlayerStream or VehicleStream or ProjectileStream or GameStream or AimStream:
                 // Latest wins: only queue a marker when the slot was empty
                 var slot = message.Type - AdminMessageType.PlayerStream;
                 if (Interlocked.Exchange(ref _latestStreams[slot], message) == null)

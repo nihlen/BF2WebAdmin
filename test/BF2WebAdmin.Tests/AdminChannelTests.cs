@@ -342,6 +342,19 @@ public class AdminChannelTests
         session.Close("test");
         await run;
     }
+
+    [Fact]
+    public async Task AimStreamIsAcceptedWhileSubscribed()
+    {
+        // The 3D viewer subscribes stream 5; its frames are latest-wins like the other streams, not a protocol error
+        var (session, module, handler, run) = await StartSessionAsync();
+        await module.SendAsync(new AimStream(7, 0.25, [new AdminAimState(3, AdminAimState.FlagCamera, new Vec3(1, 2, 3), new Vec3(90, 0, 0), default, default)]));
+        var aim = Assert.IsType<AimStream>(handler.Next());
+        Assert.Equal(new Vec3(1, 2, 3), aim.Aims.Single().CameraPosition);
+        Assert.True(session.IsOpen);
+        session.Close("test");
+        await run;
+    }
 }
 
 public class AdminPlayerKeyTests

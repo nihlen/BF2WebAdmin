@@ -1,5 +1,14 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { createRootRouteWithContext, createRoute, createRouter, type ErrorComponentProps, Outlet, redirect, useRouter } from '@tanstack/react-router'
+import {
+  createRootRouteWithContext,
+  createRoute,
+  createRouter,
+  type ErrorComponentProps,
+  lazyRouteComponent,
+  Outlet,
+  redirect,
+  useRouter,
+} from '@tanstack/react-router'
 import { api, errorMessage, isUnauthorized } from '@/api/client'
 import { AppLayout } from '@/components/app-layout'
 import { Button } from '@/components/ui/button'
@@ -85,6 +94,13 @@ export const serverEditRoute = createRoute({
   component: ServerEditPage,
 })
 
+// The 3D viewer brings three.js and its models: loaded when opened
+export const viewerRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/server/$serverId/viewer',
+  component: lazyRouteComponent(() => import('@/pages/viewer'), 'ViewerPage'),
+})
+
 export const serverGroupRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/servergroup/$serverGroup',
@@ -93,7 +109,7 @@ export const serverGroupRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
-  appRoute.addChildren([dashboardRoute, serverAddRoute, serverRoute, serverEditRoute, serverGroupRoute]),
+  appRoute.addChildren([dashboardRoute, serverAddRoute, serverRoute, serverEditRoute, serverGroupRoute, viewerRoute]),
 ])
 
 export function createAppRouter(queryClient: QueryClient) {

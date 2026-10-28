@@ -106,6 +106,7 @@ try
         builder.Services.AddSingleton<GameStreamConsumer>();
     }
 
+    builder.Services.AddSingleton<ViewerRegistry>();
     builder.Services.AddSingleton(services => new GameServerRegistry(serverSettings.GameServers, services));
     builder.Services.AddSingleton<IGameServerRegistry>(services => services.GetRequiredService<GameServerRegistry>());
     builder.Services.AddSingleton(services => new AdminListener(serverSettings.AdminChannel, services.GetRequiredService<GameServerRegistry>(),

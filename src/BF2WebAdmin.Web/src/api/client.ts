@@ -19,6 +19,10 @@ export type RconResponse = Schemas['RconResponse']
 export type Vector3 = NonNullable<Schemas['Vector3']>
 export type GameState = Schemas['GameState']
 export type SocketState = Schemas['SocketState']
+export type MissileSummary = Schemas['MissileSummaryDto']
+export type MissileReplay = Schemas['MissileReplayDto']
+export type MissileSample = Schemas['MissileSampleDto']
+export type MissileCollision = Schemas['MissileCollisionDto']
 
 /** A failed API request. React Query receives it as the error of the query or mutation. */
 export class ApiError extends Error {

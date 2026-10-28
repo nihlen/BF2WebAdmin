@@ -522,6 +522,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{serverId}/missiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    serverId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MissileSummaryDto"][];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{serverId}/missiles/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    serverId: string;
+                    key: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MissileReplayDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/modules": {
         parameters: {
             query?: never;
@@ -721,6 +810,84 @@ export interface components {
             channel: string;
             flags: string;
             text: string;
+        };
+        MissileCollisionDto: {
+            /** Format: uint32 */
+            tick: number;
+            /** Format: int32 */
+            kind: number;
+            /** Format: int32 */
+            flags: number;
+            /** Format: uint32 */
+            root: number;
+            rootTemplate: string;
+            partTemplate: string;
+            /** Format: int32 */
+            partPlayer: number;
+            p: number[];
+            n: number[];
+            speed: number[];
+            /** Format: int32 */
+            material: number;
+            /** Format: float */
+            latency: number;
+            partP: number[];
+            partR: number[];
+            rootP: number[];
+            rootR: number[];
+        };
+        MissileReplayDto: {
+            summary: components["schemas"]["MissileSummaryDto"];
+            samples: components["schemas"]["MissileSampleDto"][];
+            collisions: components["schemas"]["MissileCollisionDto"][];
+        };
+        MissileSampleDto: {
+            p: number[];
+            v: number[];
+            /** Format: float */
+            lag: number;
+            t: number[][];
+        };
+        MissileSummaryDto: {
+            /** Format: int32 */
+            key: number;
+            /** Format: uint32 */
+            projectileId: number;
+            template: string;
+            /** Format: int32 */
+            shooter: number;
+            shooterName: string;
+            /** Format: int32 */
+            shooterTeam: number;
+            shooterVehicle: string;
+            /** Format: uint32 */
+            firstTick: number;
+            /** Format: int32 */
+            samples: number;
+            /** Format: int32 */
+            flags: number;
+            outcome: string;
+            hitPart: string | null;
+            hitRoot: string | null;
+            /** Format: int32 */
+            hitPlayer: number;
+            hitRewound: boolean;
+            /** Format: int32 */
+            lagMs: number;
+            targets: components["schemas"]["MissileTargetDto"][];
+            /** Format: date-time */
+            time: string;
+        };
+        MissileTargetDto: {
+            /** Format: uint32 */
+            netId: number;
+            template: string;
+            crew: string[];
+            /** Format: float */
+            closestTested: number;
+            /** Format: float */
+            closestCurrent: number;
+            moved: boolean;
         };
         PlayerDto: {
             name: string;

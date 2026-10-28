@@ -23,7 +23,8 @@ modules ── IGameWriter (AdminGameWriter) ── typed commands / Console, in
 | `AdminListener.cs` | TCP listener (default port 4310), `SslStream` TLS 1.3 only, then the handshake; TLS and handshake together within 10 s of the connect. Optional plain listener on 127.0.0.1 for `adminTls 0` |
 | `AdminHandshake.cs` | `Hello` → `Challenge` (WebAdmin proves the key first) → `Auth`, proofs compared with `CryptographicOperations.FixedTimeEquals`; version ≠ 1 is `Error` 1, unknown id or no key `Error` 8 |
 | `AdminSession.cs` | One link: read loop (answers `Ping`, completes requests), write loop (one ordered queue), apply loop (sequence check and `RequestSnapshot` on a gap, stream frames latest-wins), keepalive (`Ping` every 15 s, close after 45 s of silence), optional recording of every received message |
-| `AdminStateApplier.cs` | Maps `Welcome`, `Snapshot` (reconciled with the existing players, so modules keep their `Player` objects across resyncs and reconnects), the four streams and every event onto `GameServer`; the B6 player key |
+| `AdminStateApplier.cs` | Maps `Welcome`, `Snapshot` (reconciled with the existing players, so modules keep their `Player` objects across resyncs and reconnects), the streams and every event onto `GameServer`; the B6 player key; the subscriptions (at 30 Hz while a 3D viewer is open, with the modules still fed at their own rate) |
+| `ViewerFeed.cs` | The 3D viewer: `ViewerRegistry` (which hub connections watch which server), the 30 Hz stream frames to the hub group `viewer:<serverId>` (sent from its own task, so a slow browser never holds up the link), and the last 20 traced TV missiles (`ProjectileTrace` with its `ProjectileCollision`s) |
 | `AdminGameWriter.cs` | `IGameWriter` on the current session: typed commands, `Console` lines in order with them, `ListObjects`, `SpawnObject`, `SetObjectActive`, `Subscribe` |
 | `GameServerRegistry.cs` | Replaces `SocketServer`/`ISocketServer` as `IGameServerRegistry`: configured servers (DB + config), the `GameServer` per server id, key lookup |
 
@@ -52,7 +53,20 @@ The seam the inventory suggested holds: modules still see `IGameServer`, the `Ga
 - Events carry sequence numbers. After a `Snapshot` (`lastSeq`), events at or below it are dropped; a jump starts one
   `RequestSnapshot`. A reconnect is a new session with a full snapshot. Subscriptions are made again after every
   `Welcome`: players and `agm114_hellfire_tv` projectiles at the module's tracker interval (default 0.25 s, Heli2v2's
-  `.interval`), vehicles and game state at 1 Hz.
+  `.interval`), vehicles and game state at 1 Hz, and the hit/miss replay (stream 20) for `agm114_hellfire_tv`.
+  While a 3D viewer is open on the server, players, vehicles, projectiles and aim (stream 5) run at 30 Hz; the
+  applier still hands the modules players and projectiles at the tracker rate and vehicles at 1 Hz.
+
+### 3D viewer
+
+The web UI's 3D viewer (`/server/<id>/viewer`, `src/BF2WebAdmin.Web/src/viewer/`, ported from BF2v2's round replay)
+draws the server live from the hub's `ViewerFrame` events (hub method `SubscribeViewer`), keeps ten minutes of them for
+its timeline (play, drag, step one tick), and replays any of the last 20 TV missiles from
+`GET /api/servers/{id}/missiles/{key}`: per tick the missile and each target where it is now (red) and where the server
+tested its hull (blue, rewound by the shooter's lag; rotors and other child parts are tested at the red pose). Its
+player view follows `PlayerState`'s view mode: the server's camera object (`AimStream`) for the inside view and the
+TV launcher, the chase, front chase, nose and fly-by views computed from the vehicle with the camera templates'
+values. The map and helicopter models are BF2v2's (`public/viewer/`, only `dalian_2_v_2` has a 3D map).
 
 ## Setup
 

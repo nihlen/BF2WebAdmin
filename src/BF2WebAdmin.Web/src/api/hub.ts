@@ -19,12 +19,17 @@ const notifyState = () => stateListeners.forEach((listener) => listener())
 
 // Subscribed server ids, counted, so two components can subscribe to the same server
 const subscriptions = new Map<string, number>()
+// Server ids with a 3D viewer open (SubscribeViewer), counted the same way
+const viewerSubscriptions = new Map<string, number>()
 
 connection.onreconnecting(notifyState)
 connection.onclose(notifyState)
 // A new connection has no groups: subscribe again, then let the pages refetch what they missed
 async function resubscribe() {
-  await Promise.all([...subscriptions.keys()].map((serverId) => connection.invoke('Subscribe', serverId)))
+  await Promise.all([
+    ...[...subscriptions.keys()].map((serverId) => connection.invoke('Subscribe', serverId)),
+    ...[...viewerSubscriptions.keys()].map((serverId) => connection.invoke('SubscribeViewer', serverId)),
+  ])
   reconnectListeners.forEach((listener) => listener())
 }
 
@@ -60,6 +65,7 @@ export function startHub(): Promise<void> {
 
 export function stopHub() {
   subscriptions.clear()
+  viewerSubscriptions.clear()
   return connection.stop()
 }
 
@@ -133,4 +139,29 @@ export function useServerSubscription(serverId: string) {
   }, [serverId])
 
   return subscribedId === serverId
+}
+
+/**
+ * Receives a server's 3D viewer frames (ViewerFrame, at 30 Hz) and new missiles (MissileEvent) while the component is
+ * mounted. The server streams at 30 Hz only while some viewer is open.
+ */
+export function useViewerSubscription(serverId: string) {
+  useEffect(() => {
+    viewerSubscriptions.set(serverId, (viewerSubscriptions.get(serverId) ?? 0) + 1)
+    startHub()
+      .then(() => connection.invoke('SubscribeViewer', serverId))
+      .catch(() => {
+        // Not connected: a reconnect subscribes again
+      })
+
+    return () => {
+      const count = (viewerSubscriptions.get(serverId) ?? 1) - 1
+      if (count > 0) {
+        viewerSubscriptions.set(serverId, count)
+        return
+      }
+      viewerSubscriptions.delete(serverId)
+      if (connection.state === HubConnectionState.Connected) connection.invoke('UnsubscribeViewer', serverId).catch(() => {})
+    }
+  }, [serverId])
 }

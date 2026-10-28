@@ -6,8 +6,10 @@ using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Constants;
+using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Shared;
 using BF2WebAdmin.Shared.Communication.DTOs;
+using Microsoft.AspNetCore.SignalR;
 
 namespace BF2WebAdmin.Server.Entities;
 
@@ -81,7 +83,19 @@ public class GameServer : IGameServer
         _cancellationToken = cancellationToken;
         _gameWriter = new AdminGameWriter(this, _globalServices.GetRequiredService<ILogger<AdminGameWriter>>());
         Applier = new AdminStateApplier(this, _globalServices.GetRequiredService<ILogger<AdminStateApplier>>());
+
+        var viewers = _globalServices.GetService<ViewerRegistry>();
+        Viewer = new ViewerFeed(this, viewers, _globalServices.GetService<IHubContext<ServerHub, IServerHubClient>>(), _logger, cancellationToken);
+        if (viewers != null)
+            viewers.ActiveChanged += (serverId, _) =>
+            {
+                if (serverId == Id)
+                    Applier.Resubscribe();
+            };
     }
+
+    /// <summary>The 3D viewer's frames and the last traced missiles.</summary>
+    public ViewerFeed Viewer { get; }
 
     /// <summary>Maps admin channel messages onto this server.</summary>
     public AdminStateApplier Applier { get; }

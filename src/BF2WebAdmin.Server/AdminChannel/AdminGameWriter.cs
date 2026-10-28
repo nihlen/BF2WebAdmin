@@ -223,9 +223,8 @@ public class AdminGameWriter : IGameWriter
     public void SendTimerInterval(double timerInterval)
     {
         CurrentTrackerInterval = timerInterval;
-        var rate = RateHz(timerInterval);
-        Fire(id => new Subscribe(id, AdminStream.Players, rate, []));
-        Fire(id => new Subscribe(id, AdminStream.Projectiles, rate, AdminStateApplier.TrackedProjectiles));
+        // At this rate, or at 30 Hz while a 3D viewer is open
+        _server.Applier.Resubscribe();
     }
 
     public void SendHeartbeat()

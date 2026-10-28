@@ -1,0 +1,16 @@
+{
+  "name": "dalian_2_v_2",
+  "seaLevel": 141.4,
+  "extent": 2048.0,
+  "outerExtent": 6144.0,
+  "sky": {
+    "texture": "sky.jpg",
+    "uOffset": -0.1133,
+    "horizonColor": "#b1bad0",
+    "sunDirection": [
+      -0.5272,
+      0.368,
+      -0.7659
+    ]
+  }
+}

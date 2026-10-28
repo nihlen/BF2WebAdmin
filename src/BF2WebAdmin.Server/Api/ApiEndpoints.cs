@@ -9,6 +9,7 @@ using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Controllers;
+using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Modules.BF2;
 using BF2WebAdmin.Shared;
@@ -59,6 +60,8 @@ public static class ApiEndpoints
         servers.MapPost("/{serverId}/rcon", SendRconAsync);
         servers.MapPost("/{serverId}/commands", SendCustomCommandAsync);
         servers.MapGet("/{serverId}/bans", GetBansAsync);
+        servers.MapGet("/{serverId}/missiles", GetMissiles);
+        servers.MapGet("/{serverId}/missiles/{key:int}", GetMissile);
 
         var modules = api.MapGroup("/").WithTags("Modules").RequireAuthorization(AdminPolicy);
         modules.MapGet("/modules", () => ModuleResolver.AllModuleNames.Order().ToArray());
@@ -110,6 +113,16 @@ public static class ApiEndpoints
         var serverInfo = (await registry.GetDisconnectedServersAsync()).FirstOrDefault(s => s.ServerId == serverId);
         return serverInfo is null ? TypedResults.NotFound() : TypedResults.Ok(serverInfo.ToSnapshot());
     }
+
+    /// <summary>The last traced TV missiles of a connected server, newest first (the 3D viewer's list).</summary>
+    private static Results<Ok<IReadOnlyList<MissileSummaryDto>>, NotFound> GetMissiles(string serverId, IGameServerRegistry registry) =>
+        registry.GetGameServer(serverId) is GameServer server ? TypedResults.Ok(server.Viewer.Missiles) : TypedResults.NotFound();
+
+    /// <summary>A traced missile's whole flight: per tick the missile and every target where it is and where it was tested.</summary>
+    private static Results<Ok<MissileReplayDto>, NotFound> GetMissile(string serverId, int key, IGameServerRegistry registry) =>
+        registry.GetGameServer(serverId) is GameServer server && server.Viewer.GetMissile(key) is { } missile
+            ? TypedResults.Ok(missile)
+            : TypedResults.NotFound();
 
     private static async Task<ServerDataDto> GetServerSettingsAsync(string serverId, IServerSettingsRepository repository, IGameServerRegistry registry)
     {

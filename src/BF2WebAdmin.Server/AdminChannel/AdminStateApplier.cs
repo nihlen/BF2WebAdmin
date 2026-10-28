@@ -18,6 +18,9 @@ public class AdminStateApplier : IAdminSessionHandler
     private readonly GameServer _server;
     private readonly ILogger<AdminStateApplier> _logger;
     private readonly Dictionary<int, KillKind> _lastKillKind = new();
+    private AdminSession? _session;
+    // While a viewer is open the streams run at 30 Hz; the modules still get them at the tracker rate
+    private uint _nextPlayerTick, _nextProjectileTick, _nextVehicleTick;
 
     public AdminStateApplier(GameServer server, ILogger<AdminStateApplier> logger)
     {
@@ -37,13 +40,22 @@ public class AdminStateApplier : IAdminSessionHandler
                 await ApplySnapshotAsync(snapshot, time);
                 break;
             case PlayerStream stream:
-                await ApplyPlayerStreamAsync(stream, time);
+                _server.Viewer.OnPlayers(stream);
+                if (Due(ref _nextPlayerTick, stream.Tick, TrackerRate))
+                    await ApplyPlayerStreamAsync(stream, time);
                 break;
             case VehicleStream stream:
-                ApplyVehicles(stream.Vehicles);
+                _server.Viewer.OnVehicles(stream);
+                if (Due(ref _nextVehicleTick, stream.Tick, 1))
+                    ApplyVehicles(stream.Vehicles);
                 break;
             case ProjectileStream stream:
-                await ApplyProjectileStreamAsync(stream, time);
+                _server.Viewer.OnProjectiles(stream);
+                if (Due(ref _nextProjectileTick, stream.Tick, TrackerRate))
+                    await ApplyProjectileStreamAsync(stream, time);
+                break;
+            case AimStream stream:
+                _server.Viewer.OnAims(stream);
                 break;
             case GameStream stream:
                 await ApplyGameStateAsync(stream.Game, time);
@@ -85,18 +97,62 @@ public class AdminStateApplier : IAdminSessionHandler
         await ApplyGameStateAsync(welcome.Game, time, force: true);
 
         // Subscriptions do not survive a reconnect
+        _session = session;
+        _nextPlayerTick = _nextProjectileTick = _nextVehicleTick = 0;
+        _server.Viewer.RequestKeyframe();
         Subscribe(session);
 
         await _server.UpdateMapAsync(FindMap(welcome.Map, welcome.Mode, welcome.MapSize, welcome.MapIndex), welcome.Team1, welcome.Team2, time);
     }
 
+    private byte TrackerRate => AdminGameWriter.RateHz(_server.GameWriter.CurrentTrackerInterval);
+
     private void Subscribe(AdminSession session)
     {
-        var rate = AdminGameWriter.RateHz(_server.GameWriter.CurrentTrackerInterval);
+        SubscribeStreams(session);
+        session.Fire(id => new Subscribe(id, AdminStream.Game, 1, []));
+        // The hit/miss replay is kept for the viewer's missile list whether a viewer is open or not
+        session.Fire(id => new Subscribe(id, AdminStream.Replay, 0, TrackedProjectiles));
+    }
+
+    /// <summary>
+    /// The position streams: at the tracker rate (vehicles at 1 Hz), or at 30 Hz with the aim stream while a 3D viewer is
+    /// open. Called again when the tracker interval changes or a viewer opens or closes.
+    /// </summary>
+    private void SubscribeStreams(AdminSession session)
+    {
+        var viewer = _server.Viewer.IsActive;
+        var rate = viewer ? (byte)30 : TrackerRate;
         session.Fire(id => new Subscribe(id, AdminStream.Players, rate, []));
         session.Fire(id => new Subscribe(id, AdminStream.Projectiles, rate, TrackedProjectiles));
-        session.Fire(id => new Subscribe(id, AdminStream.Vehicles, 1, []));
-        session.Fire(id => new Subscribe(id, AdminStream.Game, 1, []));
+        session.Fire(id => new Subscribe(id, AdminStream.Vehicles, viewer ? (byte)30 : (byte)1, []));
+        if (viewer)
+            session.Fire(id => new Subscribe(id, AdminStream.Aim, 30, []));
+        else
+            session.Fire(id => new Unsubscribe(id, AdminStream.Aim));
+    }
+
+    /// <summary>Subscribes the position streams again on the current link, at the rates <see cref="SubscribeStreams"/> picks.</summary>
+    public void Resubscribe()
+    {
+        if (_session is { IsOpen: true } session && _server.Session == session)
+        {
+            if (_server.Viewer.IsActive)
+                _server.Viewer.RequestKeyframe();
+            SubscribeStreams(session);
+        }
+    }
+
+    /// <summary>
+    /// Whether a stream frame goes on to the modules: at most rateHz frames a second, so a 30 Hz viewer subscription does
+    /// not change what the modules see. A tick that goes backwards (a new link) starts over.
+    /// </summary>
+    private static bool Due(ref uint next, uint tick, int rateHz)
+    {
+        if (tick < next && next - tick <= 30)
+            return false;
+        next = tick + (uint)Math.Max(1, (int)Math.Round(30.0 / Math.Clamp(rateHz, 1, 30)));
+        return true;
     }
 
     private Map FindMap(string name, string mode, int size, int index)
@@ -428,6 +484,14 @@ public class AdminStateApplier : IAdminSessionHandler
                 if (FindPlayer(ev.Player) is { } bot)
                     bot.IsBot = true;
                 _server.AddEventLog($"Bot {ev.Player} {(ev.Kind switch { 1 => "created", 2 => "removed", _ => "team change" })} team {ev.Team}", time);
+                break;
+
+            case EvProjectileCollision ev:
+                _server.Viewer.OnCollision(ev);
+                break;
+
+            case EvProjectileTrace ev:
+                _server.Viewer.OnTrace(ev, time);
                 break;
 
             case EvDamage or EvProjectileFired or EvProjectileHit:

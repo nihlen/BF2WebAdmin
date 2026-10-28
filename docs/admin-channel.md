@@ -62,11 +62,16 @@ The seam the inventory suggested holds: modules still see `IGameServer`, the `Ga
 The web UI's 3D viewer (`/server/<id>/viewer`, `src/BF2WebAdmin.Web/src/viewer/`, ported from BF2v2's round replay)
 draws the server live from the hub's `ViewerFrame` events (hub method `SubscribeViewer`), keeps ten minutes of them for
 its timeline (play, drag, step one tick), and replays any of the last 20 TV missiles from
-`GET /api/servers/{id}/missiles/{key}`: per tick the missile and each target where it is now (red) and where the server
-tested its hull (blue, rewound by the shooter's lag; rotors and other child parts are tested at the red pose). Its
+`GET /api/servers/{id}/missiles/{key}`: per tick the missile (true size, its centre the single point the engine sweeps)
+and each target's visual model where it is now (red), the hull's collision mesh where the server tested it (blue,
+rewound by the shooter's lag) and the child parts' collision meshes at the red pose, where they are tested (orange:
+rotors as their blade sweep, the AH-1Z's Hellfire dummies, turret, sensors, gear, the Z-10's tail), with the part hit
+lit at the pose the `ProjectileCollision` reports. Its
 player view follows `PlayerState`'s view mode: the server's camera object (`AimStream`) for the inside view and the
 TV launcher, the chase, front chase, nose and fly-by views computed from the vehicle with the camera templates'
-values. The map and helicopter models are BF2v2's (`public/viewer/`, only `dalian_2_v_2` has a 3D map).
+values. The map and helicopter models are BF2v2's (`public/viewer/`, only `dalian_2_v_2` has a 3D map); the hitboxes
+(`public/viewer/models/heli-hitboxes.json`) are built by `tools/viewer/build_heli_hitboxes.py` from the server's
+collision meshes.
 
 ## Setup
 

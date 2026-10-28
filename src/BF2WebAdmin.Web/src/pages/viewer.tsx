@@ -20,6 +20,7 @@ import {
   CURRENT_COLOR,
   HIT_COLOR,
   IMPACT_COLOR,
+  PARTS_COLOR,
   type PlaybackState,
   type PlayerName,
   SWEEP_COLOR,
@@ -56,6 +57,7 @@ export function ViewerPage() {
   const [trails, setTrails] = useState(true)
   // The missile's motor glow and explosion: off while a missile's replay is shown, where they hide the hit
   const [effects, setEffects] = useState(true)
+  const [hitboxes, setHitboxes] = useState(false)
   const missileRequest = useRef<number | null>(null)
 
   const map = snapshot.data?.server.map ?? ''
@@ -92,6 +94,7 @@ export function ViewerPage() {
   useEffect(() => scene?.setLabels(labels), [scene, labels])
   useEffect(() => scene?.setTrails(trails), [scene, trails])
   useEffect(() => scene?.setEffects(effects), [scene, effects])
+  useEffect(() => scene?.setHitboxes(hitboxes), [scene, hitboxes])
   useEffect(() => scene?.setCameraMode(cameraMode, subject), [scene, cameraMode, subject])
 
   /** Shows a missile's whole flight, or goes back to live (null) */
@@ -227,6 +230,9 @@ export function ViewerPage() {
               </label>
               <label className="flex items-center gap-1" title="The missiles' motor glow and the explosion. Off while a missile is selected">
                 <input type="checkbox" checked={effects} onChange={(e) => setEffects(e.target.checked)} /> Exhaust &amp; explosion
+              </label>
+              <label className="flex items-center gap-1" title="The helicopters' collision meshes on the live view: hull blue, parts orange">
+                <input type="checkbox" checked={hitboxes} onChange={(e) => setHitboxes(e.target.checked)} /> Hitboxes
               </label>
             </div>
           </Card>
@@ -370,9 +376,10 @@ function MissileItem({
 /** The replay's colours, over the 3D view while a missile is selected */
 function Legend() {
   const rows: [string, string, string][] = [
-    [CURRENT_COLOR, 'Red: as drawn', "the target where the gunner sees it (its pose now); rotors and wing missiles are hit here"],
-    [TESTED_COLOR, 'Blue: server hitbox', "hull and crew rewound by the shooter's lag, where the server tests the hit"],
-    [SWEEP_COLOR, 'Yellow: sweep', 'the missile path tested this tick, and the parts touched'],
+    [CURRENT_COLOR, 'Red: as drawn', 'the model where the gunner sees it (its pose now)'],
+    [TESTED_COLOR, 'Blue: hull hitbox (rewound)', "the hull's collision mesh, moved back by the shooter's lag"],
+    [PARTS_COLOR, 'Orange: parts hitbox (not rewound)', 'rotors (blade sweep), wing missiles, turret, sensors, gear'],
+    [SWEEP_COLOR, 'Yellow: tested point and sweep', 'the missile is one point at its centre, no radius; green: the part hit'],
     [HIT_COLOR, 'Pole: impact point', 'green on a helicopter, grey on ground or an object; bright from the hit tick (H)'],
   ]
   return (

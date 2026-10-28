@@ -1,6 +1,6 @@
 import {
   BufferGeometry,
-  CylinderGeometry,
+  CircleGeometry,
   DoubleSide,
   Float32BufferAttribute,
   Group,
@@ -9,6 +9,7 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   Quaternion,
+  RingGeometry,
   Triangle,
   Vector3,
 } from 'three'
@@ -103,24 +104,23 @@ function material(color: string, opacity: number) {
 }
 
 /**
- * The volume a rotor's blades sweep, in the rotor's frame: a flat cylinder around the spin axis, its rim drawn clearly
- * and its faces faintly so the hull stays visible through it
+ * The disc a rotor's blades sweep, in the rotor's frame: thin and faint, with a clearer rim, at the middle of the blades'
+ * extent along the spin axis
  */
 function rotorSweep(rotor: NonNullable<HitboxPart['rotor']>, color: string, opacity: number) {
-  const height = Math.max(rotor.max - rotor.min, 0.05)
-  const mesh = new Group()
-  mesh.add(new Mesh(new CylinderGeometry(rotor.radius, rotor.radius, height, 64, 1, true), material(color, opacity)))
-  mesh.add(new Mesh(new CylinderGeometry(rotor.radius, rotor.radius, height, 64, 1, false), material(color, opacity * 0.15)))
+  const disc = new Group()
+  disc.add(new Mesh(new CircleGeometry(rotor.radius, 64), material(color, opacity * 0.25)))
+  disc.add(new Mesh(new RingGeometry(rotor.radius * 0.97, rotor.radius, 64), material(color, opacity * 0.9)))
   const centre = (rotor.min + rotor.max) / 2
-  // CylinderGeometry stands on +Y; the JSON axis is in BF2's frame (z mirrored)
+  // The circle lies in its XY plane; the JSON axis is in BF2's frame (z mirrored)
   if (rotor.axis === 0) {
-    mesh.rotation.z = Math.PI / 2
-    mesh.position.x = centre
-  } else if (rotor.axis === 2) {
-    mesh.rotation.x = Math.PI / 2
-    mesh.position.z = -centre
-  } else mesh.position.y = centre
-  return mesh
+    disc.rotation.y = Math.PI / 2
+    disc.position.x = centre
+  } else if (rotor.axis === 1) {
+    disc.rotation.x = -Math.PI / 2
+    disc.position.y = centre
+  } else disc.position.z = -centre
+  return disc
 }
 
 /**

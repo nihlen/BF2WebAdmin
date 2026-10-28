@@ -24,6 +24,7 @@ public enum AdminMessageType : ushort
     VehicleStream = 0x1112,
     ProjectileStream = 0x1113,
     GameStream = 0x1114,
+    AimStream = 0x1115,
 
     EvGameState = 0x1201,
     EvRoundStart = 0x1202,
@@ -47,6 +48,8 @@ public enum AdminMessageType : ushort
     EvKick = 0x1214,
     EvBan = 0x1215,
     EvBot = 0x1216,
+    EvWeaponFire = 0x1217,
+    EvWeapons = 0x1218,
 
     CmdConsole = 0x1301,
     CmdSay = 0x1302,
@@ -97,8 +100,11 @@ public enum AdminStream : byte
     Vehicles = 2,
     Projectiles = 3,
     Game = 4,
+    Aim = 5,
     Damage = 16,
     ProjectileEvents = 17,
+    WeaponFire = 18,
+    Weapons = 19,
 }
 
 public enum ObjectRefKind : byte
@@ -167,6 +173,7 @@ public static class AdminProtocol
             AdminMessageType.VehicleStream => VehicleStream.Read(ref r),
             AdminMessageType.ProjectileStream => ProjectileStream.Read(ref r),
             AdminMessageType.GameStream => new GameStream(r.U32(), r.F64(), AdminGameState.Read(ref r)),
+            AdminMessageType.AimStream => AimStream.Read(ref r),
             AdminMessageType.EvGameState => new EvGameState(r.U32(), r.U32(), AdminGameState.Read(ref r), r.U8()),
             AdminMessageType.EvRoundStart => new EvRoundStart(r.U32(), r.U32(), r.Str(), r.Str(), r.I32(), r.I32()),
             AdminMessageType.EvRoundEnd => new EvRoundEnd(r.U32(), r.U32(), r.I32(), r.I32(), r.U8(), r.U8()),
@@ -189,6 +196,8 @@ public static class AdminProtocol
             AdminMessageType.EvKick => new EvKick(r.U32(), r.U32(), r.U8(), r.Str()),
             AdminMessageType.EvBan => new EvBan(r.U32(), r.U32(), r.U8(), r.Str(), r.U8(), r.U32()),
             AdminMessageType.EvBot => new EvBot(r.U32(), r.U32(), r.U8(), r.U8(), r.U8(), r.U32()),
+            AdminMessageType.EvWeaponFire => new EvWeaponFire(r.U32(), r.U32(), r.I16(), r.U32(), r.Str(), r.Str(), r.U8(), r.Vec(), r.Vec()),
+            AdminMessageType.EvWeapons => EvWeapons.Read(ref r),
             AdminMessageType.CmdConsole => new CmdConsole(r.U32(), r.Str()),
             AdminMessageType.CmdSay => new CmdSay(r.U32(), r.U8(), r.U8(), r.Str()),
             AdminMessageType.CmdTeleport => new CmdTeleport(r.U32(), ObjectRef.Read(ref r), r.U8(), r.Vec(), r.Vec()),
@@ -407,6 +416,23 @@ public sealed record AdminPlayerState(
         w.Byte(Team).Byte(Squad).Byte(Life).Byte(Flags).U16(Ping).U32(RootNetId).U32(RootConsoleId).Byte(Seat)
             .Vec(Position).Vec(Rotation).Vec(Velocity).F32(Health).Byte(ViewMode);
 }
+
+/// <summary>
+/// A living player's camera and active-weapon transforms (AimStream). The camera is the server's copy of the view:
+/// the eye in views 1-2, the external camera in 3-7. The server fires along the weapon transform, or the camera's
+/// for soldiers and weapons that fire in camera DOF.
+/// </summary>
+public sealed record AdminAimState(byte Player, byte Flags, Vec3 CameraPosition, Vec3 CameraRotation, Vec3 WeaponPosition, Vec3 WeaponRotation)
+{
+    public const byte FlagCamera = 1, FlagWeapon = 2;
+
+    public static AdminAimState Read(ref AdminReader r) => new(r.U8(), r.U8(), r.Vec(), r.Vec(), r.Vec(), r.Vec());
+
+    public void Write(AdminWriter w) =>
+        w.Byte(Player).Byte(Flags).Vec(CameraPosition).Vec(CameraRotation).Vec(WeaponPosition).Vec(WeaponRotation);
+}
+
+public sealed record AdminWeaponSlot(byte Slot, string Template);
 
 public sealed record AdminPlayerScore(int Score, int TeamScore, int Kills, int Deaths, int TeamKills, short Rank)
 {
@@ -729,6 +755,27 @@ public sealed record GameStream(uint Tick, double Time, AdminGameState Game) : A
     }
 }
 
+public sealed record AimStream(uint Tick, double Time, IReadOnlyList<AdminAimState> Aims) : AdminMessage
+{
+    public override AdminMessageType Type => AdminMessageType.AimStream;
+
+    public static AimStream Read(ref AdminReader r)
+    {
+        var tick = r.U32();
+        var time = r.F64();
+        var aims = new AdminAimState[r.U8()];
+        for (var i = 0; i < aims.Length; i++)
+            aims[i] = AdminAimState.Read(ref r);
+        return new AimStream(tick, time, aims);
+    }
+
+    public override void Write(AdminWriter w)
+    {
+        w.U32(Tick).F64(Time).Byte((byte)Aims.Count);
+        foreach (var a in Aims) a.Write(w);
+    }
+}
+
 // ---------------------------------------------------------------- events
 
 public sealed record EvGameState(uint Seq, uint Tick, AdminGameState Game, byte PreviousStatus) : AdminEvent(Seq, Tick)
@@ -928,6 +975,38 @@ public sealed record EvBot(uint Seq, uint Tick, byte Player, byte Kind, byte Tea
 {
     public override AdminMessageType Type => AdminMessageType.EvBot;
     protected override void WriteFields(AdminWriter w) => w.Byte(Player).Byte(Kind).Byte(Team).U32(Connection);
+}
+
+/// <summary>A shooter's launches from one weapon in one tick (stream 18): bullets, rockets, missiles and flares.</summary>
+public sealed record EvWeaponFire(uint Seq, uint Tick, short Shooter, uint RootNetId, string Weapon, string Projectile, byte Rounds,
+    Vec3 Origin, Vec3 Velocity) : AdminEvent(Seq, Tick)
+{
+    public override AdminMessageType Type => AdminMessageType.EvWeaponFire;
+    protected override void WriteFields(AdminWriter w) =>
+        w.I16(Shooter).U32(RootNetId).Str(Weapon).Str(Projectile).Byte(Rounds).Vec(Origin).Vec(Velocity);
+}
+
+/// <summary>The weapons in a player's active slots 0-2 (stream 19); empty when dead.</summary>
+public sealed record EvWeapons(uint Seq, uint Tick, byte Player, IReadOnlyList<AdminWeaponSlot> Slots) : AdminEvent(Seq, Tick)
+{
+    public override AdminMessageType Type => AdminMessageType.EvWeapons;
+
+    public static EvWeapons Read(ref AdminReader r)
+    {
+        var seq = r.U32();
+        var tick = r.U32();
+        var player = r.U8();
+        var slots = new AdminWeaponSlot[r.U8()];
+        for (var i = 0; i < slots.Length; i++)
+            slots[i] = new AdminWeaponSlot(r.U8(), r.Str());
+        return new EvWeapons(seq, tick, player, slots);
+    }
+
+    protected override void WriteFields(AdminWriter w)
+    {
+        w.Byte(Player).Byte((byte)Slots.Count);
+        foreach (var s in Slots) w.Byte(s.Slot).Str(s.Template);
+    }
 }
 
 // ---------------------------------------------------------------- commands (WebAdmin -> module)

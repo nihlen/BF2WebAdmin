@@ -10,7 +10,7 @@ namespace BF2WebAdmin.Tests;
 
 /// <summary>
 /// The admin channel codec against the golden frames shared with the C++ module
-/// (openbf2-server-ext tests/fixtures/admin-v1-golden.txt at 10790ce, written by
+/// (openbf2-server-ext tests/fixtures/admin-v1-golden.txt at 93467b1, written by
 /// tools/adminclient/adminclient.py golden_samples). Every frame is encoded from the same sample
 /// values and compared byte for byte, then decoded and re-encoded.
 /// </summary>
@@ -80,6 +80,11 @@ public class AdminProtocolTests
         ["ev_kick"] = new EvKick(20, 10, 3, "x"),
         ["ev_ban"] = new EvBan(21, 10, 3, "x", 1, 0),
         ["ev_bot"] = new EvBot(22, 10, 255, 1, 1, 2),
+        ["aim_stream"] = new AimStream(5, 1.0, [new AdminAimState(7, AdminAimState.FlagCamera | AdminAimState.FlagWeapon,
+            new Vec3(1.5f, 101.5f, -3.0f), new Vec3(90.0f, -10.0f, 0.0f), new Vec3(1.5f, 99.0f, -1.0f), new Vec3(85.0f, -12.5f, 2.5f))]),
+        ["ev_weapon_fire"] = new EvWeaponFire(23, 10, 255, 1819, "ahe_z10_30mm", "ahe_z10_30mm_projectile", 3, V123,
+            new Vec3(400.0f, -5.0f, 10.0f)),
+        ["ev_weapons"] = new EvWeapons(24, 10, 255, [new AdminWeaponSlot(0, "ahe_z10_30mm"), new AdminWeaponSlot(1, "ahe_z10_FlareLauncher")]),
         ["ok"] = new OkReply(9),
         ["console_result"] = new ConsoleResult(10, 1, ["a", "", "§"]),
         ["object_list"] = new ObjectList(11, 1, [new ObjectListEntry(5, 0, "fence", V123, V456, -1.0f, 0)]),
@@ -109,12 +114,13 @@ public class AdminProtocolTests
         ["cmd_spawn_object"] = new CmdSpawnObject(22, "ahe_ah1z", new Vec3(2, 2, 2), new Vec3(2, 2, 2), 1),
         ["cmd_delete_object"] = new CmdDeleteObject(23, ObjectRef.Networkable(5)),
         ["cmd_ping"] = new Ping(24, 99),
+        ["cmd_subscribe_fire"] = new Subscribe(25, AdminStream.WeaponFire, 0, ["ahe_z10_FlareLauncher"]),
     };
 
     [Fact]
     public void GoldenFileHasEveryFrame()
     {
-        Assert.Equal(60, Golden.Count);
+        Assert.Equal(64, Golden.Count);
         Assert.Equal(Golden.Keys.OrderBy(k => k), SampleMessages().Keys.OrderBy(k => k));
     }
 
@@ -239,7 +245,7 @@ public class AdminProtocolTests
     [Fact]
     public void RejectsUnknownType()
     {
-        Assert.Equal(AdminErrorCode.UnknownType, Assert.Throws<AdminProtocolException>(() => AdminProtocol.Decode((AdminMessageType)0x1217, [])).Code);
+        Assert.Equal(AdminErrorCode.UnknownType, Assert.Throws<AdminProtocolException>(() => AdminProtocol.Decode((AdminMessageType)0x1219, [])).Code);
         Assert.Equal(AdminErrorCode.UnknownType, Assert.Throws<AdminProtocolException>(() => AdminProtocol.Decode((AdminMessageType)0x0001, [])).Code);
     }
 

@@ -10,7 +10,7 @@ namespace BF2WebAdmin.Tests;
 
 /// <summary>
 /// The admin channel codec against the golden frames shared with the C++ module
-/// (openbf2-server-ext tests/fixtures/admin-v1-golden.txt at 0aab582, written by
+/// (openbf2-server-ext tests/fixtures/admin-v1-golden.txt at 10790ce, written by
 /// tools/adminclient/adminclient.py golden_samples). Every frame is encoded from the same sample
 /// values and compared byte for byte, then decoded and re-encoded.
 /// </summary>
@@ -29,7 +29,7 @@ public class AdminProtocolTests
 
     // The sample values of adminclient.py golden_samples().
     private static readonly AdminPlayerState PState = new(2, 3, 2, 5, 48, 1819, 29328, 1,
-        new Vec3(1.5f, 100.25f, -3.0f), new Vec3(90.0f, -5.0f, 2.5f), new Vec3(10.0f, 0.5f, -1.0f), 0.75f);
+        new Vec3(1.5f, 100.25f, -3.0f), new Vec3(90.0f, -5.0f, 2.5f), new Vec3(10.0f, 0.5f, -1.0f), 0.75f, 3);
     private static readonly AdminPlayerScore Score = new(12, 4, 5, 2, 1, 7);
     private static readonly AdminPlayerInfo PInfo = new(3, "§netsky", AdminPlayerInfo.FlagConnected | AdminPlayerInfo.FlagIdentity, 43001234,
         "10.0.0.7", "0123456789abcdef0123456789abcdef", Score, PState);

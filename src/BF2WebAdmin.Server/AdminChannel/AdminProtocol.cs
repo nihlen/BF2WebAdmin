@@ -390,19 +390,22 @@ public sealed record AdminGameState(
 
 public sealed record AdminPlayerState(
     byte Team, byte Squad, byte Life, byte Flags, ushort Ping, uint RootNetId, uint RootConsoleId, byte Seat,
-    Vec3 Position, Vec3 Rotation, Vec3 Velocity, float Health)
+    Vec3 Position, Vec3 Rotation, Vec3 Velocity, float Health, byte ViewMode)
 {
     public const byte LifeDead = 0, LifeAlive = 1, LifeManDown = 2;
     public const byte FlagSeated = 1, FlagCommander = 2, FlagSquadLeader = 4;
+    // Camera view modes; ViewUnknown when dead or without a camera.
+    public const byte ViewNone = 0, ViewInside = 1, ViewNose = 2, ViewChase = 3, ViewFrontChase = 4, ViewFlyBy = 5,
+        ViewTrace = 6, ViewExternTrace = 7, ViewUnknown = 255;
 
     public bool IsAlive => Life != LifeDead;
 
     public static AdminPlayerState Read(ref AdminReader r) =>
-        new(r.U8(), r.U8(), r.U8(), r.U8(), r.U16(), r.U32(), r.U32(), r.U8(), r.Vec(), r.Vec(), r.Vec(), r.F32());
+        new(r.U8(), r.U8(), r.U8(), r.U8(), r.U16(), r.U32(), r.U32(), r.U8(), r.Vec(), r.Vec(), r.Vec(), r.F32(), r.U8());
 
     public void Write(AdminWriter w) =>
         w.Byte(Team).Byte(Squad).Byte(Life).Byte(Flags).U16(Ping).U32(RootNetId).U32(RootConsoleId).Byte(Seat)
-            .Vec(Position).Vec(Rotation).Vec(Velocity).F32(Health);
+            .Vec(Position).Vec(Rotation).Vec(Velocity).F32(Health).Byte(ViewMode);
 }
 
 public sealed record AdminPlayerScore(int Score, int TeamScore, int Kills, int Deaths, int TeamKills, short Rank)

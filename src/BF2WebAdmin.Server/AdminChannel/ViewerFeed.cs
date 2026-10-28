@@ -131,7 +131,10 @@ public class ViewerFeed
     private readonly object _missileLock = new();
     private readonly List<MissileReplayDto> _missiles = new();
     private readonly Dictionary<uint, List<EvProjectileCollision>> _pendingCollisions = new();
-    private readonly Queue<uint> _pendingOrder = new();
+    // Oldest first. A list taken by its trace stays queued until evicted, so eviction removes only the list it queued: the
+    // module reuses networkable ids (1851 and 1852 for every TV missile on a 2v2 server), and evicting by id alone threw
+    // away the newest projectile's collisions
+    private readonly Queue<(uint Id, List<EvProjectileCollision> List)> _pendingOrder = new();
     // The crew of a vehicle when a projectile hit it: a trace ends when the missile's time to live runs out, by when a
     // crew it killed is gone
     private readonly Dictionary<uint, string[]> _crewAtHit = new();
@@ -237,9 +240,13 @@ public class ViewerFeed
             {
                 list = [];
                 _pendingCollisions[e.Id] = list;
-                _pendingOrder.Enqueue(e.Id);
+                _pendingOrder.Enqueue((e.Id, list));
                 while (_pendingOrder.Count > MaxPendingCollisions)
-                    _pendingCollisions.Remove(_pendingOrder.Dequeue());
+                {
+                    var (oldId, oldList) = _pendingOrder.Dequeue();
+                    if (_pendingCollisions.TryGetValue(oldId, out var current) && ReferenceEquals(current, oldList))
+                        _pendingCollisions.Remove(oldId);
+                }
             }
 
             if (list.Count < 16)

@@ -10,7 +10,7 @@ namespace BF2WebAdmin.Tests;
 
 /// <summary>
 /// The admin channel codec against the golden frames shared with the C++ module
-/// (openbf2-server-ext tests/fixtures/admin-v1-golden.txt at 93467b1, written by
+/// (openbf2-server-ext tests/fixtures/admin-v1-golden.txt at cbf435c, written by
 /// tools/adminclient/adminclient.py golden_samples). Every frame is encoded from the same sample
 /// values and compared byte for byte, then decoded and re-encoded.
 /// </summary>
@@ -29,7 +29,7 @@ public class AdminProtocolTests
 
     // The sample values of adminclient.py golden_samples().
     private static readonly AdminPlayerState PState = new(2, 3, 2, 5, 48, 1819, 29328, 1,
-        new Vec3(1.5f, 100.25f, -3.0f), new Vec3(90.0f, -5.0f, 2.5f), new Vec3(10.0f, 0.5f, -1.0f), 0.75f, 3);
+        new Vec3(1.5f, 100.25f, -3.0f), new Vec3(90.0f, -5.0f, 2.5f), new Vec3(10.0f, 0.5f, -1.0f), 0.75f, 3, 245);
     private static readonly AdminPlayerScore Score = new(12, 4, 5, 2, 1, 7);
     private static readonly AdminPlayerInfo PInfo = new(3, "§netsky", AdminPlayerInfo.FlagConnected | AdminPlayerInfo.FlagIdentity, 43001234,
         "10.0.0.7", "0123456789abcdef0123456789abcdef", Score, PState);
@@ -85,6 +85,15 @@ public class AdminProtocolTests
         ["ev_weapon_fire"] = new EvWeaponFire(23, 10, 255, 1819, "ahe_z10_30mm", "ahe_z10_30mm_projectile", 3, V123,
             new Vec3(400.0f, -5.0f, 10.0f)),
         ["ev_weapons"] = new EvWeapons(24, 10, 255, [new AdminWeaponSlot(0, "ahe_z10_30mm"), new AdminWeaponSlot(1, "ahe_z10_FlareLauncher")]),
+        ["ev_projectile_collision"] = new EvProjectileCollision(25, 10, 1852, "agm114_hellfire_tv", 254,
+            EvProjectileCollision.KindObject, EvProjectileCollision.FlagRewound, 1799, 29312, "ahe_ah1z", "agm114_hellfiredummy", -1,
+            new Vec3(210.5f, 199.25f, 112.0f), new Vec3(1.0f, 0.0f, 0.0f), new Vec3(-30.0f, 2.5f, 120.0f), 56, 0.25f,
+            new Vec3(211.5f, 199.0f, 112.25f), new Vec3(180.0f, 2.0f, 25.5f), new Vec3(206.0f, 199.5f, 110.0f), new Vec3(180.0f, 2.0f, 25.5f)),
+        ["ev_projectile_trace"] = new EvProjectileTrace(26, 10, 1852, "agm114_hellfire_tv", 254, 5000, EvProjectileTrace.FlagCollided,
+            [new AdminTraceTarget(1799, "ahe_ah1z")],
+            [.. Enumerable.Range(0, 2).Select(k => new AdminTraceSample(new Vec3(100.0f + k, 200.0f, 50.0f + 4 * k), new Vec3(0.0f, -1.0f, 125.0f), 0.25f,
+                [new AdminTracePose(new Vec3(210.0f - k, 199.0f, 112.0f), new Vec3(180.0f, 2.0f, 25.5f), new Vec3(217.5f - k, 199.5f, 111.0f),
+                    new Vec3(180.0f, 1.5f, 25.0f))]))]),
         ["ok"] = new OkReply(9),
         ["console_result"] = new ConsoleResult(10, 1, ["a", "", "§"]),
         ["object_list"] = new ObjectList(11, 1, [new ObjectListEntry(5, 0, "fence", V123, V456, -1.0f, 0)]),
@@ -115,12 +124,13 @@ public class AdminProtocolTests
         ["cmd_delete_object"] = new CmdDeleteObject(23, ObjectRef.Networkable(5)),
         ["cmd_ping"] = new Ping(24, 99),
         ["cmd_subscribe_fire"] = new Subscribe(25, AdminStream.WeaponFire, 0, ["ahe_z10_FlareLauncher"]),
+        ["cmd_subscribe_replay"] = new Subscribe(26, AdminStream.Replay, 0, ["agm114_hellfire_tv"]),
     };
 
     [Fact]
     public void GoldenFileHasEveryFrame()
     {
-        Assert.Equal(64, Golden.Count);
+        Assert.Equal(67, Golden.Count);
         Assert.Equal(Golden.Keys.OrderBy(k => k), SampleMessages().Keys.OrderBy(k => k));
     }
 
@@ -245,7 +255,7 @@ public class AdminProtocolTests
     [Fact]
     public void RejectsUnknownType()
     {
-        Assert.Equal(AdminErrorCode.UnknownType, Assert.Throws<AdminProtocolException>(() => AdminProtocol.Decode((AdminMessageType)0x1219, [])).Code);
+        Assert.Equal(AdminErrorCode.UnknownType, Assert.Throws<AdminProtocolException>(() => AdminProtocol.Decode((AdminMessageType)0x121B, [])).Code);
         Assert.Equal(AdminErrorCode.UnknownType, Assert.Throws<AdminProtocolException>(() => AdminProtocol.Decode((AdminMessageType)0x0001, [])).Code);
     }
 

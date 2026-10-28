@@ -358,7 +358,7 @@ public class AdminPlayerKeyTests
     private static AdminPlayerInfo Info(string hash) => new(3, "§netsky bot", AdminPlayerInfo.FlagConnected, 0, "", hash,
         new AdminPlayerScore(0, 0, 0, 0, 0, -1),
         new AdminPlayerState(1, 0, 1, 0, 0, 0, AdminProtocol.NoConsoleId, 255, default, default, default, 1,
-            AdminPlayerState.ViewInside));
+            AdminPlayerState.ViewInside, 0));
 
     [Theory]
     [InlineData("0123456789abcdef0123456789abcdef", false, "0123456789abcdef0123456789abcdef")]

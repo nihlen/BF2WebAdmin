@@ -50,6 +50,8 @@ public enum AdminMessageType : ushort
     EvBot = 0x1216,
     EvWeaponFire = 0x1217,
     EvWeapons = 0x1218,
+    EvProjectileCollision = 0x1219,
+    EvProjectileTrace = 0x121A,
 
     CmdConsole = 0x1301,
     CmdSay = 0x1302,
@@ -105,6 +107,8 @@ public enum AdminStream : byte
     ProjectileEvents = 17,
     WeaponFire = 18,
     Weapons = 19,
+    /// <summary>The hit/miss replay: ProjectileCollision and ProjectileTrace; needs projectile template filters.</summary>
+    Replay = 20,
 }
 
 public enum ObjectRefKind : byte
@@ -198,6 +202,10 @@ public static class AdminProtocol
             AdminMessageType.EvBot => new EvBot(r.U32(), r.U32(), r.U8(), r.U8(), r.U8(), r.U32()),
             AdminMessageType.EvWeaponFire => new EvWeaponFire(r.U32(), r.U32(), r.I16(), r.U32(), r.Str(), r.Str(), r.U8(), r.Vec(), r.Vec()),
             AdminMessageType.EvWeapons => EvWeapons.Read(ref r),
+            AdminMessageType.EvProjectileCollision => new EvProjectileCollision(r.U32(), r.U32(), r.U32(), r.Str(), r.I16(),
+                r.U8(), r.U8(), r.U32(), r.U32(), r.Str(), r.Str(), r.I16(), r.Vec(), r.Vec(), r.Vec(), r.U16(), r.F32(),
+                r.Vec(), r.Vec(), r.Vec(), r.Vec()),
+            AdminMessageType.EvProjectileTrace => EvProjectileTrace.Read(ref r),
             AdminMessageType.CmdConsole => new CmdConsole(r.U32(), r.Str()),
             AdminMessageType.CmdSay => new CmdSay(r.U32(), r.U8(), r.U8(), r.Str()),
             AdminMessageType.CmdTeleport => new CmdTeleport(r.U32(), ObjectRef.Read(ref r), r.U8(), r.Vec(), r.Vec()),
@@ -399,7 +407,7 @@ public sealed record AdminGameState(
 
 public sealed record AdminPlayerState(
     byte Team, byte Squad, byte Life, byte Flags, ushort Ping, uint RootNetId, uint RootConsoleId, byte Seat,
-    Vec3 Position, Vec3 Rotation, Vec3 Velocity, float Health, byte ViewMode)
+    Vec3 Position, Vec3 Rotation, Vec3 Velocity, float Health, byte ViewMode, ushort LagMs)
 {
     public const byte LifeDead = 0, LifeAlive = 1, LifeManDown = 2;
     public const byte FlagSeated = 1, FlagCommander = 2, FlagSquadLeader = 4;
@@ -410,11 +418,11 @@ public sealed record AdminPlayerState(
     public bool IsAlive => Life != LifeDead;
 
     public static AdminPlayerState Read(ref AdminReader r) =>
-        new(r.U8(), r.U8(), r.U8(), r.U8(), r.U16(), r.U32(), r.U32(), r.U8(), r.Vec(), r.Vec(), r.Vec(), r.F32(), r.U8());
+        new(r.U8(), r.U8(), r.U8(), r.U8(), r.U16(), r.U32(), r.U32(), r.U8(), r.Vec(), r.Vec(), r.Vec(), r.F32(), r.U8(), r.U16());
 
     public void Write(AdminWriter w) =>
         w.Byte(Team).Byte(Squad).Byte(Life).Byte(Flags).U16(Ping).U32(RootNetId).U32(RootConsoleId).Byte(Seat)
-            .Vec(Position).Vec(Rotation).Vec(Velocity).F32(Health).Byte(ViewMode);
+            .Vec(Position).Vec(Rotation).Vec(Velocity).F32(Health).Byte(ViewMode).U16(LagMs);
 }
 
 /// <summary>
@@ -433,6 +441,15 @@ public sealed record AdminAimState(byte Player, byte Flags, Vec3 CameraPosition,
 }
 
 public sealed record AdminWeaponSlot(byte Slot, string Template);
+
+/// <summary>A target of a ProjectileTrace: a vehicle root that came within 150 m of the projectile.</summary>
+public sealed record AdminTraceTarget(uint NetId, string Template);
+
+/// <summary>A target in one trace sample: where it is now ("red") and where this tick's sweep tests it ("blue").</summary>
+public sealed record AdminTracePose(Vec3 Position, Vec3 Rotation, Vec3 TestedPosition, Vec3 TestedRotation);
+
+/// <summary>One tick of a ProjectileTrace: the projectile, the shooter's lag compensation and every target's poses.</summary>
+public sealed record AdminTraceSample(Vec3 Position, Vec3 Velocity, float Lag, IReadOnlyList<AdminTracePose> Targets);
 
 public sealed record AdminPlayerScore(int Score, int TeamScore, int Kills, int Deaths, int TeamKills, short Rank)
 {
@@ -1006,6 +1023,77 @@ public sealed record EvWeapons(uint Seq, uint Tick, byte Player, IReadOnlyList<A
     {
         w.Byte(Player).Byte((byte)Slots.Count);
         foreach (var s in Slots) w.Byte(s.Slot).Str(s.Template);
+    }
+}
+
+/// <summary>
+/// One collision the server handed to a subscribed projectile (stream 20): the part touched (a hull, a child part such
+/// as a rotor or a dummy missile, a soldier; Kind 0 for terrain), whether it was tested at its rewound pose, the pose
+/// it was tested at and the root's pose now. Damage is booked to the vehicle whatever part was hit.
+/// </summary>
+public sealed record EvProjectileCollision(uint Seq, uint Tick, uint Id, string Template, short Shooter, byte Kind, byte Flags,
+    uint RootNetId, uint RootConsoleId, string RootTemplate, string PartTemplate, short PartPlayer, Vec3 Position, Vec3 Normal,
+    Vec3 Speed, ushort Material, float Latency, Vec3 PartPosition, Vec3 PartRotation, Vec3 RootPosition, Vec3 RootRotation)
+    : AdminEvent(Seq, Tick)
+{
+    public const byte KindTerrain = 0, KindObject = 1;
+    public const byte FlagRoot = 1, FlagSoldier = 2, FlagRewound = 4;
+
+    public override AdminMessageType Type => AdminMessageType.EvProjectileCollision;
+
+    protected override void WriteFields(AdminWriter w) =>
+        w.U32(Id).Str(Template).I16(Shooter).Byte(Kind).Byte(Flags).U32(RootNetId).U32(RootConsoleId).Str(RootTemplate)
+            .Str(PartTemplate).I16(PartPlayer).Vec(Position).Vec(Normal).Vec(Speed).U16(Material).F32(Latency)
+            .Vec(PartPosition).Vec(PartRotation).Vec(RootPosition).Vec(RootRotation);
+}
+
+/// <summary>
+/// A subscribed projectile's whole flight (stream 20), sent once when it ends. Sample k is the state at the end of tick
+/// FirstTick + k; the sweep from sample k to k + 1 meets each target at sample k's tested pose.
+/// </summary>
+public sealed record EvProjectileTrace(uint Seq, uint Tick, uint Id, string Template, short Shooter, uint FirstTick, byte Flags,
+    IReadOnlyList<AdminTraceTarget> Targets, IReadOnlyList<AdminTraceSample> Samples) : AdminEvent(Seq, Tick)
+{
+    public const byte FlagCut = 1, FlagCollided = 2;
+
+    public override AdminMessageType Type => AdminMessageType.EvProjectileTrace;
+
+    public static EvProjectileTrace Read(ref AdminReader r)
+    {
+        var seq = r.U32();
+        var tick = r.U32();
+        var id = r.U32();
+        var template = r.Str();
+        var shooter = r.I16();
+        var firstTick = r.U32();
+        var flags = r.U8();
+        var targets = new AdminTraceTarget[r.U8()];
+        for (var i = 0; i < targets.Length; i++)
+            targets[i] = new AdminTraceTarget(r.U32(), r.Str());
+        var samples = new AdminTraceSample[r.U16()];
+        for (var i = 0; i < samples.Length; i++)
+        {
+            var position = r.Vec();
+            var velocity = r.Vec();
+            var lag = r.F32();
+            var poses = new AdminTracePose[targets.Length];
+            for (var k = 0; k < poses.Length; k++)
+                poses[k] = new AdminTracePose(r.Vec(), r.Vec(), r.Vec(), r.Vec());
+            samples[i] = new AdminTraceSample(position, velocity, lag, poses);
+        }
+        return new EvProjectileTrace(seq, tick, id, template, shooter, firstTick, flags, targets, samples);
+    }
+
+    protected override void WriteFields(AdminWriter w)
+    {
+        w.U32(Id).Str(Template).I16(Shooter).U32(FirstTick).Byte(Flags).Byte((byte)Targets.Count);
+        foreach (var t in Targets) w.U32(t.NetId).Str(t.Template);
+        w.U16((ushort)Samples.Count);
+        foreach (var s in Samples)
+        {
+            w.Vec(s.Position).Vec(s.Velocity).F32(s.Lag);
+            foreach (var p in s.Targets) w.Vec(p.Position).Vec(p.Rotation).Vec(p.TestedPosition).Vec(p.TestedRotation);
+        }
     }
 }
 

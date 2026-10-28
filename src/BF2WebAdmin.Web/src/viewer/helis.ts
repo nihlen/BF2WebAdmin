@@ -249,7 +249,8 @@ export class HeliModel {
   private fromTemplate(template: Object3D, teamColor: string) {
     const model = template.clone(true)
     model.position.set(0, 0, 0)
-    const tint = new Color('#ffffff').lerp(new Color(teamColor), 0.3)
+    // A light team tint, so the game textures still show
+    const tint = new Color('#ffffff').lerp(new Color(teamColor), 0.12)
     model.traverse((o) => {
       const mesh = o as Mesh
       if (!mesh.isMesh) return

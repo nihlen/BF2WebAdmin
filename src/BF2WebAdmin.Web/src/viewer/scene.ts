@@ -376,7 +376,9 @@ export class ViewerScene {
     )
     water.rotation.x = -Math.PI / 2
     water.position.y = this.seaLevel
-    water.renderOrder = 1
+    // Drawn first among the transparent objects and writing depth: the lines and ghosts drawn after it are hidden
+    // where the sea is in front of them and drawn over it where they are in front
+    water.renderOrder = -1
     this.world.add(water)
   }
 
@@ -743,6 +745,8 @@ export class ViewerScene {
   private readonly _v = new Vector3()
   private readonly _w = new Vector3()
   private readonly _q2 = new Quaternion()
+  private readonly _p3 = new Vector3()
+  private readonly _q3 = new Quaternion()
 
   /** The players in a vehicle at tick, pilot first */
   private crewOf(root: number, tick: number) {
@@ -997,7 +1001,15 @@ export class ViewerScene {
 
       ghostPose(a, b, u, 0, this._p, this._q)
       applyPose(currentRoot, this._p, this._q)
-      if (view.parts) applyPose(view.parts, this._p, this._q)
+      if (view.parts) {
+        // The child parts are not rewound: the sweep of tick k meets them where the tick leaves the target, which is the
+        // next sample's current pose (as an unrewound hull's tested pose is; tv-hitbox.md). Checked on recorded hits: a
+        // Hellfire dummy hit lies 0.001 m from the dummy at sample k+1's pose and 0.5 m off at sample k's
+        const k1 = Math.min(k + 1, n - 1)
+        const b1 = u > 0 && k1 + 1 < n ? samples[k1 + 1].t[i] : null
+        ghostPose(samples[k1].t[i], b1, u, 0, this._p3, this._q3)
+        applyPose(view.parts, this._p3, this._q3)
+      }
       if (view.current instanceof HeliModel) view.current.animate((this.tick / TICK_RATE) * 1000, this.playing)
       ghostPose(a, b, u, 6, this._w, this._q2)
       applyPose(testedRoot, this._w, this._q2)
@@ -1317,6 +1329,8 @@ function makeLine(color: string, points: number, opacity: number, width: number)
   const material = new LineMaterial({ color, linewidth: width, worldUnits: false, transparent: true, opacity, depthWrite: false })
   const line = new Line2(geometry, material)
   line.frustumCulled = false
+  // After the ghosts (render order 2-4), which do not write depth: a line in front of a ghost must not be covered by it
+  line.renderOrder = 10
   return line
 }
 

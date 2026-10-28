@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, ChevronLeft, ChevronRight, Crosshair, Pause, Play, Radio } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Pause, Play, Radio } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, errorMessage, fetchClient, type MissileSummary } from '@/api/client'
 import { useHubEvent, useViewerSubscription } from '@/api/hub'
@@ -121,7 +121,11 @@ export function ViewerPage() {
   // Keys: WASD/QE fly the free camera, space plays, , and . step one tick, H jumps to the hit, L goes live
   useEffect(() => {
     if (!scene) return
-    const isTyping = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
+    // Only text entry keeps the keys; a focused checkbox, button or the timeline does not
+    const isTyping = (e: KeyboardEvent) =>
+      e.target instanceof HTMLTextAreaElement ||
+      (e.target instanceof HTMLInputElement && !['checkbox', 'radio', 'range', 'button'].includes(e.target.type)) ||
+      (e.target instanceof HTMLElement && e.target.isContentEditable)
     const down = (e: KeyboardEvent) => {
       if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return
       if (e.code === 'Space') {
@@ -335,6 +339,15 @@ function missileOutcome(m: MissileSummary, teams: Map<string, number>, playerNam
     return { text: `Hit object ${part || 'unknown'}`, enemyHit: false }
   }
   if (m.outcome === 'terrain') return { text: 'Hit ground / water', enemyHit: false }
+  // The trace says it ended at a collision (flag bit 1) but no ProjectileCollision came with it: WebAdmin lost it
+  // before the fix in ViewerFeed (reused projectile ids evicted the newest collisions)
+  if (m.flags & 2) {
+    const near = [...m.targets].filter((t) => t.moved).sort((a, b) => a.closestCurrent - b.closestCurrent)[0]
+    return {
+      text: near && near.closestCurrent < 5 ? `Contact near ${near.template} (part not recorded)` : 'Contact (part not recorded)',
+      enemyHit: false,
+    }
+  }
   // Parked, empty vehicles near the path are targets too: name the nearest one that moved
   const moved = m.targets.filter((t) => t.moved)
   const nearest = [...(moved.length ? moved : m.targets)].sort((a, b) => a.closestTested - b.closestTested)[0]
@@ -374,7 +387,15 @@ function MissileItem({
 }
 
 /** The replay's colours, over the 3D view while a missile is selected */
+const LEGEND_KEY = 'viewer.legend.collapsed'
+
+/** The replay's colours, over the 3D view while a missile is selected; collapsible, remembered in localStorage */
 function Legend() {
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(LEGEND_KEY) === '1')
+  const toggle = () => {
+    setCollapsed(!collapsed)
+    localStorage.setItem(LEGEND_KEY, collapsed ? '0' : '1')
+  }
   const rows: [string, string, string][] = [
     [CURRENT_COLOR, 'Red: as drawn', 'the model where the gunner sees it (its pose now)'],
     [TESTED_COLOR, 'Blue: hull hitbox (rewound)', "the hull's collision mesh, moved back by the shooter's lag"],
@@ -383,8 +404,24 @@ function Legend() {
     [HIT_COLOR, 'Pole: impact point', 'green on a helicopter, grey on ground or an object; bright from the hit tick (H)'],
   ]
   return (
-    <div className="pointer-events-none absolute bottom-2 left-2 max-w-md space-y-0.5 rounded bg-black/60 px-2 py-1 text-xs text-white">
-      {rows.map(([color, name, text]) => (
+    <div className="absolute bottom-2 left-2 max-w-md space-y-0.5 rounded bg-black/60 px-2 py-1 text-xs text-white">
+      <button
+        type="button"
+        className="flex items-center gap-1 font-medium text-white/80 hover:text-white"
+        title={collapsed ? 'Show the legend' : 'Hide the legend'}
+        onClick={toggle}
+      >
+        {collapsed ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+        Legend
+        {collapsed && (
+          <span className="ml-1 flex gap-1">
+            {rows.map(([color, name]) => (
+              <span key={name} className="size-2.5 rounded-sm" style={{ background: color }} />
+            ))}
+          </span>
+        )}
+      </button>
+      {!collapsed && rows.map(([color, name, text]) => (
         <div key={name} className="flex items-baseline gap-2">
           <span className="size-2.5 shrink-0 translate-y-0.5 rounded-sm" style={{ background: color }} />
           <span>
@@ -481,11 +518,72 @@ function formatTicks(ticks: number) {
   return `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, '0')}`
 }
 
+/**
+ * The timeline's track: press and drag anywhere on it to scrub (it pauses), while playing too. Not a focusable input, so
+ * the viewer's keys keep working after using it
+ */
+function TimelineTrack({ scene, playback }: { scene: ViewerScene | null; playback: PlaybackState }) {
+  const { tick, start, end, missile } = playback
+  const span = Math.max(end - start, 1)
+  const percent = (t: number) => `${Math.min(Math.max((t - start) / span, 0), 1) * 100}%`
+  const track = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+  const disabled = end <= start || !scene
+
+  const seekAt = (clientX: number) => {
+    const rect = track.current?.getBoundingClientRect()
+    if (!rect || !scene) return
+    const f = Math.min(Math.max((clientX - rect.left) / Math.max(rect.width, 1), 0), 1)
+    scene.seek(start + f * span)
+  }
+
+  return (
+    <div
+      ref={track}
+      className={cn('relative h-6 flex-1 touch-none select-none', disabled ? 'opacity-50' : 'cursor-pointer')}
+      onPointerDown={(e) => {
+        if (disabled || e.button !== 0) return
+        e.preventDefault()
+        e.currentTarget.setPointerCapture(e.pointerId)
+        dragging.current = true
+        scene?.pause()
+        seekAt(e.clientX)
+      }}
+      onPointerMove={(e) => {
+        if (dragging.current) seekAt(e.clientX)
+      }}
+      onPointerUp={(e) => {
+        dragging.current = false
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+      }}
+      onPointerCancel={() => (dragging.current = false)}
+    >
+      <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-muted" />
+      <div className="absolute top-1/2 left-0 h-1.5 -translate-y-1/2 rounded-full bg-primary/70" style={{ width: percent(tick) }} />
+      {missile && (
+        <div
+          className="absolute top-1/2 h-2 -translate-y-1/2 rounded bg-yellow-400/40"
+          style={{ left: percent(missile.first), width: `${((missile.last - missile.first) / span) * 100}%` }}
+        />
+      )}
+      {missile && missile.impact >= 0 && (
+        <div
+          className="absolute top-1/2 h-5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-sm"
+          style={{ left: percent(missile.impact), background: missile.impactKind === 'vehicle' ? HIT_COLOR : IMPACT_COLOR }}
+          title="Hit tick"
+        />
+      )}
+      <div
+        className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-primary shadow"
+        style={{ left: percent(tick) }}
+      />
+    </div>
+  )
+}
+
 function Timeline({ scene, playback, onLive }: { scene: ViewerScene | null; playback: PlaybackState | null; onLive: () => void }) {
   if (!playback) return <div className="h-10" />
   const { tick, start, end, playing, live, speed, missile } = playback
-  const span = Math.max(end - start, 1)
-  const percent = (t: number) => `${((t - start) / span) * 100}%`
 
   return (
     <div className="flex items-center gap-2">
@@ -528,32 +626,7 @@ function Timeline({ scene, playback, onLive }: { scene: ViewerScene | null; play
           </option>
         ))}
       </select>
-      <div className="relative flex-1">
-        {missile && (
-          <div
-            className="pointer-events-none absolute top-1/2 h-2 -translate-y-1/2 rounded bg-yellow-400/40"
-            style={{ left: percent(missile.first), width: `${((missile.last - missile.first) / span) * 100}%` }}
-          />
-        )}
-        {missile && missile.impact >= 0 && (
-          <div
-            className="pointer-events-none absolute top-1/2 h-5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-sm"
-            style={{ left: percent(missile.impact), background: missile.impactKind === 'vehicle' ? HIT_COLOR : IMPACT_COLOR }}
-            title="Hit tick"
-          />
-        )}
-        <input
-          type="range"
-          className="relative w-full accent-primary"
-          min={start}
-          max={Math.max(end, start + 1)}
-          step="any"
-          value={tick}
-          disabled={end <= start}
-          onChange={(e) => scene?.seek(Number(e.target.value))}
-          onPointerDown={() => scene?.pause()}
-        />
-      </div>
+      <TimelineTrack scene={scene} playback={playback} />
       <div className="w-44 shrink-0 text-right font-mono text-xs text-muted-foreground">
         {missile
           ? `${formatTicks(tick - missile.first)} · tick ${Math.round(tick - missile.first)}/${missile.last - missile.first}`

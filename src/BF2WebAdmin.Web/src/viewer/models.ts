@@ -1,22 +1,31 @@
 import { AdditiveBlending, Color, ConeGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, SphereGeometry } from 'three'
 
-/** A TV-guided missile (Hellfire-ish, 1.6 m) with a glowing motor. Faces -Z. */
+/** The Hellfire's length and its origin: the centre (collision mesh agm114_hellfire: z -0.875 to 0.871, radius 0.113) */
+export const MISSILE_LENGTH = 1.75
+
+/**
+ * A TV-guided missile at true size with a glowing motor. Faces -Z, origin at its centre: the point the engine sweeps
+ * (physicsType Point, no radius; OpenBF2 PointResponsePhysics.cpp:112-145), so the nose is 0.87 m ahead of it.
+ */
 export class MissileModel {
   readonly root = new Group()
   private readonly glow: Mesh
 
   constructor(teamColor: string) {
-    const body = new Mesh(new CylinderGeometry(0.09, 0.09, 1.4, 8), new MeshLambertMaterial({ color: '#d9d9d0' }))
+    const half = MISSILE_LENGTH / 2
+    const noseLength = 0.3
+    const body = new Mesh(new CylinderGeometry(0.09, 0.09, MISSILE_LENGTH - noseLength, 8), new MeshLambertMaterial({ color: '#d9d9d0' }))
     body.rotation.x = Math.PI / 2
+    body.position.z = noseLength / 2
     this.root.add(body)
 
-    const nose = new Mesh(new ConeGeometry(0.09, 0.3, 8), new MeshLambertMaterial({ color: '#d9d9d0' }))
+    const nose = new Mesh(new ConeGeometry(0.09, noseLength, 8), new MeshLambertMaterial({ color: '#d9d9d0' }))
     nose.rotation.x = -Math.PI / 2
-    nose.position.z = -0.85
+    nose.position.z = -half + noseLength / 2
     this.root.add(nose)
 
     const glow = (this.glow = new Mesh(
-      new SphereGeometry(0.6, 10, 8),
+      new SphereGeometry(0.4, 10, 8),
       new MeshBasicMaterial({
         color: new Color(teamColor).lerp(new Color('#ffd27a'), 0.6),
         transparent: true,
@@ -25,9 +34,16 @@ export class MissileModel {
         depthWrite: false,
       }),
     ))
-    glow.position.z = 0.9
+    glow.position.z = half + 0.3
     glow.scale.set(1, 1, 2.2)
     this.root.add(glow)
+  }
+
+  /** A small bright dot on the origin, drawn over everything: the point the engine tests */
+  addTestPoint(color: string) {
+    const dot = new Mesh(new SphereGeometry(0.12, 12, 8), new MeshBasicMaterial({ color, depthTest: false, transparent: true }))
+    dot.renderOrder = 8
+    this.root.add(dot)
   }
 
   /** Shows or hides the motor's glow (the viewer's effects toggle) */

@@ -57,6 +57,7 @@ import {
 } from './cameras'
 import { rotToQuaternion, vecToWorld } from './coords'
 import { HeliModel } from './helis'
+import { findPart, type HitboxSet, HitboxModel, loadHitboxes, facesNear, partMesh } from './hitboxes'
 import { Explosion, MissileModel } from './models'
 import { SpectatorControls } from './spectator'
 
@@ -79,9 +80,13 @@ const DEFAULT_HORIZON_COLOR = '#b1bad0'
 const SKY_RADIUS = 20000
 const FOV_FREE = 55
 
-/** The hitbox ghosts: red where the target is now (what the gunner saw), blue where the server tested it */
+/**
+ * The hitbox ghosts: red the visual model where the target is now (what the gunner saw), blue the hull's collision mesh
+ * where the server tested it (rewound), orange the child parts' collision meshes, tested where they are now
+ */
 export const CURRENT_COLOR = '#ff3b3b'
 export const TESTED_COLOR = '#3b82ff'
+export const PARTS_COLOR = '#f97316'
 const PATH_COLOR = '#f5e9c8'
 export const SWEEP_COLOR = '#facc15'
 /** The impact marker: a direct hit on a vehicle, or anything else the missile stopped on */
@@ -133,13 +138,32 @@ export type ViewInfo = {
   ping: number
 } | null
 
-type VehicleView = { model: HeliModel | Mesh; label: CSS2DObject; labelEl: HTMLDivElement; trail: Line2; template: string; team: number }
+type VehicleView = {
+  model: HeliModel | Mesh
+  label: CSS2DObject
+  labelEl: HTMLDivElement
+  trail: Line2
+  template: string
+  team: number
+  /** The collision meshes at the live pose, with the Hitboxes toggle */
+  hitbox: HitboxModel | null
+}
 
 type ProjectileView = { model: MissileModel }
 
 type SoldierView = { model: Mesh; label: CSS2DObject; labelEl: HTMLDivElement; team: number }
 
-type TargetView = { current: HeliModel | Mesh; tested: HeliModel | Mesh; lagLine: Line2; label: CSS2DObject; labelEl: HTMLDivElement }
+type TargetView = {
+  /** The visual model at the current pose (red) */
+  current: HeliModel | Mesh
+  /** The hull's collision mesh at the tested pose (blue), or the visual model without rotors when there is none */
+  tested: Object3D
+  /** The child parts' collision meshes at the current pose (orange) */
+  parts: Object3D | null
+  lagLine: Line2
+  label: CSS2DObject
+  labelEl: HTMLDivElement
+}
 
 type MissileView = {
   replay: MissileReplay
@@ -175,6 +199,7 @@ export class ViewerScene {
   private readonly overlay = new Group()
   private readonly sun = new DirectionalLight('#fff3e0', 2.2)
   private readonly heliTemplates = new Map<string, Object3D>()
+  private hitboxes: HitboxSet = new Map()
   private sky: Mesh | null = null
   private seaLevel = DEFAULT_SEA_LEVEL
   private frame = 0
@@ -207,6 +232,7 @@ export class ViewerScene {
   private showTrails = true
   private showLabels = true
   private showEffects = true
+  private showHitboxes = false
   /** The player view's subject, vehicle, view mode and camera: a change snaps the chase and fly-by cameras */
   private viewKey = ''
   private viewInfo: ViewInfo = null
@@ -278,6 +304,9 @@ export class ViewerScene {
 
   /** The AH-1Z and Z-10 from the game meshes (BF2v2 tools/replay-map/build_helis.py) */
   private async loadHeliModels() {
+    const hitboxes = loadHitboxes(`${ASSETS}/models/heli-hitboxes.json`)
+      .then((set) => (this.hitboxes = set))
+      .catch((e: unknown) => console.warn('[viewer] helicopter hitboxes not available, showing the visual hull instead', e))
     try {
       const draco = new DRACOLoader().setDecoderPath(`${ASSETS}/draco/`)
       const gltf = await new GLTFLoader().setDRACOLoader(draco).loadAsync(`${ASSETS}/models/helis.glb`)
@@ -289,6 +318,7 @@ export class ViewerScene {
     } catch (e) {
       console.warn('[viewer] helicopter models not available, using simple models', e)
     }
+    await hitboxes
   }
 
   private async loadTerrain(map: string) {
@@ -393,8 +423,9 @@ export class ViewerScene {
     const flown = makeLine(PATH_COLOR, positions.length, 0.95, 3)
     const sweep = makeLine(SWEEP_COLOR, 2, 1, 5)
     setLinePoints(path, positions)
+    // True size, its centre on the traced position: the point the engine tests
     const model = new MissileModel(teamColor(replay.summary.shooterTeam))
-    model.root.scale.setScalar(1.5)
+    model.addTestPoint(SWEEP_COLOR)
     model.setEffects(this.showEffects)
     const explosion = new Explosion(5)
     this.overlay.add(path, flown, sweep, model.root, explosion.root)
@@ -402,15 +433,19 @@ export class ViewerScene {
     // Parked, empty vehicles near the path are targets too; they are drawn by the live view
     const targets = replay.summary.targets.map((target) => {
       if (!target.moved) return null
-      const current = this.makeVehicleModel(target.template, CURRENT_COLOR, true)
-      const tested = this.makeVehicleModel(target.template, TESTED_COLOR, false)
+      const current = this.makeVehicleModel(target.template, CURRENT_COLOR, true, 0.22)
+      const hitbox = this.hitboxes.get(target.template.toLowerCase())
+      const boxes = hitbox ? new HitboxModel(hitbox, TESTED_COLOR, PARTS_COLOR) : null
+      const tested = boxes ? boxes.hull : rootOf(this.makeVehicleModel(target.template, TESTED_COLOR, false))
+      const parts = boxes ? boxes.parts : null
+      if (parts) this.overlay.add(parts)
       const lagLine = makeLine('#ffffff', 2, 0.8, 1.5)
       const labelEl = document.createElement('div')
       labelEl.style.cssText =
         'font:600 11px/1.2 system-ui,sans-serif;color:#fff;text-shadow:0 1px 2px #000,0 0 6px #000;white-space:nowrap;transform:translateY(-26px)'
       const label = new CSS2DObject(labelEl)
-      this.overlay.add(rootOf(current), rootOf(tested), lagLine, label)
-      return { current, tested, lagLine, label, labelEl }
+      this.overlay.add(rootOf(current), tested, lagLine, label)
+      return { current, tested, parts, lagLine, label, labelEl }
     })
 
     // The parts the missile touched: where it hit, and for a child part where that part was (tested where it is now)
@@ -438,6 +473,26 @@ export class ViewerScene {
       this.overlay.add(hit, label)
       hit.userData.tick = label.userData.tick = c.tick
       markers.push(hit, label)
+      // The part touched, where the engine tested it (rewound for the hull, now for a child part; a rotor at the blade
+      // angle of the hit)
+      const hitbox = onTarget ? this.hitboxes.get(c.rootTemplate.toLowerCase()) : undefined
+      const part = hitbox && !(c.flags & 2) ? findPart(hitbox, c.rootTemplate, c.partTemplate) : undefined
+      if (part) {
+        // A small part lights up whole; on the hull, the patch of faces around the point
+        const isHull = part === hitbox!.hull
+        const touched = new Group()
+        touched.position.copy(vecToWorld(c.partP))
+        touched.quaternion.copy(rotToQuaternion(c.partR))
+        const local = hit.position.clone().sub(touched.position).applyQuaternion(touched.quaternion.clone().invert())
+        const face = isHull ? facesNear(part, local, 0.6, HIT_COLOR) : null
+        if (!isHull) touched.add(partMesh(part, HIT_COLOR, 0.8))
+        if (face) touched.add(face)
+        touched.traverse((o) => (o.renderOrder = 4))
+        if (face) face.renderOrder = 7
+        touched.userData.tick = c.tick
+        this.overlay.add(touched)
+        markers.push(touched)
+      }
       if (impactTick < 0) {
         impactTick = c.tick
         impactKind = c.kind === 0 ? 'terrain' : onTarget ? 'vehicle' : 'object'
@@ -463,11 +518,11 @@ export class ViewerScene {
     this.missile = null
   }
 
-  private makeVehicleModel(template: string, color: string, rotors: boolean): HeliModel | Mesh {
+  private makeVehicleModel(template: string, color: string, rotors: boolean, opacity = rotors ? 0.4 : 0.5): HeliModel | Mesh {
     const name = template.toLowerCase()
     if (isHelicopter(name)) {
       const model = new HeliModel(color, name.includes('z10'), this.heliTemplates.get(name))
-      model.makeGhost(color, rotors ? 0.4 : 0.5, rotors)
+      model.makeGhost(color, opacity, rotors)
       return model
     }
     return new Mesh(
@@ -628,6 +683,11 @@ export class ViewerScene {
     this.showLabels = show
   }
 
+  /** The collision meshes on the live helicopters (hull blue, child parts orange, at the pose the server has now) */
+  setHitboxes(show: boolean) {
+    this.showHitboxes = show
+  }
+
   /** The missiles' motor glow and the explosion */
   setEffects(show: boolean) {
     this.showEffects = show
@@ -728,6 +788,17 @@ export class ViewerScene {
       view.label.visible = this.showLabels && crew.length > 0 && root.visible
       view.labelEl.style.display = view.label.visible ? '' : 'none'
 
+      const hitbox = this.showHitboxes && root.visible ? this.hitboxes.get(sample.template.toLowerCase()) : undefined
+      if (hitbox && !view.hitbox) {
+        view.hitbox = new HitboxModel(hitbox, TESTED_COLOR, PARTS_COLOR, 0.5)
+        this.live.add(view.hitbox.hull, view.hitbox.parts)
+      }
+      if (view.hitbox) {
+        view.hitbox.hull.visible = view.hitbox.parts.visible = !!hitbox
+        applyPose(view.hitbox.hull, this._p, this._q)
+        applyPose(view.hitbox.parts, this._p, this._q)
+      }
+
       view.trail.visible = this.showTrails && isHelicopter(sample.template)
       if (view.trail.visible) {
         updateTrail(view.trail, Math.max(series.first.tick, t - TRAIL_TICKS), t, (tick, out) => {
@@ -771,7 +842,6 @@ export class ViewerScene {
       if (!view) {
         const owner = b.playerAt(sample.owner, t)
         view = { model: new MissileModel(teamColor(owner?.team ?? 0)) }
-        view.model.root.scale.setScalar(1.5)
         view.model.setEffects(this.showEffects)
         this.live.add(view.model.root)
         this.projectiles.set(id, view)
@@ -797,7 +867,7 @@ export class ViewerScene {
     const label = new CSS2DObject(labelEl)
     const trail = makeLine(color, TRAIL_POINTS, 0.85, 2.5)
     this.live.add(rootOf(model), label, trail)
-    const view = { model, label, labelEl, trail, template, team }
+    const view = { model, label, labelEl, trail, template, team, hitbox: null }
     this.vehicles.set(id, view)
     return view
   }
@@ -810,6 +880,11 @@ export class ViewerScene {
     this.live.remove(root, view.label, view.trail)
     disposeTree(root)
     disposeTree(view.trail)
+    if (view.hitbox) {
+      this.live.remove(view.hitbox.hull, view.hitbox.parts)
+      disposeTree(view.hitbox.hull)
+      disposeTree(view.hitbox.parts)
+    }
     this.vehicles.delete(id)
   }
 
@@ -873,9 +948,21 @@ export class ViewerScene {
     if (x > 0) flown.push(this._p.clone())
     setLinePoints(m.flown, x >= 0 ? flown : [])
 
-    // The sweep the server tests next: from this sample to the next, against each target's blue pose
+    // The sweep the engine tests this tick, against each target's blue pose and the orange parts: the missile's point
+    // from end - v/30 to end (PointResponsePhysics.cpp:112-145), where end is the next sample. v is the trace's
+    // velocity (getPositionalSpeed, not necessarily the integration velocity the engine uses; within a millimetre of
+    // the step after launch). On the hit tick the missile stops at the contact point with v 0: the tested segment
+    // then starts at this sample and runs v/30 ahead, past the contact point
     m.sweep.visible = inFlight && k < n - 1
-    if (m.sweep.visible) setLinePoints(m.sweep, [m.positions[k], m.positions[k + 1]])
+    if (m.sweep.visible) {
+      const end = m.positions[k + 1]
+      vecToWorld(samples[k + 1].v, this._v)
+      if (this._v.lengthSq() > 1) setLinePoints(m.sweep, [end.clone().addScaledVector(this._v, -1 / TICK_RATE), end])
+      else {
+        vecToWorld(samples[k].v, this._v)
+        setLinePoints(m.sweep, [m.positions[k], m.positions[k].clone().addScaledVector(this._v, 1 / TICK_RATE)])
+      }
+    }
 
     // A part is marked from the tick it was hit
     for (const marker of m.markers) {
@@ -899,8 +986,9 @@ export class ViewerScene {
       const b = u > 0 ? samples[k + 1].t[i] : null
       const visible = inFlight
       const currentRoot = rootOf(view.current)
-      const testedRoot = rootOf(view.tested)
+      const testedRoot = view.tested
       currentRoot.visible = testedRoot.visible = visible
+      if (view.parts) view.parts.visible = visible
       view.lagLine.visible = view.label.visible = visible
       if (!visible) {
         view.labelEl.style.display = 'none'
@@ -909,6 +997,7 @@ export class ViewerScene {
 
       ghostPose(a, b, u, 0, this._p, this._q)
       applyPose(currentRoot, this._p, this._q)
+      if (view.parts) applyPose(view.parts, this._p, this._q)
       if (view.current instanceof HeliModel) view.current.animate((this.tick / TICK_RATE) * 1000, this.playing)
       ghostPose(a, b, u, 6, this._w, this._q2)
       applyPose(testedRoot, this._w, this._q2)

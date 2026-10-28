@@ -4,6 +4,7 @@ import {
   BufferGeometry,
   CapsuleGeometry,
   ClampToEdgeWrapping,
+  CylinderGeometry,
   Color,
   DirectionalLight,
   DoubleSide,
@@ -82,7 +83,10 @@ const FOV_FREE = 55
 export const CURRENT_COLOR = '#ff3b3b'
 export const TESTED_COLOR = '#3b82ff'
 const PATH_COLOR = '#f5e9c8'
-const SWEEP_COLOR = '#facc15'
+export const SWEEP_COLOR = '#facc15'
+/** The impact marker: a direct hit on a vehicle, or anything else the missile stopped on */
+export const HIT_COLOR = '#22c55e'
+export const IMPACT_COLOR = '#d4d4d4'
 
 export const teamColor = (team: number) => (team === 2 ? '#60a5fa' : team === 1 ? '#f87171' : '#d4d4d4')
 
@@ -108,9 +112,12 @@ export type PlaybackState = {
   playing: boolean
   live: boolean
   speed: number
-  /** The selected missile's first and last tick, when one is selected */
-  missile: { first: number; last: number } | null
+  /** The selected missile's first and last tick, when one is selected, and the tick it stopped on (-1 if none) */
+  missile: { first: number; last: number; impact: number; impactKind: ImpactKind } | null
 }
+
+/** What the missile stopped on: a vehicle it targeted (hull, part or crew), another object, the terrain, or nothing */
+export type ImpactKind = 'vehicle' | 'object' | 'terrain' | null
 
 /** What the player view shows, for the page's overlay */
 export type ViewInfo = {
@@ -148,6 +155,9 @@ type MissileView = {
   markers: Object3D[]
   /** Tick of the direct hit or terrain impact, -1 if none */
   impactTick: number
+  impactKind: ImpactKind
+  /** The big marker at the impact point: faint before the impact tick, bright from it */
+  impactMarker: Group | null
 }
 
 export type PlayerName = { name: string; team: number }
@@ -196,6 +206,9 @@ export class ViewerScene {
   private readonly pose: CameraPose = { position: new Vector3(), quaternion: new Quaternion(), fov: 1.1 }
   private showTrails = true
   private showLabels = true
+  private showEffects = true
+  /** The player view's subject, vehicle, view mode and camera: a change snaps the chase and fly-by cameras */
+  private viewKey = ''
   private viewInfo: ViewInfo = null
   /** The vehicle the player view looks out of from inside: not drawn, its model has no cockpit */
   private ownVehicle = 0
@@ -382,6 +395,7 @@ export class ViewerScene {
     setLinePoints(path, positions)
     const model = new MissileModel(teamColor(replay.summary.shooterTeam))
     model.root.scale.setScalar(1.5)
+    model.setEffects(this.showEffects)
     const explosion = new Explosion(5)
     this.overlay.add(path, flown, sweep, model.root, explosion.root)
 
@@ -400,9 +414,13 @@ export class ViewerScene {
     })
 
     // The parts the missile touched: where it hit, and for a child part where that part was (tested where it is now)
+    const targetIds = new Set(replay.summary.targets.map((t) => t.netId))
     const markers: Object3D[] = []
     let impactTick = -1
+    let impactKind: ImpactKind = null
+    let impactMarker: Group | null = null
     for (const c of replay.collisions) {
+      const onTarget = c.kind !== 0 && targetIds.has(c.root)
       const hit = new Mesh(
         new SphereGeometry(0.35, 12, 8),
         new MeshBasicMaterial({ color: c.kind === 0 ? '#a3a3a3' : SWEEP_COLOR, depthTest: false }),
@@ -410,18 +428,26 @@ export class ViewerScene {
       hit.position.copy(vecToWorld(c.p))
       hit.renderOrder = 5
       const labelEl = document.createElement('div')
-      labelEl.style.cssText =
-        'font:600 11px/1.2 system-ui,sans-serif;color:#facc15;text-shadow:0 1px 2px #000,0 0 6px #000;white-space:nowrap;transform:translate(10px,-50%)'
-      labelEl.textContent = describeCollision(c)
+      labelEl.style.cssText = `font:600 11px/1.2 system-ui,sans-serif;color:${onTarget ? HIT_COLOR : SWEEP_COLOR};text-shadow:0 1px 2px #000,0 0 6px #000;white-space:nowrap`
+      // CSS2DRenderer owns the element's transform: move the text right of the marker with an inner element
+      const text = labelEl.appendChild(document.createElement('span'))
+      text.style.cssText = 'display:inline-block;transform:translateX(calc(50% + 18px))'
+      text.textContent = `${describeCollision(c, onTarget)} · tick +${c.tick - first}`
       const label = new CSS2DObject(labelEl)
       label.position.copy(hit.position)
       this.overlay.add(hit, label)
       hit.userData.tick = label.userData.tick = c.tick
       markers.push(hit, label)
-      if (impactTick < 0) impactTick = c.tick
+      if (impactTick < 0) {
+        impactTick = c.tick
+        impactKind = c.kind === 0 ? 'terrain' : onTarget ? 'vehicle' : 'object'
+        impactMarker = makeImpactMarker(impactKind === 'vehicle' ? HIT_COLOR : IMPACT_COLOR)
+        impactMarker.position.copy(hit.position)
+        this.overlay.add(impactMarker)
+      }
     }
 
-    this.missile = { replay, first, positions, path, flown, sweep, model, explosion, targets, markers, impactTick }
+    this.missile = { replay, first, positions, path, flown, sweep, model, explosion, targets, markers, impactTick, impactKind, impactMarker }
     this.following = false
     this.seek(first - 5)
     this.playing = true
@@ -474,7 +500,7 @@ export class ViewerScene {
       playing: this.playing,
       live: this.following && !m,
       speed: this.speed,
-      missile: m ? { first: m.first, last: m.first + m.replay.samples.length - 1 } : null,
+      missile: m ? { first: m.first, last: m.first + m.replay.samples.length - 1, impact: m.impactTick, impactKind: m.impactKind } : null,
     }
   }
 
@@ -527,6 +553,15 @@ export class ViewerScene {
     this.seek(ticks > 0 ? Math.floor(this.tick + 1e-6) + ticks : Math.ceil(this.tick - 1e-6) + ticks)
   }
 
+  /** Jumps to the tick the selected missile stopped on (its sweep that tick is the one that hit) and pauses */
+  seekImpact() {
+    if (!this.missile || this.missile.impactTick < 0) return false
+    this.playing = false
+    this.following = false
+    this.seek(this.missile.impactTick)
+    return true
+  }
+
   private advance(dtMs: number) {
     const { start, end } = this.range()
     if (this.following && !this.missile && this.buffer && !this.buffer.isEmpty) {
@@ -569,6 +604,7 @@ export class ViewerScene {
     this.orbitInitialized = false
     this.chase.reset()
     this.flyBy.reset()
+    this.viewKey = ''
     this.controls.enabled = mode === 'orbit'
     this.spectator.enabled = mode === 'free'
     if (mode === 'free') this.spectator.syncFromCamera()
@@ -590,6 +626,13 @@ export class ViewerScene {
 
   setLabels(show: boolean) {
     this.showLabels = show
+  }
+
+  /** The missiles' motor glow and the explosion */
+  setEffects(show: boolean) {
+    this.showEffects = show
+    for (const view of this.projectiles.values()) view.model.setEffects(show)
+    this.missile?.model.setEffects(show)
   }
 
   private setViewInfo(info: ViewInfo) {
@@ -729,6 +772,7 @@ export class ViewerScene {
         const owner = b.playerAt(sample.owner, t)
         view = { model: new MissileModel(teamColor(owner?.team ?? 0)) }
         view.model.root.scale.setScalar(1.5)
+        view.model.setEffects(this.showEffects)
         this.live.add(view.model.root)
         this.projectiles.set(id, view)
       }
@@ -840,10 +884,11 @@ export class ViewerScene {
     }
 
     const impact = m.impactTick >= 0 ? m.impactTick : -1
-    if (impact >= 0) {
+    if (m.impactMarker) setImpactMarker(m.impactMarker, this.tick >= impact)
+    if (impact >= 0 && this.showEffects) {
       m.explosion.root.position.copy(m.replay.collisions.length ? vecToWorld(m.replay.collisions[0].p, this._w) : m.positions[n - 1])
       m.explosion.update(((this.tick - impact) / TICK_RATE) * 1000)
-    }
+    } else m.explosion.update(-1)
 
     // Targets: red where they are now, blue (the hull) where this tick's sweep tests them. Between ticks both move on
     // smoothly; on a whole tick they are exactly the server's values
@@ -1009,6 +1054,15 @@ export class ViewerScene {
       }
     }
 
+    // Switching view (or vehicle, or onto the TV missile) cuts straight to the new view, as the game does: the chase
+    // camera only swings after the vehicle within one view
+    const viewKey = `${id}:${p.root}:${p.view}:${missilePose ? 'tv' : ''}`
+    if (viewKey !== this.viewKey) {
+      this.viewKey = viewKey
+      this.chase.reset()
+      this.flyBy.reset()
+    }
+
     const front = p.view === 4
     let camera = ''
     let cameraTemplate: CameraTemplate
@@ -1016,7 +1070,7 @@ export class ViewerScene {
       cameraTemplate = MISSILE_CAMERA
       camera = 'TV missile'
       if (p.view === 3 || p.view === 4)
-        chaseCamera(this.chase, `missile:${id}`, missilePose.position, missilePose.rotation, MISSILE_CAMERA, front, gameDt, this.seaLevel, this.pose)
+        chaseCamera(this.chase, `missile:${id}:${p.view}`, missilePose.position, missilePose.rotation, MISSILE_CAMERA, front, gameDt, this.seaLevel, this.pose)
       else this.cameraObject(cameraPosition, cameraRotation, MISSILE_CAMERA.insideFov)
     } else if (template && p.seat === 1 && isHelicopter(template) && localX(cameraPosition, rootPosition, rootRotation) > 0.9) {
       // The TV launcher's camera sits low on the side of the nose, unlike the gunner's eye on the centre line
@@ -1025,7 +1079,7 @@ export class ViewerScene {
       this.cameraObject(cameraPosition, cameraRotation, TV_AIM_CAMERA.insideFov)
     } else {
       cameraTemplate = seatCamera(template, seated ? p.seat : 0)
-      const subjectKey = `${id}:${p.root}`
+      const subjectKey = `${id}:${p.root}:${p.view}`
       switch (p.view) {
         case 2:
           camera = 'Nose'
@@ -1132,13 +1186,38 @@ function localX(point: Vector3, rootPosition: Vector3, rootRotation: Quaternion)
   return Math.abs(local.x)
 }
 
-function describeCollision(c: MissileReplay['collisions'][number]) {
-  if (c.kind === 0) return 'Terrain'
+/** A collision's label. onTarget: its root is one of the missile's targets (a vehicle), not a building or a tree */
+function describeCollision(c: MissileReplay['collisions'][number], onTarget: boolean) {
+  if (c.kind === 0) return 'Ground / water'
   const flags = c.flags
   const rewound = (flags & 4) !== 0 ? 'rewound' : 'tested now'
-  if (flags & 2) return `Soldier ${c.partPlayer >= 0 ? `#${c.partPlayer}` : ''} (${rewound})`
-  if (flags & 1) return `Hull ${c.rootTemplate} (${rewound})`
-  return `${c.partTemplate} on ${c.rootTemplate} (${rewound})`
+  if (flags & 2) return `Hit soldier ${c.partPlayer >= 0 ? `#${c.partPlayer}` : ''} (${rewound})`
+  if (!onTarget) return `Object ${c.partTemplate || c.rootTemplate}`
+  if (flags & 1) return `Hit hull ${c.rootTemplate} (${rewound})`
+  return `Hit ${c.partTemplate} on ${c.rootTemplate} (${rewound})`
+}
+
+/** A wire sphere and a pole over the impact point, drawn over everything so it can be found from afar */
+function makeImpactMarker(color: string) {
+  const group = new Group()
+  const sphere = new Mesh(
+    new SphereGeometry(0.9, 14, 8),
+    new MeshBasicMaterial({ color, wireframe: true, transparent: true, depthTest: false, depthWrite: false }),
+  )
+  const pole = new Mesh(
+    new CylinderGeometry(0.06, 0.06, 30, 6, 1, true),
+    new MeshBasicMaterial({ color, transparent: true, depthTest: false, depthWrite: false }),
+  )
+  pole.position.y = 15
+  sphere.renderOrder = pole.renderOrder = 6
+  group.add(sphere, pole)
+  setImpactMarker(group, false)
+  return group
+}
+
+/** Faint before the impact tick, bright from it */
+function setImpactMarker(group: Group, reached: boolean) {
+  for (const o of group.children) ((o as Mesh).material as MeshBasicMaterial).opacity = reached ? 1 : 0.3
 }
 
 /** A screen-space wide polyline (WebGL lines are always 1 px) with room for `points` vertices */

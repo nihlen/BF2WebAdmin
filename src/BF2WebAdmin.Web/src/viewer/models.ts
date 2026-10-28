@@ -3,6 +3,7 @@ import { AdditiveBlending, Color, ConeGeometry, CylinderGeometry, Group, Mesh, M
 /** A TV-guided missile (Hellfire-ish, 1.6 m) with a glowing motor. Faces -Z. */
 export class MissileModel {
   readonly root = new Group()
+  private readonly glow: Mesh
 
   constructor(teamColor: string) {
     const body = new Mesh(new CylinderGeometry(0.09, 0.09, 1.4, 8), new MeshLambertMaterial({ color: '#d9d9d0' }))
@@ -14,7 +15,7 @@ export class MissileModel {
     nose.position.z = -0.85
     this.root.add(nose)
 
-    const glow = new Mesh(
+    const glow = (this.glow = new Mesh(
       new SphereGeometry(0.6, 10, 8),
       new MeshBasicMaterial({
         color: new Color(teamColor).lerp(new Color('#ffd27a'), 0.6),
@@ -23,10 +24,15 @@ export class MissileModel {
         blending: AdditiveBlending,
         depthWrite: false,
       }),
-    )
+    ))
     glow.position.z = 0.9
     glow.scale.set(1, 1, 2.2)
     this.root.add(glow)
+  }
+
+  /** Shows or hides the motor's glow (the viewer's effects toggle) */
+  setEffects(show: boolean) {
+    this.glow.visible = show
   }
 }
 

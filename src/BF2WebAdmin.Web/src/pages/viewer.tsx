@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, ChevronLeft, ChevronRight, Pause, Play, Radio } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Crosshair, Pause, Play, Radio } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, errorMessage, fetchClient, type MissileSummary } from '@/api/client'
 import { useHubEvent, useViewerSubscription } from '@/api/hub'
@@ -13,12 +13,16 @@ import { decodeServerId, encodeServerId } from '@/lib/server-id'
 import { cn } from '@/lib/utils'
 import { viewerRoute } from '@/router'
 import { LiveBuffer, TICK_RATE } from '@/viewer/buffer'
+import { isHelicopter } from '@/viewer/cameras'
 import { isSpectatorMoveKey, SPECTATOR_KEYS } from '@/viewer/keys'
 import {
   type CameraMode,
   CURRENT_COLOR,
+  HIT_COLOR,
+  IMPACT_COLOR,
   type PlaybackState,
   type PlayerName,
+  SWEEP_COLOR,
   TESTED_COLOR,
   teamColor,
   ViewerScene,
@@ -50,6 +54,8 @@ export function ViewerPage() {
   const [missileError, setMissileError] = useState<string | null>(null)
   const [labels, setLabels] = useState(true)
   const [trails, setTrails] = useState(true)
+  // The missile's motor glow and explosion: off while a missile's replay is shown, where they hide the hit
+  const [effects, setEffects] = useState(true)
   const missileRequest = useRef<number | null>(null)
 
   const map = snapshot.data?.server.map ?? ''
@@ -85,12 +91,14 @@ export function ViewerPage() {
 
   useEffect(() => scene?.setLabels(labels), [scene, labels])
   useEffect(() => scene?.setTrails(trails), [scene, trails])
+  useEffect(() => scene?.setEffects(effects), [scene, effects])
   useEffect(() => scene?.setCameraMode(cameraMode, subject), [scene, cameraMode, subject])
 
   /** Shows a missile's whole flight, or goes back to live (null) */
   const selectMissile = (key: number | null) => {
     setSelectedMissile(key)
     setMissileError(null)
+    setEffects(key === null)
     missileRequest.current = key
     if (!scene) return
     if (key === null) {
@@ -107,7 +115,7 @@ export function ViewerPage() {
       })
   }
 
-  // Keys: WASD/QE fly the free camera, space plays, , and . step one tick, L goes live
+  // Keys: WASD/QE fly the free camera, space plays, , and . step one tick, H jumps to the hit, L goes live
   useEffect(() => {
     if (!scene) return
     const isTyping = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
@@ -118,9 +126,11 @@ export function ViewerPage() {
         e.preventDefault()
       } else if (e.code === 'Comma') scene.step(-1)
       else if (e.code === 'Period') scene.step(1)
+      else if (e.code === 'KeyH') scene.seekImpact()
       else if (e.code === 'KeyL') {
         missileRequest.current = null
         setSelectedMissile(null)
+        setEffects(true)
         scene.goLive()
       } else if (SPECTATOR_KEYS.has(e.code)) {
         if (isSpectatorMoveKey(e.code) && cameraMode !== 'free') setCameraMode('free')
@@ -145,6 +155,9 @@ export function ViewerPage() {
 
   const { server } = snapshot.data
   const selected = missiles.data?.find((m) => m.key === selectedMissile)
+  const teams = new Map(players.map((p) => [p.name, p.team]))
+  const playerNames = new Map(players.map((p) => [p.index, p.name]))
+  const outcomeOf = (m: MissileSummary) => missileOutcome(m, teams, playerNames)
 
   return (
     <div className="flex h-[calc(100svh-6rem)] min-h-[520px] flex-col gap-3">
@@ -170,7 +183,8 @@ export function ViewerPage() {
           <div ref={containerRef} className={cn('absolute inset-0', viewInfo?.tv && cameraMode === 'player' && 'grayscale')} />
           {(cameraMode === 'missile' || (viewInfo?.tv && cameraMode === 'player')) && <TvCrosshair />}
           {cameraMode === 'player' && viewInfo && <ViewOverlay info={viewInfo} />}
-          {selected && <MissileOverlay missile={selected} />}
+          {selected && <MissileOverlay missile={selected} outcome={outcomeOf(selected)} playback={playback} onJump={() => scene?.seekImpact()} />}
+          {selected && <Legend />}
           {!scene && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading the 3D view…</div>}
         </div>
 
@@ -211,6 +225,9 @@ export function ViewerPage() {
               <label className="flex items-center gap-1">
                 <input type="checkbox" checked={trails} onChange={(e) => setTrails(e.target.checked)} /> Trails
               </label>
+              <label className="flex items-center gap-1" title="The missiles' motor glow and the explosion. Off while a missile is selected">
+                <input type="checkbox" checked={effects} onChange={(e) => setEffects(e.target.checked)} /> Exhaust &amp; explosion
+              </label>
             </div>
           </Card>
 
@@ -231,12 +248,12 @@ export function ViewerPage() {
                 <MissileItem
                   key={m.key}
                   missile={m}
+                  outcome={outcomeOf(m)}
                   selected={m.key === selectedMissile}
                   onSelect={() => selectMissile(m.key === selectedMissile ? null : m.key)}
                 />
               ))}
             </div>
-            <Legend />
           </Card>
         </aside>
       </div>
@@ -284,19 +301,52 @@ function FrameRate({ buffer }: { buffer: LiveBuffer }) {
   )
 }
 
-function outcomeText(m: MissileSummary) {
+type Outcome = { text: string; /** A hit on an enemy helicopter: its hull, a part or its crew */ enemyHit: boolean }
+
+const isHeliTemplate = (template: string) => isHelicopter(template) || /^(ahe|the|she)_/i.test(template)
+
+/**
+ * What the missile did. Only a hit on an enemy helicopter is a hit: the hit's root must be one of the missile's targets
+ * (the vehicles near its path; buildings and trees are not) and a helicopter, with no crew on the shooter's team. The
+ * summary carries the root's template, not its id, so a target of the same template stands for it.
+ */
+function missileOutcome(m: MissileSummary, teams: Map<string, number>, playerNames: Map<number, string>): Outcome {
   if (m.outcome === 'hit') {
-    const part = m.hitPart && m.hitRoot && m.hitPart.toLowerCase() !== m.hitRoot.toLowerCase() ? m.hitPart : m.hitPlayer >= 0 ? 'crew' : 'hull'
-    return `Hit ${part}${m.hitRewound ? ' (rewound)' : ' (now)'}`
+    const root = m.hitRoot ?? ''
+    const part = m.hitPart ?? root
+    const target = m.targets.find((t) => t.template.toLowerCase() === root.toLowerCase())
+    const rewound = m.hitRewound ? ' (rewound)' : ' (now)'
+    if (target && isHeliTemplate(root)) {
+      const what =
+        m.hitPlayer >= 0 ? `crew${playerNames.has(m.hitPlayer) ? ` ${playerNames.get(m.hitPlayer)}` : ''}` : part.toLowerCase() !== root.toLowerCase() ? part : 'hull'
+      if (target.crew.length === 0) return { text: `Hit empty ${root}: ${what}`, enemyHit: false }
+      if (m.shooterTeam > 0 && target.crew.some((name) => teams.get(name) === m.shooterTeam))
+        return { text: `Hit friendly ${root}: ${what}`, enemyHit: false }
+      return { text: `Hit ${what}${rewound}`, enemyHit: true }
+    }
+    if (target) return { text: `Hit vehicle ${root}`, enemyHit: false }
+    if (m.hitPlayer >= 0) return { text: `Hit soldier${playerNames.has(m.hitPlayer) ? ` ${playerNames.get(m.hitPlayer)}` : ''}`, enemyHit: false }
+    return { text: `Hit object ${part || 'unknown'}`, enemyHit: false }
   }
-  if (m.outcome === 'terrain') return 'Terrain'
+  if (m.outcome === 'terrain') return { text: 'Hit ground / water', enemyHit: false }
   // Parked, empty vehicles near the path are targets too: name the nearest one that moved
   const moved = m.targets.filter((t) => t.moved)
   const nearest = [...(moved.length ? moved : m.targets)].sort((a, b) => a.closestTested - b.closestTested)[0]
-  return nearest && nearest.closestTested >= 0 ? `Miss, ${nearest.closestTested.toFixed(1)} m from ${nearest.crew[0] ?? nearest.template}` : 'Miss'
+  const text = nearest && nearest.closestTested >= 0 ? `Miss, ${nearest.closestTested.toFixed(1)} m from ${nearest.crew[0] ?? nearest.template}` : 'Miss'
+  return { text, enemyHit: false }
 }
 
-function MissileItem({ missile, selected, onSelect }: { missile: MissileSummary; selected: boolean; onSelect: () => void }) {
+function MissileItem({
+  missile,
+  outcome,
+  selected,
+  onSelect,
+}: {
+  missile: MissileSummary
+  outcome: Outcome
+  selected: boolean
+  onSelect: () => void
+}) {
   const time = new Date(missile.time).toLocaleTimeString()
   return (
     <button
@@ -310,28 +360,31 @@ function MissileItem({ missile, selected, onSelect }: { missile: MissileSummary;
         <span className="ml-auto shrink-0 text-muted-foreground">{time}</span>
       </div>
       <div className="mt-0.5 flex items-center gap-2">
-        <span className={cn(missile.outcome === 'hit' ? 'text-emerald-500' : 'text-muted-foreground')}>{outcomeText(missile)}</span>
+        <span className={cn('truncate', outcome.enemyHit ? 'text-emerald-500' : 'text-muted-foreground')}>{outcome.text}</span>
         <span className="ml-auto shrink-0 text-muted-foreground">lag {missile.lagMs} ms</span>
       </div>
     </button>
   )
 }
 
+/** The replay's colours, over the 3D view while a missile is selected */
 function Legend() {
+  const rows: [string, string, string][] = [
+    [CURRENT_COLOR, 'Red: as drawn', "the target where the gunner sees it (its pose now); rotors and wing missiles are hit here"],
+    [TESTED_COLOR, 'Blue: server hitbox', "hull and crew rewound by the shooter's lag, where the server tests the hit"],
+    [SWEEP_COLOR, 'Yellow: sweep', 'the missile path tested this tick, and the parts touched'],
+    [HIT_COLOR, 'Pole: impact point', 'green on a helicopter, grey on ground or an object; bright from the hit tick (H)'],
+  ]
   return (
-    <div className="space-y-1 border-t pt-2 text-xs text-muted-foreground">
-      <div className="flex items-center gap-2">
-        <span className="size-2.5 rounded-sm" style={{ background: CURRENT_COLOR }} />
-        Where the target is now: what the gunner sees. Rotors and wing missiles are hit here
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="size-2.5 rounded-sm" style={{ background: TESTED_COLOR }} />
-        The hull (and crew) where the server tests it: rewound by the shooter's lag
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="size-2.5 rounded-sm bg-yellow-400" />
-        The sweep tested this tick, and the parts hit
-      </div>
+    <div className="pointer-events-none absolute bottom-2 left-2 max-w-md space-y-0.5 rounded bg-black/60 px-2 py-1 text-xs text-white">
+      {rows.map(([color, name, text]) => (
+        <div key={name} className="flex items-baseline gap-2">
+          <span className="size-2.5 shrink-0 translate-y-0.5 rounded-sm" style={{ background: color }} />
+          <span>
+            <span className="font-medium">{name}</span> <span className="text-white/70">{text}</span>
+          </span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -352,20 +405,49 @@ function ViewOverlay({ info }: { info: NonNullable<ViewInfo> }) {
   )
 }
 
-function MissileOverlay({ missile }: { missile: MissileSummary }) {
+function MissileOverlay({
+  missile,
+  outcome,
+  playback,
+  onJump,
+}: {
+  missile: MissileSummary
+  outcome: Outcome
+  playback: PlaybackState | null
+  onJump: () => void
+}) {
+  const m = playback?.missile
+  const impact = m && m.impact >= 0 ? m.impact : -1
+  const current = playback ? Math.round(playback.tick) : -1
   return (
-    <div className="pointer-events-none absolute top-2 right-2 max-w-72 rounded bg-black/60 px-2 py-1 text-xs text-white">
+    <div className="absolute top-2 right-2 max-w-80 rounded bg-black/60 px-2 py-1 text-xs text-white">
       <div className="font-medium">
-        {missile.shooterName} · {outcomeText(missile)}
+        {missile.shooterName} · <span className={cn(outcome.enemyHit && 'text-emerald-400')}>{outcome.text}</span>
       </div>
       <div className="text-white/70">
         lag {missile.lagMs} ms · {missile.samples} ticks
       </div>
+      {m && impact >= 0 && (
+        <button
+          type="button"
+          className={cn(
+            'mt-0.5 flex items-center gap-1 rounded px-1 font-medium hover:bg-white/15',
+            current === impact ? 'bg-white/20' : '',
+          )}
+          style={{ color: m.impactKind === 'vehicle' ? HIT_COLOR : IMPACT_COLOR }}
+          title="Jump to the tick of the impact (H)"
+          onClick={onJump}
+        >
+          <Crosshair className="size-3" />
+          {m.impactKind === 'vehicle' ? 'Hit' : 'Impact'} at tick +{impact - m.first} (server tick {impact})
+          {current === impact && ' · shown'}
+        </button>
+      )}
       {missile.targets
         .filter((t) => t.moved)
         .map((t) => (
           <div key={t.netId} className="text-white/70">
-            {t.crew.join(' · ') || t.template}: {t.closestTested.toFixed(1)} m from blue, {t.closestCurrent.toFixed(1)} m from red
+            {t.crew.join(' · ') || t.template}: closest {t.closestTested.toFixed(1)} m from blue, {t.closestCurrent.toFixed(1)} m from red
           </div>
         ))}
     </div>
@@ -409,6 +491,12 @@ function Timeline({ scene, playback, onLive }: { scene: ViewerScene | null; play
       <Button variant="outline" size="icon" title="One tick forward (.)" onClick={() => scene?.step(1)}>
         <ChevronRight />
       </Button>
+      {missile && (
+        <Button variant="outline" size="sm" title="Jump to the hit / impact tick (H)" disabled={missile.impact < 0} onClick={() => scene?.seekImpact()}>
+          <Crosshair data-icon="inline-start" />
+          {missile.impactKind === 'vehicle' ? 'Hit' : 'Impact'}
+        </Button>
+      )}
       <Button
         variant={live ? 'default' : 'outline'}
         size="sm"
@@ -440,6 +528,13 @@ function Timeline({ scene, playback, onLive }: { scene: ViewerScene | null; play
             style={{ left: percent(missile.first), width: `${((missile.last - missile.first) / span) * 100}%` }}
           />
         )}
+        {missile && missile.impact >= 0 && (
+          <div
+            className="pointer-events-none absolute top-1/2 h-5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-sm"
+            style={{ left: percent(missile.impact), background: missile.impactKind === 'vehicle' ? HIT_COLOR : IMPACT_COLOR }}
+            title="Hit tick"
+          />
+        )}
         <input
           type="range"
           className="relative w-full accent-primary"
@@ -456,7 +551,12 @@ function Timeline({ scene, playback, onLive }: { scene: ViewerScene | null; play
         {missile
           ? `${formatTicks(tick - missile.first)} · tick ${Math.round(tick - missile.first)}/${missile.last - missile.first}`
           : `${formatTicks(tick - start)} / ${formatTicks(end - start)}`}
-        <div>tick {Math.floor(tick)}</div>
+        <div>
+          tick {Math.floor(tick)}
+          {missile && missile.impact >= 0 && (
+            <span style={{ color: missile.impactKind === 'vehicle' ? HIT_COLOR : undefined }}> · hit +{missile.impact - missile.first}</span>
+          )}
+        </div>
       </div>
     </div>
   )

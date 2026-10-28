@@ -111,15 +111,34 @@ public static class ApiEndpoints
         return serverInfo is null ? TypedResults.NotFound() : TypedResults.Ok(serverInfo.ToSnapshot());
     }
 
-    private static async Task<ServerDataDto> GetServerSettingsAsync(string serverId, IServerSettingsRepository repository)
+    private static async Task<ServerDataDto> GetServerSettingsAsync(string serverId, IServerSettingsRepository repository, IGameServerRegistry registry)
     {
-        var server = await repository.GetServerAsync(serverId) ?? new Data.Entities.Server
-        {
-            ServerId = serverId,
-            ServerGroup = "default"
-        };
+        var server = await repository.GetServerAsync(serverId);
+        if (server is not null)
+            return server.Adapt<ServerDataDto>();
 
-        return server.Adapt<ServerDataDto>();
+        // A server from ServerSettings:GameServers (such as the AppHost's openbf2) has no row. Saving the form adds one,
+        // which then wins over the configured entry
+        var serverInfo = await registry.FindServerInfoAsync(serverId);
+        if (serverInfo is null)
+            return new ServerDataDto { ServerId = serverId, ServerGroup = "default" };
+
+        return new ServerDataDto
+        {
+            ServerId = serverInfo.ServerId,
+            ServerGroup = serverInfo.ServerGroup,
+            IpAddress = serverInfo.IpAddress,
+            GamePort = serverInfo.GamePort,
+            QueryPort = serverInfo.QueryPort,
+            RconPort = serverInfo.RconPort,
+            RconPassword = serverInfo.RconPassword,
+            DiscordBotToken = serverInfo.DiscordBot?.Token ?? "",
+            DiscordAdminChannel = serverInfo.DiscordBot?.AdminChannel ?? "",
+            DiscordNotificationChannel = serverInfo.DiscordBot?.NotificationChannel ?? "",
+            DiscordMatchResultChannel = serverInfo.DiscordBot?.MatchResultChannel ?? "",
+            AdminKey = serverInfo.AdminKey,
+            IsTestServer = serverInfo.IsTestServer
+        };
     }
 
     private static async Task<NoContent> CreateServerAsync(ServerDataDto server, IGameServerRegistry registry, IHubContext<ServerHub, IServerHubClient> hub)

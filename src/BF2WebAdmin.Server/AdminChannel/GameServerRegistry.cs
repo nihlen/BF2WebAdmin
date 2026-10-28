@@ -15,6 +15,7 @@ public interface IGameServerRegistry
     IGameServer? GetGameServer(string serverId);
     IEnumerable<IGameServer> GetGameServers(string? serverGroup = null);
     Task<IEnumerable<ServerInfo>> GetDisconnectedServersAsync();
+    ValueTask<ServerInfo?> FindServerInfoAsync(string serverId);
     Task AddOrUpdateServerAsync(Data.Entities.Server server);
     Task RemoveServerAsync(string serverId);
 }
@@ -118,7 +119,8 @@ public class GameServerRegistry : IGameServerRegistry
         return key;
     }
 
-    private async ValueTask<ServerInfo?> FindServerInfoAsync(string serverId)
+    /// <summary>A configured server (the Server table or ServerSettings:GameServers), or null.</summary>
+    public async ValueTask<ServerInfo?> FindServerInfoAsync(string serverId)
     {
         // A server added to the DB by hand is found without waiting for the cache to expire
         return (await GetServerInfoAsync()).FirstOrDefault(s => s.ServerId == serverId)

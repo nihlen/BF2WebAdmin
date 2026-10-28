@@ -1,5 +1,5 @@
 import { Euler, Vector3, type PerspectiveCamera } from 'three'
-import { BACK, BOOST, DOWN, FORWARD, LEFT, RIGHT, UP } from './keys'
+import { BACK, BOOST, DOWN, FORWARD, LEFT, RIGHT, SLOW, UP } from './keys'
 
 const _euler = new Euler(0, 0, 0, 'YXZ')
 const _dir = new Vector3()
@@ -7,13 +7,14 @@ const _move = new Vector3()
 
 /**
  * Free flying camera like the BF2 spectator: drag to look around, WASD/arrows to fly where you look,
- * Q/E down/up, Shift to go faster and the mouse wheel to move forward and back.
+ * Q/E down/up, Shift to go faster, Alt slower, and the mouse wheel to move forward and back.
  */
 export class SpectatorControls {
   enabled = false
-  /** m/s */
+  /** m/s; the viewer lowers it while a missile replay is shown, to look closely */
   speed = 60
   boostFactor = 4
+  slowFactor = 0.25
   /** Lowest camera height (the sea level) */
   minHeight = -Infinity
 
@@ -61,7 +62,7 @@ export class SpectatorControls {
     const pressed = (codes: string[]) => (codes.some((c) => this.keys.has(c)) ? 1 : 0)
 
     _move.set(pressed(RIGHT) - pressed(LEFT), pressed(UP) - pressed(DOWN), pressed(BACK) - pressed(FORWARD))
-    const speed = this.speed * (pressed(BOOST) ? this.boostFactor : 1)
+    const speed = this.speed * this.modifier()
     const target = new Vector3()
     if (_move.lengthSq() > 0) {
       // Forward/back and strafe follow the view (like BF2), up/down is always vertical
@@ -108,10 +109,16 @@ export class SpectatorControls {
   private onWheel = (e: WheelEvent) => {
     if (!this.enabled) return
     e.preventDefault()
-    const boost = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? this.boostFactor : 1
+    // A quarter of a second of flight per notch: 15 m at the normal speed
     _dir.set(0, 0, -1).applyQuaternion(this.camera.quaternion)
-    this.camera.position.addScaledVector(_dir, -Math.sign(e.deltaY) * 15 * boost)
+    this.camera.position.addScaledVector(_dir, -Math.sign(e.deltaY) * this.speed * 0.25 * this.modifier())
     this.camera.position.y = Math.max(this.camera.position.y, this.minHeight)
+  }
+
+  /** Shift: faster, Alt: slower */
+  private modifier() {
+    const held = (codes: string[]) => codes.some((c) => this.keys.has(c))
+    return (held(BOOST) ? this.boostFactor : 1) * (held(SLOW) ? this.slowFactor : 1)
   }
 
   private onContextMenu = (e: Event) => {

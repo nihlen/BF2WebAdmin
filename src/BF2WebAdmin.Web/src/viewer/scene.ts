@@ -55,7 +55,7 @@ import {
   TV_AIM_CAMERA,
   VIEW_MODES,
 } from './cameras'
-import { rotToQuaternion, vecToWorld } from './coords'
+import { forwardOf, rotToQuaternion, vecToWorld } from './coords'
 import { HeliModel } from './helis'
 import { findPart, type HitboxSet, HitboxModel, loadHitboxes, facesNear, partMesh } from './hitboxes'
 import { Explosion, MissileModel } from './models'
@@ -79,6 +79,11 @@ const FOG_DENSITY = 0.0005
 const DEFAULT_HORIZON_COLOR = '#b1bad0'
 const SKY_RADIUS = 20000
 const FOV_FREE = 55
+/** The free camera's speed (m/s): normal, and while a missile replay is shown, to get close and look precisely */
+const FREE_SPEED = 60
+const FREE_SPEED_REPLAY = 6
+/** The orbit camera starts behind the subject, this far above its heading (radians), at a distance for its size */
+const ORBIT_PITCH = (15 * Math.PI) / 180
 
 /**
  * The hitbox ghosts: red the visual model where the target is now (what the gunner saw), blue the hull's collision mesh
@@ -413,6 +418,7 @@ export class ViewerScene {
   /** Shows a missile's replay (null clears it) and moves the timeline to its flight */
   setMissile(replay: MissileReplay | null) {
     this.clearMissile()
+    this.spectator.speed = replay ? FREE_SPEED_REPLAY : FREE_SPEED
     if (!replay) {
       if (this.cameraMode === 'missile') this.setCameraMode('orbit')
       this.goLive()
@@ -745,8 +751,6 @@ export class ViewerScene {
   private readonly _v = new Vector3()
   private readonly _w = new Vector3()
   private readonly _q2 = new Quaternion()
-  private readonly _p3 = new Vector3()
-  private readonly _q3 = new Quaternion()
 
   /** The players in a vehicle at tick, pilot first */
   private crewOf(root: number, tick: number) {
@@ -924,31 +928,52 @@ export class ViewerScene {
     return x >= 0 && x <= n - 1
   }
 
-  /** The selected missile's sample index and blend at the current tick */
+  /**
+   * The selected missile's sample index and blend at the current tick. The timeline's tick k shows the engine's test of
+   * tick k, which uses two samples (openbf2-server-ext src/Admin.cpp sampleTraces: sample k is taken in the tick hook,
+   * before tick k simulates):
+   * - k: the hull's tested (rewound) pose, read from the latency history the tick will use;
+   * - k + 1 (`after`): where tick k left everything, which is where its sweep was tested: the missile at the end of
+   *   the sweep, and the target's current pose with its unrewound child parts (targets integrate before the
+   *   collision pass; Admin.cpp copies that pose into an unrewound hull's tested pose for the same reason).
+   * Checked on every recorded helicopter hit: the contact point lies on the hull at sample k's tested pose, or on the
+   * part at sample k+1's current pose, within 0.5 mm. On the collision's tick the missile is drawn at the contact.
+   */
   private missileSample() {
     const m = this.missile!
     const n = m.positions.length
     const x = this.tick - m.first
     const k = Math.min(Math.max(Math.floor(x), 0), n - 1)
     const u = k < n - 1 ? Math.min(Math.max(x - k, 0), 1) : 0
-    return { k, u, x, n }
+    const xa = x + 1
+    const ka = Math.min(Math.max(Math.floor(xa), 0), n - 1)
+    const ua = ka < n - 1 ? Math.min(Math.max(xa - ka, 0), 1) : 0
+    return { k, u, x, n, after: { k: ka, u: ua } }
+  }
+
+  /** The missile where the current tick's sweep ends (sample k + 1, blended) */
+  private missileAt(out: Vector3) {
+    const m = this.missile!
+    const { after } = this.missileSample()
+    out.copy(m.positions[after.k])
+    if (after.u > 0) out.lerp(m.positions[after.k + 1], after.u)
+    return out
   }
 
   private updateMissile() {
     const m = this.missile
     if (!m) return
-    const { k, u, x, n } = this.missileSample()
+    const { k, u, x, n, after } = this.missileSample()
     const inFlight = x >= 0 && x <= n - 1
     const samples = m.replay.samples
 
-    // The missile and the path flown so far
-    this._p.copy(m.positions[k])
-    if (u > 0) this._p.lerp(m.positions[k + 1], u)
+    // The missile at the end of this tick's sweep, and the path flown so far
+    this.missileAt(this._p)
     m.model.root.visible = x >= 0 && x <= n - 1 + MISSILE_PADDING_TICKS && !(m.impactTick >= 0 && this.tick > m.impactTick + 1)
     m.model.root.position.copy(this._p)
-    vecToWorld(samples[k].v, this._v)
+    vecToWorld(samples[after.k].v, this._v)
     if (this._v.lengthSq() > 1) m.model.root.lookAt(this._w.copy(this._p).sub(this._v))
-    const flown = m.positions.slice(0, k + 1)
+    const flown = m.positions.slice(0, after.k + 1)
     if (x > 0) flown.push(this._p.clone())
     setLinePoints(m.flown, x >= 0 ? flown : [])
 
@@ -981,13 +1006,16 @@ export class ViewerScene {
       m.explosion.update(((this.tick - impact) / TICK_RATE) * 1000)
     } else m.explosion.update(-1)
 
-    // Targets: red where they are now, blue (the hull) where this tick's sweep tests them. Between ticks both move on
-    // smoothly; on a whole tick they are exactly the server's values
+    // Targets, as this tick's sweep meets them: red (the model) and orange (the unrewound parts) where the tick left the
+    // target, blue (the hull) at the rewound pose it is tested at. Between ticks they move on smoothly; on a whole tick
+    // they are exactly the server's values
     m.replay.summary.targets.forEach((target, i) => {
       const view = m.targets[i]
       if (!view) return
       const a = samples[k].t[i]
       const b = u > 0 ? samples[k + 1].t[i] : null
+      const aa = samples[after.k].t[i]
+      const ba = after.u > 0 ? samples[after.k + 1].t[i] : null
       const visible = inFlight
       const currentRoot = rootOf(view.current)
       const testedRoot = view.tested
@@ -999,17 +1027,9 @@ export class ViewerScene {
         return
       }
 
-      ghostPose(a, b, u, 0, this._p, this._q)
+      ghostPose(aa, ba, after.u, 0, this._p, this._q)
       applyPose(currentRoot, this._p, this._q)
-      if (view.parts) {
-        // The child parts are not rewound: the sweep of tick k meets them where the tick leaves the target, which is the
-        // next sample's current pose (as an unrewound hull's tested pose is; tv-hitbox.md). Checked on recorded hits: a
-        // Hellfire dummy hit lies 0.001 m from the dummy at sample k+1's pose and 0.5 m off at sample k's
-        const k1 = Math.min(k + 1, n - 1)
-        const b1 = u > 0 && k1 + 1 < n ? samples[k1 + 1].t[i] : null
-        ghostPose(samples[k1].t[i], b1, u, 0, this._p3, this._q3)
-        applyPose(view.parts, this._p3, this._q3)
-      }
+      if (view.parts) applyPose(view.parts, this._p, this._q)
       if (view.current instanceof HeliModel) view.current.animate((this.tick / TICK_RATE) * 1000, this.playing)
       ghostPose(a, b, u, 6, this._w, this._q2)
       applyPose(testedRoot, this._w, this._q2)
@@ -1040,7 +1060,7 @@ export class ViewerScene {
       if (!this.subjectPosition(this._p)) return
       if (!this.orbitInitialized) {
         this.orbitTarget.copy(this._p)
-        this.camera.position.copy(this._p).add(this._v.set(0, 12, 35))
+        this.orbitStart(this._p)
         this.controls.target.copy(this._p)
         this.orbitInitialized = true
       }
@@ -1059,12 +1079,46 @@ export class ViewerScene {
     if (this.playerCamera(gameDt)) this.applyCameraPose()
   }
 
+  /**
+   * Puts the orbit camera behind the subject at `target`, along its heading, ORBIT_PITCH above it (looking down that
+   * much), at a distance for its size: a missile, a helicopter, another vehicle or a soldier
+   */
+  private orbitStart(target: Vector3) {
+    const forward = new Vector3()
+    let distance = 30
+    if (this.missile && (this.subject < 0 || this.missileActive())) {
+      const { after } = this.missileSample()
+      for (let i = after.k; i >= 0; i--) {
+        vecToWorld(this.missile.replay.samples[i].v, forward)
+        if (forward.lengthSq() > 1) break
+      }
+      distance = 8
+    } else if (this.buffer && this.subject >= 0) {
+      const p = this.buffer.playerAt(this.subject, this.tick)
+      const vehicle = p && p.flags & 1 ? this.buffer.vehicles.get(p.root) : undefined
+      const sample = vehicle ? poseAt(vehicle, this.tick, samplePos, sampleRot, this._w, this._q2) : null
+      if (sample) distance = isHelicopter(sample.template) ? 30 : 15
+      else {
+        const series = this.buffer.players.get(this.subject)
+        if (series) poseAt(series, this.tick, samplePos, sampleRot, this._w, this._q2)
+        distance = 6
+      }
+      forwardOf(this._q2, forward)
+    }
+    forward.y = 0
+    if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1)
+    forward.normalize()
+    this.camera.position
+      .copy(target)
+      .addScaledVector(forward, -distance * Math.cos(ORBIT_PITCH))
+      .add(this._v.set(0, distance * Math.sin(ORBIT_PITCH), 0))
+    this.camera.lookAt(target)
+  }
+
   /** Where the orbit camera looks: the selected missile in its replay, else the subject player */
   private subjectPosition(out: Vector3) {
     if (this.missile && (this.subject < 0 || this.missileActive())) {
-      const { k, u } = this.missileSample()
-      out.copy(this.missile.positions[k])
-      if (u > 0) out.lerp(this.missile.positions[k + 1], u)
+      this.missileAt(out)
       return true
     }
     const b = this.buffer
@@ -1082,11 +1136,10 @@ export class ViewerScene {
   /** The selected missile's TV camera, from its trace: its chase view along the flight direction */
   private missileCamera(gameDt: number) {
     const m = this.missile!
-    const { k, u } = this.missileSample()
-    this._p.copy(m.positions[k])
-    if (u > 0) this._p.lerp(m.positions[k + 1], u)
+    const { after } = this.missileSample()
+    this.missileAt(this._p)
     // The trace has no rotation: the missile flies nose first. After a direct hit it sits still: keep its last heading
-    for (let i = k; i >= 0; i--) {
+    for (let i = after.k; i >= 0; i--) {
       vecToWorld(m.replay.samples[i].v, this._v)
       if (this._v.lengthSq() > 1) break
     }

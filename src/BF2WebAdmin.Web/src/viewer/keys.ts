@@ -8,8 +8,10 @@ export const RIGHT = ['KeyD', 'ArrowRight']
 export const UP = ['KeyE', 'PageUp']
 export const DOWN = ['KeyQ', 'PageDown']
 export const BOOST = ['ShiftLeft', 'ShiftRight']
+/** Held for slow, precise movement (Ctrl is not used: Ctrl+W/S/D are browser shortcuts) */
+export const SLOW = ['AltLeft', 'AltRight']
 
-export const SPECTATOR_KEYS = new Set([...FORWARD, ...BACK, ...LEFT, ...RIGHT, ...UP, ...DOWN, ...BOOST])
+export const SPECTATOR_KEYS = new Set([...FORWARD, ...BACK, ...LEFT, ...RIGHT, ...UP, ...DOWN, ...BOOST, ...SLOW])
 
 /** Movement keys (not modifiers) - pressing one in another camera mode switches to the free camera */
-export const isSpectatorMoveKey = (code: string) => SPECTATOR_KEYS.has(code) && !BOOST.includes(code)
+export const isSpectatorMoveKey = (code: string) => SPECTATOR_KEYS.has(code) && !BOOST.includes(code) && !SLOW.includes(code)

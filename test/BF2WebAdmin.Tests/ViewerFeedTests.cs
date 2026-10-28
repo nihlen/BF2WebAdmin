@@ -89,6 +89,23 @@ public class ViewerFeedTests
     }
 
     [Fact]
+    public void ReusedIdsKeepTheirCollisionsInALongSession()
+    {
+        // The play server reuses networkable ids 1851 and 1852 for every TV missile. A taken collision list left its
+        // id in the eviction queue, and once the queue was full a new collision evicted its own id: the hit became a miss
+        var (server, _) = Server();
+        for (var i = 0; i < 300; i++)
+        {
+            var id = (uint)(1851 + i % 2);
+            var first = (uint)(1000 * (i + 1));
+            server.Viewer.OnCollision(Collision(id, first + 30, EvProjectileCollision.KindObject, EvProjectileCollision.FlagRoot));
+            server.Viewer.OnTrace(Trace(id, first, samples: 46, flags: EvProjectileTrace.FlagCollided), DateTimeOffset.UtcNow);
+        }
+
+        Assert.All(server.Viewer.Missiles, m => Assert.Equal("hit", m.Outcome));
+    }
+
+    [Fact]
     public void ParkedTargetDidNotMove()
     {
         var parked = new EvProjectileTrace(1, 10, 1852, "agm114_hellfire_tv", 2, 0, 0, [new AdminTraceTarget(1817, "ahe_z10")],

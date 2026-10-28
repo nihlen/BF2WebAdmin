@@ -118,7 +118,8 @@ export function ViewerPage() {
       })
   }
 
-  // Keys: WASD/QE fly the free camera, space plays, , and . step one tick, H jumps to the hit, L goes live
+  // Keys: WASD/QE fly the free camera (Shift faster, Alt slower; slow while a missile is shown), space plays, , and .
+  // step one tick, H jumps to the hit, L goes live
   useEffect(() => {
     if (!scene) return
     // Only text entry keeps the keys; a focused checkbox, button or the timeline does not
@@ -127,7 +128,16 @@ export function ViewerPage() {
       (e.target instanceof HTMLInputElement && !['checkbox', 'radio', 'range', 'button'].includes(e.target.type)) ||
       (e.target instanceof HTMLElement && e.target.isContentEditable)
     const down = (e: KeyboardEvent) => {
-      if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return
+      if (isTyping(e) || e.ctrlKey || e.metaKey) return
+      // Alt is the free camera's slow modifier: only flying keys work with it, and the browser's Alt shortcuts are held off
+      if (e.altKey) {
+        if (SPECTATOR_KEYS.has(e.code)) {
+          if (isSpectatorMoveKey(e.code) && cameraMode !== 'free') setCameraMode('free')
+          scene.setKey(e.code, true)
+          e.preventDefault()
+        }
+        return
+      }
       if (e.code === 'Space') {
         scene.togglePlay()
         e.preventDefault()
@@ -145,7 +155,11 @@ export function ViewerPage() {
         e.preventDefault()
       }
     }
-    const up = (e: KeyboardEvent) => scene.setKey(e.code, false)
+    const up = (e: KeyboardEvent) => {
+      scene.setKey(e.code, false)
+      // Releasing Alt would otherwise move the focus to the browser's menu
+      if (e.code === 'AltLeft' || e.code === 'AltRight') e.preventDefault()
+    }
     const blur = () => scene.clearKeys()
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -392,7 +406,7 @@ function Legend() {
     localStorage.setItem(LEGEND_KEY, collapsed ? '0' : '1')
   }
   const rows: [string, string, string][] = [
-    [CURRENT_COLOR, 'Red: as drawn', 'the model where the gunner sees it (its pose now)'],
+    [CURRENT_COLOR, 'Red: where you saw it (= server now)', "the gunner's client draws missile and target with the same delay (a model)"],
     [TESTED_COLOR, 'Blue: hull hitbox (rewound)', "the hull's collision mesh, moved back by the shooter's lag"],
     [PARTS_COLOR, 'Orange: parts hitbox (not rewound)', 'rotors (blade sweep), wing missiles, turret, sensors, gear'],
     [SWEEP_COLOR, 'Yellow: tested point and sweep', 'the missile is one point at its centre, no radius; green: the part hit'],

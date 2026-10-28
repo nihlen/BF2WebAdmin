@@ -341,13 +341,8 @@ function missileOutcome(m: MissileSummary, teams: Map<string, number>, playerNam
   if (m.outcome === 'terrain') return { text: 'Hit ground / water', enemyHit: false }
   // The trace says it ended at a collision (flag bit 1) but no ProjectileCollision came with it: WebAdmin lost it
   // before the fix in ViewerFeed (reused projectile ids evicted the newest collisions)
-  if (m.flags & 2) {
-    const near = [...m.targets].filter((t) => t.moved).sort((a, b) => a.closestCurrent - b.closestCurrent)[0]
-    return {
-      text: near && near.closestCurrent < 5 ? `Contact near ${near.template} (part not recorded)` : 'Contact (part not recorded)',
-      enemyHit: false,
-    }
-  }
+  // (the summary has the closest approach, not where it stopped: the replay shows that)
+  if (m.flags & 2) return { text: 'Contact, part not recorded', enemyHit: false }
   // Parked, empty vehicles near the path are targets too: name the nearest one that moved
   const moved = m.targets.filter((t) => t.moved)
   const nearest = [...(moved.length ? moved : m.targets)].sort((a, b) => a.closestTested - b.closestTested)[0]

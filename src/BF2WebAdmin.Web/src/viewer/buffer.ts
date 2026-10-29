@@ -227,10 +227,20 @@ export class LiveBuffer {
     return tick - a.tick <= VEHICLE_TIMEOUT_TICKS || i + 1 < series.samples.length
   }
 
-  /** Whether a projectile is in flight at tick: projectile frames are sent every tick while it lives */
+  /**
+   * Whether a projectile is in flight at tick: projectile frames are sent every tick while it lives. One series holds
+   * every projectile that had this networkable id (the server reuses them), so a gap between two flights is not flight
+   */
   projectileVisible(series: Series<ProjectileSample>, tick: number) {
+    return this.projectileAt(series, tick) !== null
+  }
+
+  /** The projectile's frame at tick while it is in flight, else null */
+  projectileAt(series: Series<ProjectileSample>, tick: number) {
     const i = series.index(tick)
-    return i >= 0 && (i + 1 < series.samples.length || tick - series.samples[i].tick <= MAX_LERP_TICKS)
+    if (i < 0) return null
+    const a = series.samples[i]
+    return tick - a.tick <= MAX_LERP_TICKS ? a : null
   }
 }
 

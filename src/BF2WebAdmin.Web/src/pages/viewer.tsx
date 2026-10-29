@@ -213,10 +213,31 @@ export function ViewerPage() {
           <Card className="gap-2 p-3">
             <div className="text-sm font-medium">Camera</div>
             <div className="grid grid-cols-2 gap-1">
-              <CameraButton mode="free" current={cameraMode} onSelect={setCameraMode} label="Free" />
-              <CameraButton mode="orbit" current={cameraMode} onSelect={setCameraMode} label="Orbit" disabled={subject < 0 && !selected} />
-              <CameraButton mode="player" current={cameraMode} onSelect={setCameraMode} label="Player view" disabled={subject < 0} />
-              <CameraButton mode="missile" current={cameraMode} onSelect={setCameraMode} label="Missile TV" disabled={!selected} />
+              <CameraButton mode="free" current={cameraMode} onSelect={setCameraMode} label="Free" title="Fly freely: drag to look, WASD/QE to move (Shift faster, Alt slower)" />
+              <CameraButton
+                mode="orbit"
+                current={cameraMode}
+                onSelect={setCameraMode}
+                label="Orbit"
+                title="Circle the selected player, or the selected missile: drag to turn, wheel to zoom"
+                disabled={subject < 0 && !selected}
+              />
+              <CameraButton
+                mode="player"
+                current={cameraMode}
+                onSelect={setCameraMode}
+                label="Player view"
+                title="What the selected player's camera shows, live or at the timeline's tick: his view mode and camera as the server reports them every tick (the TV launcher, his TV missile; inferred when the server keeps him in the launcher)"
+                disabled={subject < 0}
+              />
+              <CameraButton
+                mode="missile"
+                current={cameraMode}
+                onSelect={setCameraMode}
+                label="Missile TV"
+                title="The selected missile's own TV camera, rebuilt from its recorded flight (a replay; no player needed)"
+                disabled={!selected}
+              />
             </div>
             <div className="max-h-48 space-y-0.5 overflow-y-auto">
               {players.length === 0 && <p className="text-xs text-muted-foreground">No players</p>}
@@ -240,7 +261,7 @@ export function ViewerPage() {
               ))}
             </div>
             <div className="flex gap-3 text-xs text-muted-foreground">
-              <label className="flex items-center gap-1">
+              <label className="flex items-center gap-1" title="Names and labels in the 3D view">
                 <input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} /> Names
               </label>
               <label className="flex items-center gap-1">
@@ -292,16 +313,18 @@ function CameraButton({
   current,
   onSelect,
   label,
+  title,
   disabled,
 }: {
   mode: CameraMode
   current: CameraMode
   onSelect: (mode: CameraMode) => void
   label: string
+  title: string
   disabled?: boolean
 }) {
   return (
-    <Button variant={mode === current ? 'default' : 'outline'} size="sm" disabled={disabled} onClick={() => onSelect(mode)}>
+    <Button variant={mode === current ? 'default' : 'outline'} size="sm" title={title} disabled={disabled} onClick={() => onSelect(mode)}>
       {label}
     </Button>
   )
@@ -339,7 +362,8 @@ function missileOutcome(m: MissileSummary, teams: Map<string, number>, playerNam
     const root = m.hitRoot ?? ''
     const part = m.hitPart ?? root
     const target = m.targets.find((t) => t.template.toLowerCase() === root.toLowerCase())
-    const rewound = m.hitRewound ? ' (rewound)' : ' (now)'
+    // The engine rewinds only the hull and soldiers, by the shooter's lag; parts and a hull at lag under a tick are not
+    const rewound = m.hitRewound ? ' (rewind)' : ' (no rewind)'
     if (target && isHeliTemplate(root)) {
       const what =
         m.hitPlayer >= 0 ? `crew${playerNames.has(m.hitPlayer) ? ` ${playerNames.get(m.hitPlayer)}` : ''}` : part.toLowerCase() !== root.toLowerCase() ? part : 'hull'
@@ -407,8 +431,8 @@ function Legend() {
   }
   const rows: [string, string, string][] = [
     [CURRENT_COLOR, 'Red: where you saw it (= server now)', "the gunner's client draws missile and target with the same delay (a model)"],
-    [TESTED_COLOR, 'Blue: hull hitbox (rewound)', "the hull's collision mesh, moved back by the shooter's lag"],
-    [PARTS_COLOR, 'Orange: parts hitbox (not rewound)', 'rotors (blade sweep), wing missiles, turret, sensors, gear'],
+    [TESTED_COLOR, 'Blue: hull hitbox (rewind)', "the hull's collision mesh, moved back by the shooter's lag"],
+    [PARTS_COLOR, 'Orange: parts hitbox (no rewind)', 'rotors (blade sweep), wing missiles, turret, sensors, gear'],
     [SWEEP_COLOR, 'Yellow: tested point and sweep', 'the missile is one point at its centre, no radius; green: the part hit'],
     [HIT_COLOR, 'Pole: impact point', 'green on a helicopter, grey on ground or an object; bright from the hit tick (H)'],
   ]

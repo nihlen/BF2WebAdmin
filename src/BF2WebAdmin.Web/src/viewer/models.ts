@@ -10,6 +10,7 @@ export const MISSILE_LENGTH = 1.75
 export class MissileModel {
   readonly root = new Group()
   private readonly glow: Mesh
+  private testPoint: Mesh | null = null
 
   constructor(teamColor: string) {
     const half = MISSILE_LENGTH / 2
@@ -44,6 +45,12 @@ export class MissileModel {
     const dot = new Mesh(new SphereGeometry(0.12, 12, 8), new MeshBasicMaterial({ color, depthTest: false, transparent: true }))
     dot.renderOrder = 8
     this.root.add(dot)
+    this.testPoint = dot
+  }
+
+  /** Hidden when the camera is this missile's own camera, where the dot would sit in front of the lens */
+  setTestPointVisible(show: boolean) {
+    if (this.testPoint) this.testPoint.visible = show
   }
 
   /** Shows or hides the motor's glow (the viewer's effects toggle) */

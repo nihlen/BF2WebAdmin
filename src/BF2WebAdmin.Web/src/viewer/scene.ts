@@ -243,6 +243,8 @@ export class ViewerScene {
   private viewInfo: ViewInfo = null
   /** The vehicle the player view looks out of from inside: not drawn, its model has no cockpit */
   private ownVehicle = 0
+  /** The camera is a missile's own camera (Missile TV, or a player's TV missile view): its tested-point dot is hidden */
+  private cameraOnMissile = false
 
   /** About 10 times a second, and on every seek or state change */
   onPlayback: (state: PlaybackState) => void = () => {}
@@ -736,6 +738,7 @@ export class ViewerScene {
     this.updateLive()
     this.updateMissile()
     this.updateCamera(gameDt)
+    this.missile?.model.setTestPointVisible(!this.cameraOnMissile)
 
     if (this.cameraMode === 'free') this.spectator.update(dt)
     else if (this.cameraMode === 'orbit') this.controls.update()
@@ -993,10 +996,10 @@ export class ViewerScene {
       }
     }
 
-    // A part is marked from the tick it was hit
+    // A part is marked from the tick it was hit; its label follows the Names toggle (CSS2DRenderer shows a label
+    // whenever it is visible)
     for (const marker of m.markers) {
-      marker.visible = this.tick >= marker.userData.tick
-      if (marker instanceof CSS2DObject) marker.element.style.display = marker.visible && this.showLabels ? '' : 'none'
+      marker.visible = this.tick >= marker.userData.tick && (!(marker instanceof CSS2DObject) || this.showLabels)
     }
 
     const impact = m.impactTick >= 0 ? m.impactTick : -1
@@ -1021,11 +1024,10 @@ export class ViewerScene {
       const testedRoot = view.tested
       currentRoot.visible = testedRoot.visible = visible
       if (view.parts) view.parts.visible = visible
-      view.lagLine.visible = view.label.visible = visible
-      if (!visible) {
-        view.labelEl.style.display = 'none'
-        return
-      }
+      view.lagLine.visible = visible
+      // CSS2DRenderer sets the element's display from `visible` on every render: the Names toggle goes in here
+      view.label.visible = visible && this.showLabels
+      if (!visible) return
 
       ghostPose(aa, ba, after.u, 0, this._p, this._q)
       applyPose(currentRoot, this._p, this._q)
@@ -1039,11 +1041,11 @@ export class ViewerScene {
       const crew = target.crew.length ? target.crew.join(' · ') : target.template
       view.labelEl.textContent = `${crew} · ${lagMs} ms → ${this._p.distanceTo(this._w).toFixed(1)} m`
       view.label.position.copy(this._p)
-      view.labelEl.style.display = this.showLabels ? '' : 'none'
     })
   }
 
   private updateCamera(gameDt: number) {
+    this.cameraOnMissile = this.cameraMode === 'missile'
     if (gameDt < 0 || gameDt > 0.5) {
       // A seek: the chase camera snaps like after a respawn
       this.chase.reset()
@@ -1198,7 +1200,7 @@ export class ViewerScene {
     let missilePose: { position: Vector3; rotation: Quaternion } | null = null
     if (cameraPosition.distanceTo(rootPosition) > 6) {
       for (const series of b.projectiles.values()) {
-        if (series.last.owner !== id || !b.projectileVisible(series, this.tick)) continue
+        if (b.projectileAt(series, this.tick)?.owner !== id) continue
         const position = new Vector3()
         const rotation = new Quaternion()
         if (poseAt(series, this.tick, samplePos, sampleRot, position, rotation) && position.distanceTo(cameraPosition) < 5) {
@@ -1208,9 +1210,29 @@ export class ViewerScene {
       }
     }
 
+    // The server keeps bot gunners in the TV launcher camera during their missile's flight, although the client switches
+    // to the missile's camera (GenericProjectile::postInit enableProjectileCamera; unexplained, tv-hitbox.md). In the
+    // launcher camera with a missile of his own in flight, follow it as the client's missile camera would: inferred
+    const inLauncher =
+      !missilePose && !!template && p.seat === 1 && isHelicopter(template) && localX(cameraPosition, rootPosition, rootRotation) > 0.9
+    let inferred = false
+    if (inLauncher) {
+      for (const series of b.projectiles.values()) {
+        if (b.projectileAt(series, this.tick)?.owner !== id) continue
+        const position = new Vector3()
+        const rotation = new Quaternion()
+        if (poseAt(series, this.tick, samplePos, sampleRot, position, rotation)) {
+          missilePose = { position, rotation }
+          inferred = true
+          break
+        }
+      }
+    }
+    this.cameraOnMissile = missilePose !== null
+
     // Switching view (or vehicle, or onto the TV missile) cuts straight to the new view, as the game does: the chase
     // camera only swings after the vehicle within one view
-    const viewKey = `${id}:${p.root}:${p.view}:${missilePose ? 'tv' : ''}`
+    const viewKey = `${id}:${p.root}:${p.view}:${missilePose ? (inferred ? 'tv-inferred' : 'tv') : ''}`
     if (viewKey !== this.viewKey) {
       this.viewKey = viewKey
       this.chase.reset()
@@ -1220,7 +1242,12 @@ export class ViewerScene {
     const front = p.view === 4
     let camera = ''
     let cameraTemplate: CameraTemplate
-    if (missilePose) {
+    if (missilePose && inferred) {
+      // The missile's camera has no inside view: it starts in the chase view, behind the missile (MISSILE_CAMERA)
+      cameraTemplate = MISSILE_CAMERA
+      camera = 'TV missile (inferred)'
+      chaseCamera(this.chase, `missile:${id}:inferred`, missilePose.position, missilePose.rotation, MISSILE_CAMERA, false, gameDt, this.seaLevel, this.pose)
+    } else if (missilePose) {
       cameraTemplate = MISSILE_CAMERA
       camera = 'TV missile'
       if (p.view === 3 || p.view === 4)
@@ -1344,7 +1371,7 @@ function localX(point: Vector3, rootPosition: Vector3, rootRotation: Quaternion)
 function describeCollision(c: MissileReplay['collisions'][number], onTarget: boolean) {
   if (c.kind === 0) return 'Ground / water'
   const flags = c.flags
-  const rewound = (flags & 4) !== 0 ? 'rewound' : 'tested now'
+  const rewound = (flags & 4) !== 0 ? 'rewind' : 'no rewind'
   if (flags & 2) return `Hit soldier ${c.partPlayer >= 0 ? `#${c.partPlayer}` : ''} (${rewound})`
   if (!onTarget) return `Object ${c.partTemplate || c.rootTemplate}`
   if (flags & 1) return `Hit hull ${c.rootTemplate} (${rewound})`

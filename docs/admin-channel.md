@@ -109,7 +109,8 @@ collision meshes.
    `PrintRecvLog` are gone.
 3. **Database.** Run the EF migration `AdminChannel` (SQLite) or the new `ALTER TABLE` lines in `Schema.sql`
    (SQL Server): `Server.AdminKey nvarchar(128) NULL`, `Server.IsTestServer bit NOT NULL DEFAULT 0`. Then set the key
-   (and the test-server flag) in the server edit form.
+   (and the test-server flag) in the server edit form. `dbo.JoinHistory` (player joins for the BF2v2 site) exists in
+   production; on a fresh SQL Server database `Schema.sql` creates it, on SQLite the migration `JoinHistory`.
 4. **Game server** (`serverext.cfg` beside the OpenBF2 `bf2` binary, module loaded with `openbf2.addModDll serverext`):
 
    ```
@@ -169,12 +170,35 @@ on every server at the same time. The game servers need restart policy `unless-s
 | Projectile owner | nearest `ahe_` player guessed | the module's owner |
 | Text | Windows-1252 out, UTF-8 in (`§` arrived as `�`, `Message.Text` mapped it back) | UTF-8 both ways; the module converts at the engine, `§` intact; the `�` hack is gone |
 | Event recording (`.starteventrecorder`) | raw text lines | every received admin message (`GameServer.StartRecording`) |
+| Player joins for the BF2v2 site (`dbo.JoinHistory`) | BF2v2's collector scraped the PunkBuster logs through `bf2tool.php` on each game server (PunkBuster GUID in `Guid`); OpenBF2 has no PunkBuster, so no rows since the migration | WebAdmin writes them (2026-11-08), see below |
 | Removed | `SocketServer.cs`, `GameReader.cs`, `EventHandler.cs`, `GameWriter.cs`, `IGameReader.cs`, `IEventHandler.cs`, the `wa connect` loop, the mm_autobalancer team workaround | |
 
 Unchanged on purpose: ModManager's classic rcon (`RconClient`) for `iga` admin sync, `!` commands from the web UI and
 Discord, and the web UI's rcon box. `MapModule`'s object spawning keeps the console `ObjectSpawner` script
 (`RconScript.AddObject`): the typed `SpawnObject` creates server-only objects for templates without a networkable
 (the module's finding 17), and the script makes the template networkable first.
+
+### Player joins (`dbo.JoinHistory`)
+
+WebAdmin writes `dbo.JoinHistory`, the BF2v2 site's table (country flags from the newest IP per name, aliases by the
+same `Guid` or IP), which shares the `bf2` database. `AdminStateApplier` handles every `PlayerConnect` event, whatever
+modules the server group enables, and queues one row per human player for `JoinHistoryWriter`, a background service that
+inserts them one at a time through `IJoinHistoryRepository` (BF2v2's own insert; `IsLikelySpoof` takes the column
+default). The apply loop never waits for the database, and a failed insert only logs a warning.
+
+| Column | Value |
+|---|---|
+| `Name` | the player name (clan tag included), trimmed, at most 100 characters |
+| `Guid` | the CD-key hash. Before OpenBF2 it was the PunkBuster GUID |
+| `IpAddress` | the player's IP without a port (IPv4-mapped IPv6 as IPv4) |
+| `ServerIpAddress` | the server's configured `IpAddress` (`dbo.Server.IpAddress`); its resolved address if it is a host name |
+| `JoinDate` | the time WebAdmin received the event, UTC |
+
+No row for bots (AI or created by the bot channel), for players without an IP or with a loopback IP, and for players
+without a CD-key hash (withheld with `adminSendIdentity 0`, LAN and test servers; the `name:` keys of test servers are
+never stored). A snapshot (WebAdmin restart, reconnect, resync) is not a join: players who joined while WebAdmin was
+down get no row. On SQL Server `Schema.sql` creates the table only when it is missing; on SQLite the EF migration
+`JoinHistory` creates it (local development only; BF2v2 reads SQL Server).
 
 ## Results (2026-10-23)
 

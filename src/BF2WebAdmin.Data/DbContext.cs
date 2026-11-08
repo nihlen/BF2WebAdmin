@@ -21,6 +21,9 @@ public class BF2Context : DbContext
     public DbSet<ServerModule> ServerModules { get; set; }
     public DbSet<ServerPlayerAuth> ServerPlayerAuths { get; set; }
 
+    /// <summary>The BF2v2 site's dbo.JoinHistory (on SQL Server); here only for local development.</summary>
+    public DbSet<PlayerJoin> JoinHistory { get; set; }
+
     public BF2Context(DbContextOptions<BF2Context> options) : base(options)
     {
     }
@@ -38,6 +41,14 @@ public class BF2Context : DbContext
         modelBuilder.Entity<MatchRoundPlayer>().HasKey(c => new { c.RoundId, c.PlayerHash });
         modelBuilder.Entity<ServerModule>().HasKey(c => new { c.ServerGroup, c.Module });
         modelBuilder.Entity<ServerPlayerAuth>().HasKey(c => new { c.ServerGroup, c.PlayerHash });
+        modelBuilder.Entity<PlayerJoin>(e =>
+        {
+            e.ToTable("JoinHistory");
+            e.Property(j => j.Name).HasMaxLength(PlayerJoin.NameLength);
+            e.Property(j => j.Guid).HasMaxLength(PlayerJoin.GuidLength);
+            e.Property(j => j.IpAddress).HasMaxLength(PlayerJoin.IpAddressLength);
+            e.Property(j => j.ServerIpAddress).HasMaxLength(PlayerJoin.IpAddressLength);
+        });
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

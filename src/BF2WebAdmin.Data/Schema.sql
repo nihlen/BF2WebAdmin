@@ -193,6 +193,30 @@ CREATE TABLE [dbo].[ServerPlayerAuth](
 ) ON [PRIMARY]
 END
 GO
+/****** Object:  Table [dbo].[JoinHistory] ******/
+-- The BF2v2 site's player joins (country flags, aliases). WebAdmin inserts a row per human player connect; BF2v2 reads
+-- the table and sets IsLikelySpoof. Created here only when missing, so fresh databases have it; an existing table is left as it is.
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[JoinHistory]') AND type in (N'U'))
+BEGIN
+CREATE TABLE [dbo].[JoinHistory](
+	[Id] [int] IDENTITY(1,1) NOT NULL,
+	[Name] [nvarchar](100) NULL,
+	[Guid] [nvarchar](32) NULL,
+	[IpAddress] [nvarchar](32) NULL,
+	[ServerIpAddress] [nvarchar](32) NULL,
+	[JoinDate] [datetime2](7) NOT NULL,
+	[IsLikelySpoof] [bit] NOT NULL CONSTRAINT [DF_JoinHistory_IsLikelySpoof] DEFAULT 0,
+ CONSTRAINT [PK_JoinHistory] PRIMARY KEY CLUSTERED
+(
+	[Id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+) ON [PRIMARY]
+END
+GO
 IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE object_id = OBJECT_ID(N'[dbo].[FK_MapModObject_MapMod]') AND parent_object_id = OBJECT_ID(N'[dbo].[MapModObject]'))
 ALTER TABLE [dbo].[MapModObject]  WITH CHECK ADD  CONSTRAINT [FK_MapModObject_MapMod] FOREIGN KEY([MapModId])
 REFERENCES [dbo].[MapMod] ([Id])

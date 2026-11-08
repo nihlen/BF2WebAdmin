@@ -134,6 +134,10 @@ try
     builder.Services.AddSingleton(services => new AdminListener(serverSettings.AdminChannel, services.GetRequiredService<GameServerRegistry>(),
         services.GetRequiredService<ILoggerFactory>()));
 
+    // Player joins for the BF2v2 site's dbo.JoinHistory, written in the background
+    builder.Services.AddSingleton<JoinHistoryWriter>();
+    builder.Services.AddSingleton<IJoinHistoryWriter>(services => services.GetRequiredService<JoinHistoryWriter>());
+    builder.Services.AddHostedService(services => services.GetRequiredService<JoinHistoryWriter>());
     builder.Services.AddHostedService<BF2WebAdminService>();
     // The web UI uses JSON with camelCase names and enums as strings, for both the API and the hub
     builder.Services.Configure<JsonOptions>(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -231,10 +235,12 @@ try
         // SQLite
         builder.Services.AddDbContext<BF2Context>(o => o.UseSqlite(connectionString));
         builder.Services.AddScoped<IServerSettingsRepository, ServerSettingsRepository>();
+        builder.Services.AddScoped<IJoinHistoryRepository, JoinHistoryRepository>();
     }
     else
     {
         builder.Services.AddSingleton<IServerSettingsRepository>(c => new SqlServerSettingsRepository(connectionString));
+        builder.Services.AddSingleton<IJoinHistoryRepository>(c => new SqlJoinHistoryRepository(connectionString));
     }
 
     var app = builder.Build();

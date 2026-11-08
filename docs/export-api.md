@@ -35,8 +35,10 @@ page returns `next` equal to `since`.
   **Each item is the whole match**, so replace your copy of it (match, rounds, players) by `id`; reading a match twice
   is harmless.
 - The numbers are given and committed in order, so a reader never skips a match that commits late.
-- `changeSeq` values are only comparable within one WebAdmin database. After a database move they may start over;
-  read again from `since=0` then.
+- `changeSeq` values are only comparable within one WebAdmin database. The move from SQL Server to Postgres with
+  `--db-copy-from` ([database.md](database.md)) keeps every match's `changeSeq` and every join id and continues above
+  them, so a consumer keeps its cursors and does not need to start again from 0. After any other move (or a rollback
+  to the old database) they may start over; read again from `since=0` then.
 
 ### Match
 

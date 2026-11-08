@@ -198,7 +198,8 @@ No row for bots (AI or created by the bot channel), for players without an IP or
 without a CD-key hash (withheld with `adminSendIdentity 0`, LAN and test servers; the `name:` keys of test servers are
 never stored). A snapshot (WebAdmin restart, reconnect, resync) is not a join: players who joined while WebAdmin was
 down get no row. On SQL Server `Schema.sql` creates the table only when it is missing; on SQLite the EF migration
-`JoinHistory` creates it (local development only; BF2v2 reads SQL Server).
+`JoinHistory` creates it. On Postgres the table is `player_join` (without `IsLikelySpoof`; [database.md](database.md)),
+and BF2v2 gets the joins from the export API ([export-api.md](export-api.md)).
 
 ## Results (2026-10-23)
 

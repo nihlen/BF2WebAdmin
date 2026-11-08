@@ -79,9 +79,11 @@ HMAC handshake with a key per server. [docs/admin-channel.md](docs/admin-channel
    ```
 5. **Restart policy.** Use `unless-stopped` (Docker) or `Always` (Kubernetes) for the game servers. `.restartserver`
    quits the game server cleanly with exit code 0, so `on-failure` would leave it stopped.
-6. **Database.** SQLite is migrated at startup. For SQL Server, run the two `ALTER TABLE` lines after the `Server`
-   table in `src/BF2WebAdmin.Data/Schema.sql` (`Server.AdminKey`, `Server.IsTestServer`). `Server.ServerId` is
-   `nvarchar(20)` there, so an `adminServerId` can have at most 20 characters.
+6. **Database.** SQLite, Postgres or SQL Server: `ConnectionStrings:BF2DB` and `Database:Provider` (`sqlite`,
+   `postgres`, `sqlserver`), see [docs/database.md](docs/database.md). SQLite and Postgres are migrated at startup. For
+   SQL Server, run the two `ALTER TABLE` lines after the `Server` table in `src/BF2WebAdmin.Data/Schema.sql`
+   (`Server.AdminKey`, `Server.IsTestServer`). `Server.ServerId` is `nvarchar(20)` there, so an `adminServerId` can
+   have at most 20 characters. `--db-copy-from` copies a SQL Server database into a new Postgres database.
 
 ### Docker
 

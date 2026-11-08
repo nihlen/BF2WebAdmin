@@ -7,36 +7,41 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BF2WebAdmin.Data.Repositories;
 
+/// <summary>Servers, modules and player auth levels on EF Core (SQLite, Postgres), one short context per call.</summary>
 public class ServerSettingsRepository : IServerSettingsRepository
 {
-    private readonly BF2Context _context;
+    private readonly IDbContextFactory<BF2Context> _contextFactory;
 
-    public ServerSettingsRepository(BF2Context context)
+    public ServerSettingsRepository(IDbContextFactory<BF2Context> contextFactory)
     {
-        _context = context;
+        _contextFactory = contextFactory;
     }
 
     public async Task<IEnumerable<string>> GetServerGroupsAsync()
     {
-        return await _context.Servers
-            .DistinctBy(s => s.ServerGroup)
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        return await context.Servers
             .Select(s => s.ServerGroup)
+            .Distinct()
             .ToListAsync();
     }
 
     public async Task<IEnumerable<Server>> GetServersAsync()
     {
-        return await _context.Servers.ToListAsync();
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        return await context.Servers.ToListAsync();
     }
 
     public async Task<Server> GetServerAsync(string serverId)
     {
-        return await _context.Servers.FindAsync(serverId);
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        return await context.Servers.FindAsync(serverId);
     }
 
     public async Task SetServerAsync(Server server)
     {
-        var existingServer = await _context.Servers.FindAsync(server.ServerId);
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        var existingServer = await context.Servers.FindAsync(server.ServerId);
         if (existingServer is not null)
         {
             existingServer.ServerGroup = server.ServerGroup;
@@ -49,29 +54,31 @@ public class ServerSettingsRepository : IServerSettingsRepository
             existingServer.DiscordMatchResultChannel = server.DiscordMatchResultChannel;
             existingServer.AdminKey = server.AdminKey;
             existingServer.IsTestServer = server.IsTestServer;
-            _context.Servers.Update(existingServer);
+            context.Servers.Update(existingServer);
         }
         else
         {
-            await _context.Servers.AddAsync(server);
+            await context.Servers.AddAsync(server);
         }
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
     }
 
     public async Task RemoveServerAsync(string serverId)
     {
-        var existingServer = await _context.Servers.FindAsync(serverId);
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        var existingServer = await context.Servers.FindAsync(serverId);
         if (existingServer is null)
             return;
 
-        _context.Servers.Remove(existingServer);
-        await _context.SaveChangesAsync();
+        context.Servers.Remove(existingServer);
+        await context.SaveChangesAsync();
     }
 
     public async Task<IEnumerable<string>> GetModulesAsync(string serverGroup)
     {
-        return await _context.ServerModules
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        return await context.ServerModules
             .Where(sm => sm.ServerGroup == serverGroup && sm.IsEnabled)
             .Select(sm => sm.Module)
             .ToListAsync();
@@ -79,40 +86,43 @@ public class ServerSettingsRepository : IServerSettingsRepository
 
     public async Task SetModulesAsync(string serverGroup, IEnumerable<string> moduleNames)
     {
-        var existingModules = await _context.ServerModules.Where(sm => sm.ServerGroup == serverGroup).ToListAsync();
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        var existingModules = await context.ServerModules.Where(sm => sm.ServerGroup == serverGroup).ToListAsync();
         if (existingModules.Any())
         {
-            _context.ServerModules.RemoveRange(existingModules);
+            context.ServerModules.RemoveRange(existingModules);
         }
 
-        _context.ServerModules.AddRange(moduleNames.Select(m => new ServerModule
+        context.ServerModules.AddRange(moduleNames.Select(m => new ServerModule
         {
             ServerGroup = serverGroup,
             Module = m,
             IsEnabled = true
         }));
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
     }
 
     public async Task<IEnumerable<ServerPlayerAuth>> GetPlayerAuthAsync(string serverGroup)
     {
-        return await _context.ServerPlayerAuths
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        return await context.ServerPlayerAuths
             .Where(spa => spa.ServerGroup == serverGroup)
             .ToListAsync();
     }
 
     public async Task SetPlayerAuthAsync(string serverGroup, string playerHash, int authLevel)
     {
-        var existingPlayerAuth = await _context.ServerPlayerAuths.FindAsync(serverGroup, playerHash);
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        var existingPlayerAuth = await context.ServerPlayerAuths.FindAsync(serverGroup, playerHash);
         if (existingPlayerAuth is not null)
         {
             existingPlayerAuth.AuthLevel = authLevel;
-            _context.ServerPlayerAuths.Update(existingPlayerAuth);
+            context.ServerPlayerAuths.Update(existingPlayerAuth);
         }
         else
         {
-            _context.ServerPlayerAuths.Add(new()
+            context.ServerPlayerAuths.Add(new()
             {
                 ServerGroup = serverGroup,
                 PlayerHash = playerHash,
@@ -120,6 +130,6 @@ public class ServerSettingsRepository : IServerSettingsRepository
             });
         }
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
     }
 }

@@ -28,6 +28,11 @@ public class BF2Context : DbContext
     {
     }
 
+    /// <summary>For <see cref="PostgresBF2Context"/>, which has its own options type and migrations.</summary>
+    protected BF2Context(DbContextOptions options) : base(options)
+    {
+    }
+
     //public BF2Context(string connectionString)
     //{
     //    _connectionString = connectionString;
@@ -60,8 +65,9 @@ public class BF2Context : DbContext
 }
 
 /// <summary>
-/// Used when creating DB migrations
-/// dotnet ef migrations add InitialCreate
+/// Used when creating the SQLite migrations (Migrations/):
+/// dotnet ef migrations add Name --context BF2Context --output-dir Migrations
+/// The Postgres migrations have their own context (<see cref="PostgresBF2Context"/>, Migrations/Postgres/).
 /// </summary>
 public class BF2ContextFactory : IDesignTimeDbContextFactory<BF2Context>
 {

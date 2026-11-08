@@ -209,22 +209,9 @@ public class ModManager : IModManager
             serviceCollection.AddSingleton<IChatLogger, FakeChatLogger>();
         }
 
-        var connectionString = Configuration.GetConnectionString("BF2DB");
-        if (connectionString.Contains(".sqlite"))
-        {
-            // SQLite
-            serviceCollection.AddDbContext<BF2Context>(o => o.UseSqlite(connectionString));
-            serviceCollection.AddScoped<IMapRepository, MapRepository>();
-            serviceCollection.AddScoped<IServerSettingsRepository, ServerSettingsRepository>();
-            serviceCollection.AddScoped<IMatchRepository, MatchRepository>();
-        }
-        else
-        {
-            // SQL Server
-            serviceCollection.AddSingleton<IMapRepository>(c => new SqlMapRepository(connectionString));
-            serviceCollection.AddSingleton<IServerSettingsRepository>(c => new SqlServerSettingsRepository(connectionString));
-            serviceCollection.AddSingleton<IMatchRepository>(c => new SqlMatchRepository(connectionString));
-        }
+        // The same database as Program.cs. The modules resolve the repositories once from this root provider; the EF ones
+        // use a short context per call, so that is safe
+        DatabaseSetup.FromConfiguration(Configuration).AddRepositories(serviceCollection, maps: true, joins: false);
 
         // Modules
         foreach (var moduleType in _moduleResolver.ModuleTypes)

@@ -27,9 +27,9 @@ namespace BF2WebAdmin.Tests;
 /// <summary>The export feed (/api/export/v1): the match cursor, the stale-match closer and the export documents.</summary>
 public class ExportTests
 {
-    private const string HashA1 = "aaaa1111aaaa1111aaaa1111aaaa1111", HashA2 = "aaaa2222aaaa2222aaaa2222aaaa2222";
-    private const string HashB1 = "bbbb1111bbbb1111bbbb1111bbbb1111", HashB2 = "bbbb2222bbbb2222bbbb2222bbbb2222";
-    private static readonly DateTime Start = new(2026, 11, 8, 12, 0, 0);
+    internal const string HashA1 = "aaaa1111aaaa1111aaaa1111aaaa1111", HashA2 = "aaaa2222aaaa2222aaaa2222aaaa2222";
+    internal const string HashB1 = "bbbb1111bbbb1111bbbb1111bbbb1111", HashB2 = "bbbb2222bbbb2222bbbb2222bbbb2222";
+    internal static readonly DateTime Start = new(2026, 11, 8, 12, 0, 0);
 
     // ---------------------------------------------------------------- stale matches
 
@@ -101,12 +101,12 @@ public class ExportTests
         await using (var context = new BF2Context(options))
             await context.Database.MigrateAsync();
 
-        IMatchRepository Repository() => new MatchRepository(new BF2Context(options));
+        var factory = new DelegateContextFactory(() => new BF2Context(options));
+        IMatchRepository Repository() => new MatchRepository(factory);
         await AssertCursorBehaviourAsync(Repository);
 
-        await using (var context = new BF2Context(options))
         {
-            var joins = new JoinHistoryRepository(context);
+            var joins = new JoinHistoryRepository(factory);
             for (var i = 0; i < 3; i++)
                 await joins.InsertAsync(new PlayerJoin { Name = $"p{i}", Guid = HashA1, IpAddress = "203.0.113.7", ServerIpAddress = "198.51.100.20", JoinDate = Start });
             var after = await joins.GetJoinsSinceAsync(1, 10);
@@ -197,7 +197,7 @@ public class ExportTests
     }
 
     /// <summary>Insert, a round, the end: each write gives the match a higher ChangeSeq, and the feed returns it once, in order.</summary>
-    private static async Task AssertCursorBehaviourAsync(Func<IMatchRepository> repository, int existingMatches = 0)
+    internal static async Task AssertCursorBehaviourAsync(Func<IMatchRepository> repository, int existingMatches = 0)
     {
         var first = NewMatch(Start);
         var second = NewMatch(Start.AddMinutes(30));
@@ -238,7 +238,7 @@ public class ExportTests
         Assert.Equal(second.Id, Assert.Single(unfinished).Id);
     }
 
-    private static Match NewMatch(DateTime start) => new()
+    internal static Match NewMatch(DateTime start) => new()
     {
         Id = Guid.NewGuid(),
         ServerId = "198.51.100.20:16567",
@@ -252,7 +252,7 @@ public class ExportTests
         MatchStart = start,
     };
 
-    private static MatchRound NewRound(Guid matchId, DateTime start, int winningTeam)
+    internal static MatchRound NewRound(Guid matchId, DateTime start, int winningTeam)
     {
         var round = new MatchRound
         {

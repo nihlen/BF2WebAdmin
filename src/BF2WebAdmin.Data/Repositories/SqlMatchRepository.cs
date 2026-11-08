@@ -106,6 +106,7 @@ public class SqlMatchRepository : IMatchRepository
         using (var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
         {
             using var connection = NewConnection;
+            connection.Open(); // one connection for the whole scope: a second open could promote it to a distributed transaction
             match.ChangeSeq = null;
             await connection.InsertAsync(match);
             await connection.ExecuteAsync(BumpChangeSeqSql, new { match.Id });
@@ -119,6 +120,7 @@ public class SqlMatchRepository : IMatchRepository
         using (var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
         {
             using var connection = NewConnection;
+            connection.Open(); // one connection for the whole scope: a second open could promote it to a distributed transaction
             var updated = await connection.ExecuteAsync(
                 @"UPDATE [dbo].[Match]
                     SET [TeamAScore] = @TeamAScore
@@ -141,6 +143,7 @@ public class SqlMatchRepository : IMatchRepository
         using (var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
         {
             using var connection = NewConnection;
+            connection.Open(); // one connection for the whole scope: a second open could promote it to a distributed transaction
 
             await connection.InsertAsync(round);
 

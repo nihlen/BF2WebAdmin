@@ -24,17 +24,17 @@ namespace BF2WebAdmin.Tests;
 /// <summary>The dbo.JoinHistory rows for the BF2v2 site: which connects get one, and what goes in it.</summary>
 public class JoinHistoryTests
 {
-    private const string Hash = "0123456789abcdef0123456789abcdef";
+    internal const string Hash = "0123456789abcdef0123456789abcdef";
     private static readonly DateTimeOffset Time = new(2026, 11, 8, 14, 30, 15, TimeSpan.FromHours(1));
 
-    private static AdminPlayerInfo Info(string name = "[TAG] netsky", string ip = "203.0.113.7", string hash = Hash,
+    internal static AdminPlayerInfo Info(string name = "[TAG] netsky", string ip = "203.0.113.7", string hash = Hash,
         byte flags = AdminPlayerInfo.FlagConnected | AdminPlayerInfo.FlagIdentity, byte id = 3) =>
         new(id, name, flags, 0, ip, hash,
             new AdminPlayerScore(0, 0, 0, 0, 0, -1),
             new AdminPlayerState(1, 0, 1, 0, 0, 0, AdminProtocol.NoConsoleId, 255, default, default, default, 1,
                 AdminPlayerState.ViewInside, 0));
 
-    private static PlayerJoin? Join(AdminPlayerInfo info, string? serverIp = "198.51.100.20", IPAddress? resolved = null) =>
+    internal static PlayerJoin? Join(AdminPlayerInfo info, string? serverIp = "198.51.100.20", IPAddress? resolved = null) =>
         JoinHistoryWriter.CreateJoin(info, serverIp, resolved ?? IPAddress.None, Time);
 
     [Fact]
@@ -195,7 +195,7 @@ public class JoinHistoryTests
         await using (var context = new BF2Context(options))
         {
             await context.Database.MigrateAsync();
-            await new JoinHistoryRepository(context).InsertAsync(Join(Info())!);
+            await new JoinHistoryRepository(new DelegateContextFactory(() => new BF2Context(options))).InsertAsync(Join(Info())!);
         }
 
         await using (var context = new BF2Context(options))

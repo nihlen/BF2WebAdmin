@@ -40,7 +40,7 @@ function Invoke-Remote([string]$Script) {
     Write-LfFile $local ("set -euo pipefail`n" + $Script + "`n")
     try {
         Copy-ToHost $HostAlias $local "/tmp/$name"
-        $out = ssh -o BatchMode=yes $HostAlias "bash /tmp/$name; rc=`$?; rm -f /tmp/$name; exit `$rc"
+        $out = & $Ssh -o BatchMode=yes $HostAlias "bash /tmp/$name; rc=`$?; rm -f /tmp/$name; exit `$rc"
         if ($LASTEXITCODE -ne 0) { throw "remote script on $HostAlias failed ($LASTEXITCODE):`n$($out -join "`n")" }
         return $out
     } finally {

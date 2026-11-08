@@ -16,7 +16,6 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -140,11 +139,12 @@ function AppSidebar() {
                       tooltip={server.name}
                     >
                       <ServerStatusDot socketState={server.socketState} />
-                      <span className="truncate">{server.name}</span>
+                      <span className="min-w-0 flex-1 truncate">{server.name}</span>
+                      {/* In the button's flex row, not an absolute SidebarMenuBadge, so a long name truncates before the count */}
+                      <span className="shrink-0 text-xs font-medium tabular-nums group-data-[collapsible=icon]:hidden">
+                        {server.players}/{server.maxPlayers}
+                      </span>
                     </SidebarMenuButton>
-                    <SidebarMenuBadge>
-                      {server.players}/{server.maxPlayers}
-                    </SidebarMenuBadge>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>

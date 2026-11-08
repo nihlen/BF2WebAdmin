@@ -2,14 +2,19 @@
 #   1. a fresh backup (a one-off Job from the CronJob mssql-backup) unless -SkipBackup
 #   2. Schema.sql's admin-channel lines: Server.AdminKey nvarchar(128) NULL, Server.IsTestServer bit NOT NULL DEFAULT 0
 #      (additive: WebAdmin 0.0.2 keeps working against the altered table)
-#   3. Server.AdminKey from 1Password (02-secrets.ps1) and IsTestServer 0 for every server in servers.json
+#   3. Server.AdminKey and IsTestServer 0 for every server in servers.json. SQL Server makes each key itself
+#      (CRYPT_GEN_RANDOM, 32 bytes as 64 hex digits) where none is set yet, so no one generates or copies keys by hand;
+#      dbo.Server is where they live, 05-gameservers.ps1 reads them from there. -RotateKeys makes new ones for all
+#      (every server then needs 05-gameservers.ps1 -Phase Migrate again).
 #
 #   powershell -ExecutionPolicy Bypass -File .\03-database.ps1 -Check      # read only: shows the rows, changes nothing
 #   powershell -ExecutionPolicy Bypass -File .\03-database.ps1             # backup, schema, keys (asks first)
 
 param(
     [switch]$Check,
-    [switch]$SkipBackup
+    [switch]$SkipBackup,
+    [switch]$RotateKeys,
+    [switch]$Yes
 )
 
 . "$PSScriptRoot\lib.ps1"
@@ -35,16 +40,7 @@ foreach ($s in Get-Servers) {
 }
 if ($Check) { return }
 
-Write-Step "Keys from 1Password"
-$keys = @{}
-foreach ($s in Get-Servers) {
-    $k = Read-OpField $Config.onePassword.gameServersItem $s.name
-    if ($k -notmatch '^[0-9a-f]{32,128}$') { throw "$($s.name): no valid key in 1Password (run 02-secrets.ps1)" }
-    $keys[$s.name] = $k
-    Write-Ok "$($s.name) -> $($s.serverId)"
-}
-
-Confirm-Action "Back up bf2, alter dbo.Server and set the admin keys in PRODUCTION?"
+if (-not $Yes) { Confirm-Action "Back up bf2, alter dbo.Server and set the admin keys in PRODUCTION?" }
 
 if (-not $SkipBackup) {
     Write-Step "Backup"
@@ -66,9 +62,11 @@ GO
 Write-Ok "AdminKey and IsTestServer exist"
 
 Write-Step "Keys"
+$onlyMissing = if ($RotateKeys) { '' } else { ' AND AdminKey IS NULL' }
 $updates = foreach ($s in Get-Servers) {
-    "UPDATE dbo.Server SET AdminKey = N'$($keys[$s.name])', IsTestServer = 0 WHERE ServerId = N'$($s.serverId)';" +
-    " IF @@ROWCOUNT <> 1 THROW 50000, N'no row for $($s.serverId)', 1;"
+    "IF NOT EXISTS (SELECT 1 FROM dbo.Server WHERE ServerId = N'$($s.serverId)') THROW 50000, N'no row for $($s.serverId)', 1;" +
+    " UPDATE dbo.Server SET AdminKey = LOWER(CONVERT(nvarchar(64), CRYPT_GEN_RANDOM(32), 2)) WHERE ServerId = N'$($s.serverId)'$onlyMissing;" +
+    " UPDATE dbo.Server SET IsTestServer = 0 WHERE ServerId = N'$($s.serverId)';"
 }
 Invoke-Sql ("SET XACT_ABORT ON; BEGIN TRAN;`n" + ($updates -join "`n") + "`nCOMMIT;") | Out-Null
 $check = Invoke-Sql @"

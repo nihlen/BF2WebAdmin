@@ -203,13 +203,15 @@ docker logs $($canary.name) 2>&1 | grep -E 'loaded|admin channel:|serverext' | t
 
     'Migrate' {
         Write-Step "Migrate $HostAlias`: $($servers.name -join ', ')"
-        $pin = Read-OpField $Config.onePassword.gameServersItem 'adminCertSha256'
-        if ($pin -notmatch '^[0-9a-f]{64}$') { throw "No pin in 1Password (02-secrets.ps1)" }
+        $pin = Get-WebAdminPin
+        if ($pin -notmatch '^[0-9a-f]{64}$') { throw "No pin: WebAdmin 0.1.0 has not logged 'adminCertSha256' (run 04-webadmin.ps1 -Phase Migrate first)" }
+        Write-Ok "WebAdmin's pin $pin"
+        $adminKeys = Get-AdminKeys
         $services = @()
         $seed = @()
         foreach ($s in $servers) {
-            $key = Read-OpField $Config.onePassword.gameServersItem $s.name
-            if ($key -notmatch '^[0-9a-f]{32,128}$') { throw "$($s.name): no key in 1Password (02-secrets.ps1)" }
+            $key = $adminKeys[$s.serverId]
+            if ($key -notmatch '^[0-9a-f]{32,128}$') { throw "$($s.name): no AdminKey in dbo.Server for $($s.serverId) (run 03-database.ps1 first)" }
             $old = Get-ContainerEnv $s.name
             if ($old.ContainsKey('ENV_SERVER_PORT') -and $old['ENV_SERVER_PORT'] -ne [string]$s.gamePort) {
                 throw "$($s.name): running on port $($old['ENV_SERVER_PORT']), servers.json says $($s.gamePort)"

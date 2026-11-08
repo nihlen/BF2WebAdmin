@@ -13,7 +13,9 @@ Every script that changes something asks before it does.
 |---|---|
 | Rollout | Everything at once: the 2v2, 2v2-nocheck, dogfight and chopper-mayhem servers plus WebAdmin. The OpenBF2 test server on de2 (16570) is the canary beforehand and is stopped on migration day |
 | Admin channel port | 4300, the old mm_webadmin port. The firewall, the OPNsense forward and the NodePort 30430 stay as they are. WebAdmin listens with TLS 1.3 there (`ServerSettings__AdminChannel__Port=4300`) |
-| Certificate | Kept in 1Password. The field `ServerSettings__AdminChannel__Certificate` (base64 PKCS#12) goes in the item `bf2-webadmin-env`, and the operator syncs it into WebAdmin's env. The pin and one admin key per server are in the item `bf2-gameservers` |
+| Certificate | Kept in 1Password, added by hand: the field `ServerSettings__AdminChannel__Certificate` (base64 PKCS#12 from `--admin-cert-create`) in the item `bf2-webadmin-env`. The operator syncs it into WebAdmin's env. Done on 2026-11-08 |
+| Admin keys and pin | Nothing to copy by hand. `03-database.ps1` has SQL Server generate one key per server (`CRYPT_GEN_RANDOM`, 64 hex digits) in `dbo.Server.AdminKey`, which is where WebAdmin reads it. `05-gameservers.ps1` reads the keys from there and the pin from WebAdmin's startup log, then writes both into each server's env file. The scripts never use the 1Password CLI |
+| GameSpy backend | The release zip is built with `GSI_DOMAIN_NAME=bf2hub.p.bf2.org`, like the earlier `openbf2-bf2hub` zip, so the servers report to BF2Hub's master list and CD-key checks (`5.252.33.100`, the same as the retail servers). Built with OpenBF2's default `openspy.net`, they were missing from the in-game list |
 | Game server images | `cr.nihlen.net/library/bf2-netsky:openbf2-<name>` (bf2-docker `images/netsky-openbf2-*`, trixie). The server files come from the image, and the settings are rendered from env on every start. The only bind mount is `/volume`, at `/data/bf2/<name>/volume-openbf2` |
 | TV missile settings | `tv-aim-from-missile` and `tv-turn-behind` are off (retail behaviour). See "Enabling the TV settings" |
 | Accepted | No PunkBuster on OpenBF2. Kick and ban from the web UI and Discord go through rcon `iga`. The admin key is visible to Administrators. Q12 (TV launch refused while another TV missile flies) is left for the live playtests. `adminAllowConsole 1` |
@@ -24,10 +26,10 @@ Every script that changes something asks before it does.
 | File | What it does | Changes production? |
 |---|---|---|
 | `servers.json` | Inventory: hosts, servers, images, ports and server ids. No secrets | |
-| `lib.ps1` | Helpers: kubectl and flux through WSL, sqlcmd in the mssql pod, ssh and scp, 1Password reads | |
-| `01-preflight.ps1` | Checks tools, ssh, images on the hosts, 1Password, the database and WebAdmin | no |
-| `02-secrets.ps1` | Creates the certificate, the pin and the admin keys in 1Password. Values that already exist are kept | 1Password only |
-| `03-database.ps1` | `-Check` shows the `dbo.Server` rows. Without it: a backup job, the `AdminKey` and `IsTestServer` columns, and the keys | yes, asks first |
+| `lib.ps1` | Helpers: kubectl and flux through WSL, sqlcmd in the mssql pod, ssh and scp (Git's), the admin keys from `dbo.Server`, the pin from WebAdmin's log | |
+| `01-preflight.ps1` | Checks tools, ssh, images on the hosts, the certificate in the cluster secret, the database and WebAdmin | no |
+| `02-secrets.ps1` | Optional, not used: does the 1Password part with the 1Password CLI | 1Password only |
+| `03-database.ps1` | `-Check` shows the `dbo.Server` rows. Without it: a backup job, the `AdminKey` and `IsTestServer` columns, and a generated key for each server that has none (`-RotateKeys`: new keys for all) | yes, asks first (`-Yes` skips) |
 | `04-webadmin.ps1` | `-Phase Hold`, `Check`, `Migrate` or `Rollback` in pve-cluster (Flux) | yes, asks before each push |
 | `05-gameservers.ps1` | `-HostAlias de2\|de -Phase Status\|Canary\|Migrate\|Rollback` | yes, asks first |
 | `06-verify.ps1` | Checks that every server authenticated, the images and rcon | no |
@@ -35,10 +37,9 @@ Every script that changes something asks before it does.
 | `work/` | Git-ignored. It holds the rendered env files and the retail settings taken from the containers, **which include secrets**. Delete it when the migration is done and the rollback window is over | |
 
 Requirements on this PC:
-- `op` signed in to the vault `Kubernetes`.
 - `ssh de` and `ssh de2` (root, key auth).
 - WSL Ubuntu with `kubectl` and `flux`, and `pve-cluster\kubernetes\kubeconfig`.
-- Docker, used for `docker manifest inspect` and for `02-secrets.ps1 -WebAdminImage`.
+- Docker, used for `docker manifest inspect`.
 
 ## Before migration day
 
@@ -52,9 +53,8 @@ Requirements on this PC:
 4. **WebAdmin release.**
    - Push `admin-channel`.
    - Create the GitHub release `0.1.0` on it. `.github/workflows/docker-image.yml` tests, builds and pushes `docker.io/nihlen/bf2-webadmin:0.1.0`.
-5. **Secrets.** Run `02-secrets.ps1 -WebAdminImage docker.io/nihlen/bf2-webadmin:0.1.0`.
-   - Wait until `04-webadmin.ps1 -Phase Check` shows the certificate in the cluster secret. The 1Password operator syncs it.
-   - 0.0.2 ignores the new env value.
+5. **Certificate (done 2026-11-08).** `docker run --rm docker.io/nihlen/bf2-webadmin:0.1.0 --admin-cert-create` printed it, and its base64 line went into `bf2-webadmin-env` as `ServerSettings__AdminChannel__Certificate`. The cluster secret has it; 0.0.2 ignores it.
+   - Keep the `adminCertSha256` line it printed. On migration day the pin WebAdmin logs must equal it.
 6. **Server ids.** Run `03-database.ps1 -Check`.
    - Each `serverId` in `servers.json` must be a row in `dbo.Server`, because it becomes the module's `adminServerId`.
    - Each row needs `IpAddress`, `RconPort` and `RconPassword`, because WebAdmin now uses rcon at the configured address and no longer the address the server connected from.
@@ -72,11 +72,11 @@ Requirements on this PC:
 Expect 15 to 30 minutes of downtime. Retail servers cannot reach WebAdmin from step 3 until their host is migrated in step 4.
 
 1. Run `01-preflight.ps1`.
-2. Run `03-database.ps1`. It runs a backup job, adds the columns and writes the keys. This is additive, and 0.0.2 keeps working.
-3. Run `04-webadmin.ps1 -Phase Migrate`. It deploys image 0.1.0 with `ServerSettings__AdminChannel__Port=4300` and sets the image policy back to `>=0.0.0`. It then pushes to pve-cluster, reconciles Flux, waits for the rollout and compares the pin in the log with 1Password.
+2. Run `03-database.ps1`. It runs a backup job, adds the columns and generates the keys. This is additive, and 0.0.2 keeps working.
+3. Run `04-webadmin.ps1 -Phase Migrate`. It deploys image 0.1.0 with `ServerSettings__AdminChannel__Port=4300` and sets the image policy back to `>=0.0.0`. It then pushes to pve-cluster, reconciles Flux, waits for the rollout and prints the pin from WebAdmin's log. Compare it with the `adminCertSha256` line you kept.
 4. Run `05-gameservers.ps1 -HostAlias de2 -Phase Migrate`, then `05-gameservers.ps1 -HostAlias de -Phase Migrate`. On each host this:
    - Saves `/data/docker-compose.yml` as `docker-compose.retail.yml`, once.
-   - Takes each server's name, player count, demo URL, rcon password and API key from its running container.
+   - Takes each server's name, player count, demo URL, rcon password and API key from its running container, its admin key from `dbo.Server` and the pin from WebAdmin's log.
    - Seeds `/data/bf2/<name>/volume-openbf2` with the ban lists and uploaded demos.
    - Replaces the compose file and starts the OpenBF2 containers under the same container names.
    - Waits for `admin: link session ... authenticated` in each container's log.

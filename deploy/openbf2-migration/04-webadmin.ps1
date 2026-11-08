@@ -16,7 +16,8 @@
 
 param(
     [Parameter(Mandatory)][ValidateSet('Hold', 'Check', 'Migrate', 'Rollback')][string]$Phase,
-    [switch]$NoPush
+    [switch]$NoPush,
+    [switch]$Yes
 )
 
 . "$PSScriptRoot\lib.ps1"
@@ -48,7 +49,7 @@ function Assert-CleanRepo {
 function Publish-Commit([string]$Message) {
     Invoke-Git @('diff', '--', $manifest, $policy) | ForEach-Object { Write-Host "  $_" }
     if ($NoPush) { Write-Warn "-NoPush: committed locally only"; Invoke-Git @('commit', '-q', '-m', $Message, '--', $manifest, $policy) | Out-Null; return }
-    Confirm-Action "Commit and push this to pve-cluster main (Flux deploys it)?"
+    if (-not $Yes) { Confirm-Action "Commit and push this to pve-cluster main (Flux deploys it)?" }
     Invoke-Git @('commit', '-q', '-m', $Message, '--', $manifest, $policy) | Out-Null
     Invoke-Git @('push', '-q', 'origin', 'main') | Out-Null
     Write-Ok "pushed $((Invoke-Git @('rev-parse', '--short', 'HEAD')) -join '')"
@@ -85,9 +86,6 @@ switch ($Phase) {
         docker manifest inspect $image *> $null
         if ($LASTEXITCODE -eq 0) { Write-Ok "exists on Docker Hub" } else { Write-Fail "not found (create the GitHub release $($Config.webAdmin.version) after -Phase Hold)" }
         Write-Step "Certificate"
-        if (-not (Test-Path $SecretsFile)) {
-            if (Read-OpField $Config.onePassword.webAdminItem 'ServerSettings__AdminChannel__Certificate') { Write-Ok "in 1Password" } else { Write-Fail "not in 1Password (02-secrets.ps1)" }
-        }
         if (Test-SecretHasCertificate) { Write-Ok "in the cluster secret bf2-webadmin-env" } else { Write-Fail "not yet in the cluster secret (the 1Password operator syncs it; wait or restart the operator)" }
         Write-Step "Cluster"
         Write-Host "  deployment image: $(Get-DeploymentImage)"
@@ -101,7 +99,6 @@ switch ($Phase) {
         docker manifest inspect $image *> $null
         if ($LASTEXITCODE -ne 0) { throw "$image does not exist" }
         if (-not (Test-SecretHasCertificate)) { throw "The cluster secret bf2-webadmin-env has no ServerSettings__AdminChannel__Certificate yet" }
-        $pin = Read-OpField $Config.onePassword.gameServersItem 'adminCertSha256'
         Assert-CleanRepo
         Invoke-Git @('apply', '--check', $migratePatch) | Out-Null
         Invoke-Git @('apply', $migratePatch) | Out-Null
@@ -112,8 +109,9 @@ switch ($Phase) {
         $pinLine = @($log | Where-Object { $_ -match 'adminCertSha256 ([0-9a-f]{64})' } | Select-Object -Last 1)
         $listen = @($log | Where-Object { $_ -match 'Admin channel: listening on' } | Select-Object -Last 1)
         if ($listen) { Write-Ok ($listen -join '') } else { Write-Fail "no 'Admin channel: listening' line" }
-        if ($pinLine -and ($pinLine[0] -match 'adminCertSha256 ([0-9a-f]{64})') -and $Matches[1] -eq $pin) { Write-Ok "pin matches 1Password" }
-        else { Write-Fail "the pin in the log does not match 1Password's adminCertSha256" }
+        if ($pinLine -and ($pinLine[0] -match 'adminCertSha256 ([0-9a-f]{64})')) {
+            Write-Ok "pin $($Matches[1]) (05-gameservers.ps1 reads it from this log; it must equal the adminCertSha256 line of --admin-cert-create)"
+        } else { Write-Fail "no adminCertSha256 line in the log" }
         Write-Host "  image: $(Get-DeploymentImage)"
     }
 
@@ -123,7 +121,7 @@ switch ($Phase) {
         $commit = (Invoke-Git @('log', '-1', '--format=%h', '--grep=the OpenBF2 admin channel on 4300', '--', $manifest)) -join ''
         if (-not $commit) { throw "No migrate commit found in pve-cluster" }
         if ($NoPush) { Invoke-Git @('revert', '--no-edit', $commit) | Out-Null; Write-Warn "-NoPush: reverted locally only"; return }
-        Confirm-Action "Revert $commit in pve-cluster main and push (WebAdmin 0.0.2 again)?"
+        if (-not $Yes) { Confirm-Action "Revert $commit in pve-cluster main and push (WebAdmin 0.0.2 again)?" }
         Invoke-Git @('revert', '--no-edit', $commit) | Out-Null
         Invoke-Git @('push', '-q', 'origin', 'main') | Out-Null
         Invoke-WslScript "flux reconcile source git flux-system -n flux-system && flux reconcile kustomization apps -n flux-system --timeout=10m" | Out-Null

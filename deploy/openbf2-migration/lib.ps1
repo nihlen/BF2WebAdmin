@@ -101,6 +101,28 @@ function Read-OpField([string]$Item, [string]$Field) {
     return ($value -join "`n").Trim()
 }
 
+# The admin keys live in dbo.Server.AdminKey (03-database.ps1 has SQL Server generate them). Returns ServerId -> key.
+function Get-AdminKeys {
+    $ids = (@($Config.servers) | ForEach-Object { "N'$($_.serverId)'" }) -join ', '
+    $rows = Invoke-Sql "SET NOCOUNT ON; SELECT ServerId + '|' + ISNULL(AdminKey, '') FROM dbo.Server WHERE ServerId IN ($ids);"
+    $keys = @{}
+    foreach ($r in @($rows)) {
+        if ($r -match '^([^|\s]+)\|([0-9a-f]*)\s*$') { $keys[$Matches[1]] = $Matches[2] }
+    }
+    return $keys
+}
+
+# The pin (adminCertSha256) of the certificate WebAdmin actually uses: it logs it at startup ("Admin channel: TLS
+# certificate ... adminCertSha256 <pin>"). work\secrets.json's adminCertSha256 wins when set.
+function Get-WebAdminPin {
+    $fromFile = Read-OpField $Config.onePassword.gameServersItem 'adminCertSha256'
+    if ((Test-Path $SecretsFile) -and $fromFile -match '^[0-9a-f]{64}$') { return $fromFile }
+    $log = @(Invoke-Kubectl "-n $($Config.cluster.namespace) logs deploy/$($Config.cluster.deployment) --tail=5000")
+    $line = @($log | Where-Object { $_ -match 'adminCertSha256 ([0-9a-f]{64})' } | Select-Object -Last 1)
+    if ($line.Count -and $line[0] -match 'adminCertSha256 ([0-9a-f]{64})') { return $Matches[1] }
+    return $null
+}
+
 function Get-Servers([string[]]$Names) {
     $all = @($Config.servers)
     if (-not $Names -or $Names.Count -eq 0) { return $all }

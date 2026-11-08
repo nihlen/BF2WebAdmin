@@ -26,11 +26,11 @@ deploy or test against a game server.
 
 | Path | Contents |
 |---|---|
-| `src/BF2WebAdmin.Server` | The host (`Program.cs`): web API for the web UI (`Api/ApiEndpoints.cs`: queries and commands), SignalR hub (`Hubs/ServerHub.cs`: live updates only), `AdminChannel/` (listener, handshake, session, protocol codec, state applier), game modules (`Modules/BF2/`: `Heli2v2Module`, `MapModule`, `ChopperMayhemModule`, ...), `RconClient` (ModManager rcon), configuration in `Configuration/` (`appsettings.json`, `appsettings.<profile>.json`; a published build runs profile `release`, log level Information) plus an `appsecrets.json` |
+| `src/BF2WebAdmin.Server` | The host (`Program.cs`): web API for the web UI (`Api/ApiEndpoints.cs`: queries and commands), SignalR hub (`Hubs/ServerHub.cs`: live updates only), the export API for other programs (`Api/ExportEndpoints.cs`, contract in [docs/export-api.md](docs/export-api.md): matches by change cursor, player joins, servers), `Services/StaleMatchCloser.cs` (ends matches left open), `AdminChannel/` (listener, handshake, session, protocol codec, state applier), game modules (`Modules/BF2/`: `Heli2v2Module`, `MapModule`, `ChopperMayhemModule`, ...), `RconClient` (ModManager rcon), configuration in `Configuration/` (`appsettings.json`, `appsettings.<profile>.json`; a published build runs profile `release`, log level Information) plus an `appsecrets.json` |
 | `src/BF2WebAdmin.Web` | The web UI: Vite, React, TypeScript, TanStack Query and Router, shadcn/ui on Base UI, Tailwind CSS. Talks to the web API (types generated from its OpenAPI document into `src/api/`) and to the hub (event types in `src/api/events.ts`, by hand). See its README |
 | `src/BF2WebAdmin.AppHost` | Aspire AppHost: runs the server, the Vite dev server and an optional OpenBF2 game server (`OpenBF2.cs`, started from the dashboard); publishes one server image with the web UI in `wwwroot` |
 | `src/BF2WebAdmin.Common`, `src/BF2WebAdmin.Shared` | Shared types and helpers |
-| `src/BF2WebAdmin.Data` | Data access, EF migrations (SQLite), `Schema.sql` (SQL Server). Includes `dbo.JoinHistory`, the BF2v2 site's player join table in the shared `bf2` database: WebAdmin inserts a row per human player connect (`AdminChannel/JoinHistoryWriter.cs`; see docs/admin-channel.md) |
+| `src/BF2WebAdmin.Data` | Data access, EF migrations (SQLite), `Schema.sql` (SQL Server). Includes `dbo.JoinHistory`, the BF2v2 site's player join table in the shared `bf2` database: WebAdmin inserts a row per human player connect (`AdminChannel/JoinHistoryWriter.cs`; see docs/admin-channel.md). SQL Server gets schema changes at startup (`SqlServerSchemaUpdates.cs`, also in `Schema.sql`), SQLite from the EF migrations |
 | `test/BF2WebAdmin.Tests` | Unit tests (admin codec against the golden file `Fixtures/admin-v1-golden.txt`, handshake, TLS, session, Heli2v2, JoinHistory). `BF2WA_TEST_SQLSERVER` (a connection string, e.g. `Server=(localdb)\MSSQLLocalDB;Integrated Security=true;TrustServerCertificate=true`) runs the SQL Server test, which creates and drops a scratch database |
 | `test/TestClient`, `test/TestCore`, `test/BF2WebAdmin.Benchmarks` | Old tools, not part of the test run |
 
@@ -45,7 +45,7 @@ The web UI needs Node 24, pinned in its `package.json` for Volta (the machine de
 
 ```powershell
 dotnet build src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj
-dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 293 tests on 2026-11-08, 1 skipped without BF2WA_TEST_SQLSERVER
+dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 299 tests on 2026-11-08, 2 skipped without BF2WA_TEST_SQLSERVER
 dotnet publish src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj -c Release -o <dir>
 BF2WebAdmin.Server.exe --admin-pin                                    # prints the admin-channel certificate pin
 BF2WebAdmin.Server.exe --admin-cert-create [--pem]                     # prints a new certificate for the Certificate secret, and its pin

@@ -89,6 +89,8 @@ public static class ApiEndpoints
         var playerAuth = api.MapGroup("/server-groups/{serverGroup}/auth").WithTags("Player auth").RequireAuthorization(AdminPolicy);
         playerAuth.MapGet("/", GetPlayerAuthAsync);
         playerAuth.MapPut("/", SetPlayerAuthAsync);
+
+        api.MapExport();
     }
 
     private static async Task<Results<NoContent, UnauthorizedHttpResult>> LoginAsync(LoginRequest request, HttpContext context, IOptions<AuthSettings> authSettings)

@@ -1,10 +1,13 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace BF2WebAdmin.Data.Repositories;
 
-/// <summary>The JoinHistory table on SQLite (local development; the BF2v2 site reads SQL Server only).</summary>
+/// <summary>The JoinHistory table on SQLite.</summary>
 public class JoinHistoryRepository : IJoinHistoryRepository
 {
     private readonly BF2Context _context;
@@ -18,5 +21,15 @@ public class JoinHistoryRepository : IJoinHistoryRepository
     {
         await _context.JoinHistory.AddAsync(join);
         await _context.SaveChangesAsync();
+    }
+
+    public async Task<IReadOnlyList<PlayerJoin>> GetJoinsSinceAsync(long sinceId, int limit)
+    {
+        return await _context.JoinHistory
+            .AsNoTracking()
+            .Where(j => j.Id > sinceId)
+            .OrderBy(j => j.Id)
+            .Take(limit)
+            .ToListAsync();
     }
 }

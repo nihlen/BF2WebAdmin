@@ -923,6 +923,106 @@
           }
         }
       }
+    },
+    "/api/export/v1/matches": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportPageOfExportMatch"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export/v1/servers": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExportServer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export/v1/joins": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportPageOfExportJoin"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1163,6 +1263,344 @@
           }
         }
       },
+      "ExportJoin": {
+        "required": [
+          "id",
+          "name",
+          "guid",
+          "ipAddress",
+          "serverIpAddress",
+          "joinDate"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "guid": {
+            "type": "string"
+          },
+          "ipAddress": {
+            "type": "string"
+          },
+          "serverIpAddress": {
+            "type": "string"
+          },
+          "joinDate": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ExportMatch": {
+        "required": [
+          "id",
+          "changeSeq",
+          "serverId",
+          "serverName",
+          "map",
+          "type",
+          "teamAHash",
+          "teamAName",
+          "teamAScore",
+          "teamBHash",
+          "teamBName",
+          "teamBScore",
+          "matchStart",
+          "matchEnd",
+          "rounds"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "changeSeq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "serverName": {
+            "type": "string"
+          },
+          "map": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "teamAHash": {
+            "type": "string"
+          },
+          "teamAName": {
+            "type": "string"
+          },
+          "teamAScore": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "teamBHash": {
+            "type": "string"
+          },
+          "teamBName": {
+            "type": "string"
+          },
+          "teamBScore": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "matchStart": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "matchEnd": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "rounds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportRound"
+            }
+          }
+        }
+      },
+      "ExportPageOfExportJoin": {
+        "required": [
+          "items",
+          "next",
+          "hasMore"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportJoin"
+            }
+          },
+          "next": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ExportPageOfExportMatch": {
+        "required": [
+          "items",
+          "next",
+          "hasMore"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportMatch"
+            }
+          },
+          "next": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ExportRound": {
+        "required": [
+          "id",
+          "winningTeamId",
+          "positionTrackerInterval",
+          "roundStart",
+          "roundEnd",
+          "players"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "winningTeamId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "positionTrackerInterval": {
+            "type": "number",
+            "format": "double"
+          },
+          "roundStart": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "roundEnd": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "players": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportRoundPlayer"
+            }
+          }
+        }
+      },
+      "ExportRoundPlayer": {
+        "required": [
+          "playerHash",
+          "playerName",
+          "teamId",
+          "subVehicle",
+          "saidGo",
+          "startPosition",
+          "deathPosition",
+          "deathTime",
+          "killerHash",
+          "killerWeapon",
+          "killerPosition",
+          "movementPath",
+          "projectilePaths"
+        ],
+        "type": "object",
+        "properties": {
+          "playerHash": {
+            "type": "string"
+          },
+          "playerName": {
+            "type": "string"
+          },
+          "teamId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "subVehicle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "saidGo": {
+            "type": "boolean"
+          },
+          "startPosition": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "deathPosition": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "deathTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "killerHash": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "killerWeapon": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "killerPosition": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "movementPath": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "projectilePaths": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          }
+        }
+      },
+      "ExportServer": {
+        "required": [
+          "serverId",
+          "serverGroup",
+          "ipAddress",
+          "gamePort",
+          "queryPort",
+          "isTestServer"
+        ],
+        "type": "object",
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "serverGroup": {
+            "type": "string"
+          },
+          "ipAddress": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "gamePort": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "queryPort": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "isTestServer": {
+            "type": "boolean"
+          }
+        }
+      },
       "GameState": {
         "enum": [
           "PreGame",
@@ -1173,6 +1611,7 @@
           "NotConnected"
         ]
       },
+      "JsonElement": { },
       "LoginRequest": {
         "required": [
           "username",
@@ -1935,6 +2374,9 @@
     },
     {
       "name": "Player auth"
+    },
+    {
+      "name": "Export"
     }
   ]
 }

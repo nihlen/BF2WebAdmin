@@ -139,6 +139,8 @@ try
     builder.Services.AddSingleton<IJoinHistoryWriter>(services => services.GetRequiredService<JoinHistoryWriter>());
     builder.Services.AddHostedService(services => services.GetRequiredService<JoinHistoryWriter>());
     builder.Services.AddHostedService<BF2WebAdminService>();
+    builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddHostedService<StaleMatchCloser>();
     // The web UI uses JSON with camelCase names and enums as strings, for both the API and the hub
     builder.Services.Configure<JsonOptions>(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
     builder.Services.AddSignalR()
@@ -236,11 +238,13 @@ try
         builder.Services.AddDbContext<BF2Context>(o => o.UseSqlite(connectionString));
         builder.Services.AddScoped<IServerSettingsRepository, ServerSettingsRepository>();
         builder.Services.AddScoped<IJoinHistoryRepository, JoinHistoryRepository>();
+        builder.Services.AddScoped<IMatchRepository, MatchRepository>();
     }
     else
     {
         builder.Services.AddSingleton<IServerSettingsRepository>(c => new SqlServerSettingsRepository(connectionString));
         builder.Services.AddSingleton<IJoinHistoryRepository>(c => new SqlJoinHistoryRepository(connectionString));
+        builder.Services.AddSingleton<IMatchRepository>(c => new SqlMatchRepository(connectionString));
     }
 
     var app = builder.Build();
@@ -258,6 +262,12 @@ try
         using var scope = app.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<BF2Context>();
         await context.Database.MigrateAsync();
+    }
+    else
+    {
+        // SQL Server: the idempotent schema changes since Schema.sql's tables (the export cursor on Match)
+        app.Logger.LogInformation("Applying SQL Server schema updates");
+        await SqlServerSchemaUpdates.ApplyAsync(connectionString);
     }
 
     app.UseResponseCompression();

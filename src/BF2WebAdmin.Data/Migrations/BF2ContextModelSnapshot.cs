@@ -71,6 +71,9 @@ namespace BF2WebAdmin.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("ChangeSeq")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Map")
                         .HasColumnType("TEXT");
 
@@ -108,6 +111,9 @@ namespace BF2WebAdmin.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ChangeSeq")
+                        .IsUnique();
 
                     b.ToTable("Matches");
                 });

@@ -14,4 +14,10 @@ public interface IModManager : IDisposable
     Task HandleFakeChatMessageAsync(Message message);
     ValueTask HandleChatMessageAsync(Message message);
     IEnumerable<string> GetModules();
+
+    /// <summary>The chat commands of the loaded modules.</summary>
+    IReadOnlyList<CommandInfo> GetCommands();
+
+    /// <summary>Whether a chat command with this alias exists (without the "." prefix).</summary>
+    bool IsCommand(string alias);
 }

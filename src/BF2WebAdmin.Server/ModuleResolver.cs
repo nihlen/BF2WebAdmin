@@ -43,6 +43,23 @@ public class ModuleResolver : IModuleResolver
     // Module instances
     public IDictionary<Type, IModule> Modules { get; } = new Dictionary<Type, IModule>();
 
+    // Every [Command] attribute, and the modules that handle each command type
+    private static readonly List<(Type CommandType, CommandAttribute Attribute)> _commandAttributes = new();
+    private static ILookup<Type, Type> _commandModuleTypes;
+
+    /// <summary>The chat commands that a loaded module handles, in declaration order.</summary>
+    public IReadOnlyList<CommandInfo> GetCommands() =>
+        _commandAttributes
+            .Select(c => (c.CommandType, c.Attribute, Modules: _commandModuleTypes[c.CommandType].Where(Modules.ContainsKey).Select(t => t.Name).ToArray()))
+            .Where(c => c.Modules.Length > 0)
+            .Select(c => new CommandInfo(
+                c.Attribute.Aliases.Where(a => a.Length > 0).ToArray(),
+                c.Attribute.Parameters ?? [],
+                c.Attribute.AuthLevel,
+                c.Modules))
+            .Where(c => c.Aliases.Count > 0)
+            .ToList();
+
     static ModuleResolver()
     {
         CommandDocumentation = new StringBuilder();
@@ -265,12 +282,14 @@ public class ModuleResolver : IModuleResolver
         _moduleTypes = GetModules(CurrentAssembly).ToArray();
         _commandTypes = GetCommands(CurrentAssembly).ToArray();
         _eventTypes = GetEvents(CurrentAssembly).ToArray();
+        _commandModuleTypes = GetCommandHandlers(CurrentAssembly).ToLookup(c => c.CommandType, c => c.ModuleType);
 
         foreach (var commandType in _commandTypes)
         {
             var attributes = AllAttributes<CommandAttribute>(commandType);
             foreach (var attr in attributes)
             {
+                _commandAttributes.Add((commandType, attr));
                 foreach (var alias in attr.Aliases)
                 {
                     if (!_commandParsers.ContainsKey(alias))

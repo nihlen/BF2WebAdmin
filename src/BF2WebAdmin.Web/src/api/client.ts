@@ -23,6 +23,10 @@ export type MissileSummary = Schemas['MissileSummaryDto']
 export type MissileReplay = Schemas['MissileReplayDto']
 export type MissileSample = Schemas['MissileSampleDto']
 export type MissileCollision = Schemas['MissileCollisionDto']
+export type CommandInfo = Schemas['CommandInfoDto']
+export type CommandLogEntry = Schemas['CommandLogEntryDto']
+export type PlayerAuth = Schemas['PlayerAuthDto']
+export type TestServerResult = Schemas['TestServerResult']
 
 /** A failed API request. React Query receives it as the error of the query or mutation. */
 export class ApiError extends Error {

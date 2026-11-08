@@ -1,49 +1,68 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { HubConnectionState } from '@microsoft/signalr'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Ban as BanIcon, Bolt, Box, Map as MapIcon, MessageSquare, MoreVertical, Pause, RefreshCw, RotateCcw, Send, Settings, Trash2 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
-import { api, errorMessage, type ChatLogEntry, type Player, type RconResponse, type ServerSnapshot, type Team } from '@/api/client'
+import { Ban as BanIcon, Bolt, Box, History, Loader2, Map as MapIcon, MessageSquare, Pause, Play, Power, RotateCcw, Settings, SquareTerminal } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { api, errorMessage, type Player, type ServerSnapshot } from '@/api/client'
+import { useHubState } from '@/api/hub'
+import { useConfirm } from '@/components/confirm-dialog'
 import { InputDialog, type InputRequest } from '@/components/input-dialog'
 import { ServerMap } from '@/components/server-map'
 import { ServerStatusDot } from '@/components/server-status'
-import { Alert, AlertTitle } from '@/components/ui/alert'
+import { ActivityLog } from '@/components/server/activity-log'
+import { BanList } from '@/components/server/ban-list'
+import { ChatPanel } from '@/components/server/chat-panel'
+import { CommandPanel } from '@/components/server/command-panel'
+import { LogList, Time } from '@/components/server/log-list'
+import { MapList } from '@/components/server/map-list'
+import { PlayerSheet } from '@/components/server/player-sheet'
+import { TeamTable } from '@/components/server/team-table'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { type PlayerPosition, useServerLive } from '@/hooks/use-server-live'
+import { playerAuthQuery, useServerActions, type ServerActions } from '@/hooks/use-server-actions'
+import { useServerLive } from '@/hooks/use-server-live'
+import { usePendingActions } from '@/lib/pending-actions'
 import { decodeServerId, encodeServerId } from '@/lib/server-id'
-import { cn } from '@/lib/utils'
 import { serverRoute } from '@/router'
-
-// Rcon commands whose response is worth a notification
-const notifyCommands = ['!w', '!k', '!b', 'iga warn', 'iga kick', 'iga ban', '!unban', '!clearbans']
-// A ban is applied a few seconds after the command: the player sees a message first
-const banDelayMs = 5000
 
 export function ServerPage() {
   const serverId = decodeServerId(serverRoute.useParams().serverId)
   const { snapshot, positions } = useServerLive(serverId)
-  const commands = useServerCommands(serverId)
+  const actions = useServerActions(serverId, snapshot.data)
+  const { confirm, dialog: confirmDialog } = useConfirm()
   const [inputRequest, setInputRequest] = useState<InputRequest | null>(null)
+  const [detailsPlayer, setDetailsPlayer] = useState<Player | null>(null)
+  const hubState = useHubState()
+
+  const serverGroup = snapshot.data?.server.serverGroup ?? ''
+  const auth = useQuery({ ...playerAuthQuery(serverGroup), enabled: !!serverGroup })
+  const authLevels = useMemo(() => new Map((auth.data ?? []).map((a) => [a.playerHash, a.authLevel])), [auth.data])
 
   if (snapshot.isError) return <p className="text-destructive">{errorMessage(snapshot.error)}</p>
   if (!snapshot.data) return <Skeleton className="h-[600px]" />
 
-  const { server, teams, players, maps, chatLog, eventLog } = snapshot.data
+  const { server, teams, players, eventLog } = snapshot.data
+  const connected = server.socketState === 'Connected'
 
   return (
     <div className="space-y-6">
       <title>{`BF2 Web Admin - ${server.name}`}</title>
 
-      {server.socketState === 'Disconnected' && (
+      {!connected && (
         <Alert variant="destructive">
-          <AlertTitle>Server is offline</AlertTitle>
+          <AlertTitle>The server is offline</AlertTitle>
+          <AlertDescription>Its admin channel is not connected. Commands cannot reach it until it connects again.</AlertDescription>
+        </Alert>
+      )}
+      {hubState !== HubConnectionState.Connected && (
+        <Alert>
+          <Loader2 className="animate-spin" />
+          <AlertTitle>Live updates are offline, reconnecting…</AlertTitle>
+          <AlertDescription>The players, chat and map below may be out of date until the connection is back.</AlertDescription>
         </Alert>
       )}
 
@@ -57,11 +76,13 @@ export function ServerPage() {
             render={<Link to="/server/$serverId/viewer" params={{ serverId: encodeServerId(serverId) }} />}
           >
             <Box data-icon="inline-start" />
-            3D viewer
+            <span className="hidden sm:inline">3D viewer</span>
           </Button>
           <Button
             variant="outline"
             size="icon-lg"
+            aria-label="Server settings"
+            title="Server settings"
             nativeButton={false}
             render={<Link to="/server/$serverId/edit" params={{ serverId: encodeServerId(serverId) }} />}
           >
@@ -75,7 +96,7 @@ export function ServerPage() {
           <ServerStatusDot socketState={server.socketState} />
           {server.socketState}
         </Badge>
-        <Badge variant="secondary">{server.gameState}</Badge>
+        <Badge variant={server.gameState === 'Paused' ? 'destructive' : 'secondary'}>{server.gameState}</Badge>
         <Badge variant="secondary">
           {server.ipAddress}:{server.gamePort} ({server.queryPort})
         </Badge>
@@ -88,20 +109,7 @@ export function ServerPage() {
         </Badge>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => commands.custom('.crash')}>
-          <RefreshCw data-icon="inline-start" className="text-destructive" />
-          Restart server
-        </Button>
-        <Button variant="outline" onClick={() => commands.rcon('exec admin.restartMap')}>
-          <RotateCcw data-icon="inline-start" className="text-emerald-500" />
-          Restart map
-        </Button>
-        <Button variant="outline" onClick={() => commands.rcon('exec gameLogic.togglePause')}>
-          <Pause data-icon="inline-start" className="text-amber-500" />
-          Toggle pause
-        </Button>
-      </div>
+      <ServerButtons serverId={serverId} snapshot={snapshot.data} actions={actions} confirm={confirm} disabled={!connected} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {teams.map((team) => (
@@ -110,163 +118,127 @@ export function ServerPage() {
             team={team}
             players={players.filter((p) => p.team === team.id)}
             positions={positions}
-            onCustom={commands.custom}
-            onRcon={commands.rcon}
+            authLevels={authLevels}
+            serverGroup={serverGroup}
+            actions={actions}
             onInput={setInputRequest}
+            onDetails={setDetailsPlayer}
           />
         ))}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <ServerTabs serverId={serverId} snapshot={snapshot.data} chatLog={chatLog} eventLog={eventLog} maps={maps} commands={commands} />
+        <ServerTabs serverId={serverId} snapshot={snapshot.data} eventLog={eventLog} actions={actions} confirm={confirm} />
         <ServerMap map={server.map} players={players} positions={positions} />
       </div>
 
+      <PlayerSheet
+        serverId={serverId}
+        player={detailsPlayer}
+        current={detailsPlayer ? players.find((p) => p.index === detailsPlayer.index && p.name === detailsPlayer.name) : undefined}
+        teams={teams}
+        ping={detailsPlayer ? positions.current.get(detailsPlayer.index)?.ping : undefined}
+        authLevels={authLevels}
+        serverGroup={serverGroup}
+        actions={actions}
+        onInput={setInputRequest}
+        onClose={() => setDetailsPlayer(null)}
+      />
       <InputDialog request={inputRequest} onClose={() => setInputRequest(null)} />
+      {confirmDialog}
     </div>
   )
 }
 
-type Commands = ReturnType<typeof useServerCommands>
-
-/** The commands of the server page. Rcon responses go to the Requests tab, and some to a notification. */
-function useServerCommands(serverId: string) {
-  const queryClient = useQueryClient()
-  const [responses, setResponses] = useState<RconResponse[]>([])
-  const params = { path: { serverId } }
-  const bansKey = api.queryOptions('get', '/api/servers/{serverId}/bans', { params }).queryKey
-
-  const addResponse = (response: RconResponse) => {
-    setResponses((r) => [...r, response])
-    if (notifyCommands.some((c) => response.request.toLowerCase().startsWith(c))) toast(response.response)
-    if (response.request.startsWith('iga ban') || response.request.startsWith('!b')) {
-      setTimeout(() => void queryClient.invalidateQueries({ queryKey: bansKey }), banDelayMs)
-    }
-  }
-
-  const rcon = api.useMutation('post', '/api/servers/{serverId}/rcon', { onSuccess: addResponse })
-  const chat = api.useMutation('post', '/api/servers/{serverId}/chat', {
-    onSuccess: (data, { body }) => {
-      if (data.response !== null) addResponse({ request: body.message, response: data.response })
-    },
-  })
-  const custom = api.useMutation('post', '/api/servers/{serverId}/commands')
-
-  return {
-    responses,
-    bansKey,
-    // Failures are shown by the mutation cache's error notification
-    rcon: (command: string) => rcon.mutateAsync({ params, body: { command } }).catch(() => undefined),
-    chat: (message: string) => chat.mutate({ params, body: { message } }),
-    custom: (command: string) => custom.mutate({ params, body: { command } }),
-  }
-}
-
-function TeamTable({
-  team,
-  players,
-  positions,
-  onCustom,
-  onRcon,
-  onInput,
+/** Restart map, pause and restart server. Each shows its progress until the game confirms it. */
+function ServerButtons({
+  serverId,
+  snapshot,
+  actions,
+  confirm,
+  disabled,
 }: {
-  team: Team
-  players: Player[]
-  positions: React.RefObject<Map<number, PlayerPosition>>
-  onCustom: Commands['custom']
-  onRcon: Commands['rcon']
-  onInput: (request: InputRequest) => void
+  serverId: string
+  snapshot: ServerSnapshot
+  actions: ServerActions
+  confirm: ReturnType<typeof useConfirm>['confirm']
+  disabled: boolean
 }) {
-  // Pings arrive with the positions, which do not re-render: read them once a second
-  const [, setTick] = useState(0)
-  useEffect(() => {
-    const timer = setInterval(() => setTick((t) => t + 1), 1000)
-    return () => clearInterval(timer)
-  }, [])
+  const pending = usePendingActions(serverId)
+  const players = snapshot.players.length
+  const paused = snapshot.server.gameState === 'Paused'
+  const playersText = players === 0 ? 'No players are online.' : `${players} ${players === 1 ? 'player is' : 'players are'} online.`
 
-  const askReason = (title: string, command: (reason: string) => string) =>
-    onInput({ title, label: 'Reason', onSubmit: (reason) => void onRcon(command(reason)) })
+  const busy = (key: string) => pending.has(key)
+  const icon = (key: string, Icon: React.ComponentType<{ className?: string }>, className: string) =>
+    busy(key) ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Icon data-icon="inline-start" className={className} />
 
   return (
-    <Card className="py-0">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-10">{team.name}</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead className="text-center">S</TableHead>
-            <TableHead className="text-center">K</TableHead>
-            <TableHead className="text-center">D</TableHead>
-            <TableHead className="text-center">P</TableHead>
-            <TableHead className="w-px" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {[...players]
-            .sort((a, b) => b.score.total - a.score.total)
-            .map((player) => (
-              <TableRow key={player.index}>
-                <TableCell>{player.index}</TableCell>
-                <TableCell>
-                  {player.country && <span className={`fi fi-${player.country.toLowerCase()} mr-2`} title={player.country} />}
-                  <span className={cn(!player.isAlive && 'text-muted-foreground/50')}>{player.name}</span>
-                </TableCell>
-                <TableCell className="text-center">{player.score.total}</TableCell>
-                <TableCell className="text-center">{player.score.kills}</TableCell>
-                <TableCell className="text-center">{player.score.deaths}</TableCell>
-                <TableCell className="text-center">{positions.current.get(player.index)?.ping ?? player.score.ping}</TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />}>
-                      <MoreVertical />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onCustom(`.switchid ${player.index}`)}>Switch team</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onCustom(`.killid ${player.index}`)}>Kill player</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => askReason(`Warn ${player.name}`, (r) => `iga warn ${player.index} ${r}`)}>
-                        Warn player
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => askReason(`Kick ${player.name}`, (r) => `iga kick ${player.index} ${r}`)}>
-                        Kick player
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => askReason(`Ban ${player.name}`, (r) => `iga ban ${player.index} Perm ${r}`)}
-                      >
-                        Ban player
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-        </TableBody>
-      </Table>
-    </Card>
+    <div className="flex flex-wrap gap-2">
+      <Button
+        variant="outline"
+        disabled={disabled || busy('restart-map')}
+        onClick={() =>
+          confirm({
+            title: 'Restart the round?',
+            description: `The scores are reset and everyone respawns. ${playersText}`,
+            confirmLabel: 'Restart round',
+            onConfirm: () => void actions.restartMap(),
+          })
+        }
+      >
+        {icon('restart-map', RotateCcw, 'text-emerald-500')}
+        Restart map
+      </Button>
+      <Button variant="outline" disabled={disabled || busy('pause')} onClick={() => void actions.togglePause()}>
+        {paused ? icon('pause', Play, 'text-emerald-500') : icon('pause', Pause, 'text-amber-500')}
+        {paused ? 'Resume' : 'Pause'}
+      </Button>
+      <Button
+        variant="outline"
+        disabled={disabled || busy('restart-server')}
+        onClick={() =>
+          confirm({
+            title: 'Restart the game server?',
+            description: (
+              <>
+                The server quits cleanly (console <code>quit</code>) and its container starts it again, which takes about a minute. {playersText}{' '}
+                Everyone is disconnected. The container needs a restart policy (<code>always</code> or <code>unless-stopped</code>).
+              </>
+            ),
+            confirmLabel: 'Restart server',
+            destructive: true,
+            onConfirm: () => void actions.restartServer(),
+          })
+        }
+      >
+        {icon('restart-server', Power, 'text-destructive')}
+        Restart server
+      </Button>
+    </div>
   )
 }
 
 function ServerTabs({
   serverId,
   snapshot,
-  chatLog,
   eventLog,
-  maps,
-  commands,
+  actions,
+  confirm,
 }: {
   serverId: string
   snapshot: ServerSnapshot
-  chatLog: ServerSnapshot['chatLog']
   eventLog: ServerSnapshot['eventLog']
-  maps: ServerSnapshot['maps']
-  commands: Commands
+  actions: ServerActions
+  confirm: ReturnType<typeof useConfirm>['confirm']
 }) {
   const [tab, setTab] = useState('chat')
+  const commands = api.useQuery('get', '/api/servers/{serverId}/commands', { params: { path: { serverId } } })
 
   return (
     <Card className="gap-0 py-0">
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList variant="line" className="w-full justify-start border-b px-2">
+        <TabsList variant="line" className="w-full justify-start overflow-x-auto border-b px-2">
           <TabsTrigger value="chat">
             <MessageSquare />
             Chat
@@ -275,55 +247,52 @@ function ServerTabs({
             <MapIcon />
             Maps
           </TabsTrigger>
+          <TabsTrigger value="commands">
+            <SquareTerminal />
+            Commands
+          </TabsTrigger>
           <TabsTrigger value="bans">
             <BanIcon />
             Bans
+          </TabsTrigger>
+          <TabsTrigger value="activity">
+            <History />
+            Activity
           </TabsTrigger>
           <TabsTrigger value="events">
             <Bolt />
             Events
           </TabsTrigger>
-          <TabsTrigger value="requests">
-            <Send />
-            Requests
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="chat">
-          <LogList className="h-[500px]" items={chatLog}>
-            {(entry) => <ChatLine key={entry.message.id} entry={entry} />}
-          </LogList>
-          <ChatInput onSend={commands.chat} />
+          <ChatPanel
+            chatLog={snapshot.chatLog}
+            players={snapshot.players}
+            teams={snapshot.teams}
+            commands={commands.data ?? []}
+            onSend={actions.sendChat}
+          />
         </TabsContent>
 
         <TabsContent value="maps">
-          <ul className="h-[550px] overflow-y-auto p-2">
-            {maps.map((map) => (
-              <li key={map.index}>
-                <button
-                  type="button"
-                  className={cn(
-                    'flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-muted',
-                    map.name === snapshot.server.map && 'bg-muted font-medium',
-                  )}
-                  onClick={() => void commands.rcon(`map ${map.name} gpm_cq ${map.size}`)}
-                >
-                  <MapIcon className="size-4 text-muted-foreground" />
-                  <span className="w-6 text-muted-foreground">{map.index}</span>
-                  {map.name}
-                  <span className="text-muted-foreground">{map.size}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <MapList serverId={serverId} snapshot={snapshot} actions={actions} confirm={confirm} />
+        </TabsContent>
+
+        <TabsContent value="commands">
+          <CommandPanel serverId={serverId} players={snapshot.players} actions={actions} />
         </TabsContent>
 
         <TabsContent value="bans">
-          <BanList serverId={serverId} commands={commands} />
+          <BanList serverId={serverId} actions={actions} confirm={confirm} />
+        </TabsContent>
+
+        <TabsContent value="activity">
+          <ActivityLog serverId={serverId} />
         </TabsContent>
 
         <TabsContent value="events">
-          <LogList className="h-[550px]" items={eventLog}>
+          <LogList className="h-[550px]" items={eventLog} empty="No events yet">
             {(entry) => (
               <li key={entry.id}>
                 <Time value={entry.timestamp} /> {entry.message}
@@ -331,146 +300,7 @@ function ServerTabs({
             )}
           </LogList>
         </TabsContent>
-
-        <TabsContent value="requests">
-          <LogList className="h-[550px]" items={commands.responses}>
-            {(response, index) => (
-              <li key={index} className="mb-4 space-y-1">
-                <div className="text-muted-foreground">Request:</div>
-                <pre className="whitespace-pre-wrap">{response.request}</pre>
-                <div className="text-muted-foreground">Response:</div>
-                <pre className="whitespace-pre-wrap">{response.response}</pre>
-              </li>
-            )}
-          </LogList>
-        </TabsContent>
       </Tabs>
     </Card>
   )
-}
-
-/** A scrolling list that stays at the bottom while new items arrive, unless the user scrolled up. */
-function LogList<T>({ items, className, children }: { items: T[]; className?: string; children: (item: T, index: number) => React.ReactNode }) {
-  const ref = useRef<HTMLUListElement>(null)
-  const atBottom = useRef(true)
-
-  useLayoutEffect(() => {
-    if (atBottom.current && ref.current) ref.current.scrollTop = ref.current.scrollHeight
-  }, [items])
-
-  return (
-    <ul
-      ref={ref}
-      className={cn('overflow-y-auto p-4 text-sm', className)}
-      onScroll={(e) => {
-        const el = e.currentTarget
-        atBottom.current = el.scrollHeight - (el.scrollTop + el.clientHeight) < 30
-      }}
-    >
-      {items.map(children)}
-    </ul>
-  )
-}
-
-function ChatLine({ entry }: { entry: ChatLogEntry }) {
-  const { message } = entry
-  const color =
-    message.channel === 'Team'
-      ? message.teamName === 'US'
-        ? 'text-blue-400'
-        : 'text-red-400'
-      : message.channel === 'Squad'
-        ? 'text-green-400'
-        : message.channel === 'ServerMessage'
-          ? 'text-muted-foreground'
-          : undefined
-
-  return (
-    <li className={color}>
-      <Time value={entry.timestamp} />
-      {message.type !== 'Server' && ` ${message.playerName}:`} {message.text}
-    </li>
-  )
-}
-
-function ChatInput({ onSend }: { onSend: (message: string) => void }) {
-  const [text, setText] = useState('')
-
-  return (
-    <form
-      className="border-t p-2"
-      onSubmit={(e) => {
-        e.preventDefault()
-        if (!text.trim()) return
-        onSend(text)
-        setText('')
-      }}
-    >
-      <Input placeholder='Enter message (".command" for a custom command, "!command" for rcon)' value={text} onChange={(e) => setText(e.target.value)} />
-    </form>
-  )
-}
-
-function BanList({ serverId, commands }: { serverId: string; commands: Commands }) {
-  const queryClient = useQueryClient()
-  const bans = api.useQuery('get', '/api/servers/{serverId}/bans', { params: { path: { serverId } } })
-
-  const unban = async (identifier: string | null) => {
-    if (!identifier) return
-    await commands.rcon(`!unban ${identifier}`)
-    await queryClient.invalidateQueries({ queryKey: commands.bansKey })
-  }
-
-  if (bans.isPending) return <Skeleton className="m-4 h-40" />
-  if (bans.isError) return <p className="p-4 text-destructive">{errorMessage(bans.error)}</p>
-
-  return (
-    <div className="h-[550px] overflow-y-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Period</TableHead>
-            <TableHead>Method</TableHead>
-            <TableHead>Identifier</TableHead>
-            <TableHead>By</TableHead>
-            <TableHead>Reason</TableHead>
-            <TableHead className="w-px" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {bans.data.map((ban, index) => {
-            const identifier = ban.method === 'Key' ? ban.cdkeyhash : ban.address
-            return (
-              <TableRow key={index}>
-                <TableCell>{ban.datetime}</TableCell>
-                <TableCell>{ban.nick}</TableCell>
-                <TableCell>{ban.period}</TableCell>
-                <TableCell>{ban.method}</TableCell>
-                <TableCell>{identifier}</TableCell>
-                <TableCell>{ban.by}</TableCell>
-                <TableCell>{ban.reason}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="icon-sm" title="Unban" onClick={() => void unban(identifier)}>
-                    <Trash2 />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
-    </div>
-  )
-}
-
-const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
-const dateTimeFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' })
-
-/** The time of a log entry; with the date when it is not today. */
-function Time({ value }: { value: string }) {
-  const date = new Date(value)
-  const today = date.toDateString() === new Date().toDateString()
-  return <span className="text-muted-foreground">{(today ? timeFormat : dateTimeFormat).format(date)}</span>
 }

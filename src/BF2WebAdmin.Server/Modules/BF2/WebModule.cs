@@ -164,6 +164,9 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(GameStateChangedEvent e)
     {
+        // The server list shows the game state too, and the web UI confirms a pause by it
+        await ClientsAll.ServerUpdateEvent(_gameServer.ToServerUpdate(e.TimeStamp));
+
         await ClientsGroup.GameStateEvent(new GameStateEvent
         {
             State = e.GameState,
@@ -213,8 +216,8 @@ public class WebModule : BaseModule,
     {
         if (message.StartsWith("."))
         {
-            await HandleCustomCommandAsync(userId, message);
-            return null;
+            var output = await HandleCustomCommandAsync(userId, message);
+            return output.Count > 0 ? string.Join('\n', output) : null;
         }
 
         if (message.StartsWith("!"))
@@ -232,7 +235,30 @@ public class WebModule : BaseModule,
         return GetObfuscatedResponse(response);
     }
 
-    public async ValueTask HandleCustomCommandAsync(string userId, string message)
+    /// <summary>
+    /// Runs a "." chat command as a God-level web user and returns what it said in game while it ran
+    /// (<see cref="GameTextCapture"/>), or "Unknown command".
+    /// </summary>
+    public async ValueTask<IReadOnlyList<string>> HandleCustomCommandAsync(string userId, string message)
+    {
+        var alias = message.TrimStart('.').Split(' ', 2)[0];
+        if (!GameServer.ModManager.IsCommand(alias))
+            return [$"Unknown command .{alias}"];
+
+        var capture = GameTextCapture.Begin();
+        try
+        {
+            await RunCustomCommandAsync(userId, message);
+        }
+        finally
+        {
+            GameTextCapture.End();
+        }
+
+        return capture.Lines;
+    }
+
+    private async ValueTask RunCustomCommandAsync(string userId, string message)
     {
         await GameServer.ModManager.HandleFakeChatMessageAsync(new Message
         {

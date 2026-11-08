@@ -94,7 +94,8 @@ public static class MessageExtensions
         {
             Index = map.Index,
             Name = map.Name,
-            Size = map.Size
+            Size = map.Size,
+            GameMode = map.GameMode
         };
     }
 }

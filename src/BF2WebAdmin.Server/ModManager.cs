@@ -314,6 +314,10 @@ public class ModManager : IModManager
         return _moduleResolver.Modules.Keys.Select(k => k.Name).ToList();
     }
 
+    public IReadOnlyList<CommandInfo> GetCommands() => _moduleResolver.GetCommands();
+
+    public bool IsCommand(string alias) => _moduleResolver.CommandParsers.ContainsKey(alias);
+
     private async ValueTask HandleCommandAsync(Message message)
     {
         // TODO: rate limit low users

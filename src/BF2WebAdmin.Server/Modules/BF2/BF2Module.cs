@@ -41,6 +41,7 @@ public class BF2Module : BaseModule,
     IHandleCommand<PingSelfCommand>,
     IHandleCommand<ScriptModCommand>,
     IHandleCommandAsync<CrashCommand>,
+    IHandleCommandAsync<RestartServerCommand>,
     IHandleCommandAsync<DanceCommand>,
     IHandleCommandAsync<DanceAllCommand>,
     IHandleCommandAsync<FreezeCommand>,
@@ -496,6 +497,27 @@ public class BF2Module : BaseModule,
 
         var script = RconScript.AddObject.Select(line => line.ReplacePlaceholders(replacements));
         _gameServer.GameWriter.SendConsole(script.ToArray());
+    }
+
+    /// <summary>
+    /// A clean restart: the console's quit makes the engine exit with code 0 at the next frame (the module unloads and the
+    /// admin channel closes normally), and the container's restart policy starts it again. Unlike .crash, nothing is
+    /// left half-written, and no crash dump or non-zero exit is needed.
+    /// </summary>
+    public async ValueTask HandleAsync(RestartServerCommand command)
+    {
+        _gameServer.GameWriter.SendText($"{command.Message.Player.DisplayName} is restarting the server");
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        try
+        {
+            await _gameServer.GameWriter.QuitAsync();
+            _gameServer.GameWriter.SendText("The server is quitting and should be back in a minute", false);
+        }
+        catch (AdminCommandException e)
+        {
+            Logger.LogWarning(e, "Restart of {ServerId} failed", _gameServer.Id);
+            _gameServer.GameWriter.SendText($"Restart failed: {e.Message}");
+        }
     }
 
     public async ValueTask HandleAsync(GetAuthCommand command)

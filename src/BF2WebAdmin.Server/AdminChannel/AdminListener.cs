@@ -13,9 +13,16 @@ public class AdminChannelSettings
 
     public string BindAddress { get; set; } = "0.0.0.0";
 
+    /// <summary>
+    /// The certificate and key as a value, for a secret: base64 PKCS#12, or PEM text (certificate and private key). When set
+    /// it wins over <see cref="CertificatePath"/> and nothing is created or written. <c>--admin-cert-create</c> makes one.
+    /// </summary>
+    public string? Certificate { get; set; }
+
     /// <summary>PKCS#12 file with the certificate and key; created on first start. Default: %LOCALAPPDATA%/BF2WebAdmin/admin-channel.pfx.</summary>
     public string? CertificatePath { get; set; }
 
+    /// <summary>Password of the PKCS#12 (file or <see cref="Certificate"/>) or of an encrypted PEM key.</summary>
     public string? CertificatePassword { get; set; }
 
     /// <summary>Optional plain-TCP listener on 127.0.0.1 for a module with adminTls 0 (loopback tests only).</summary>
@@ -47,14 +54,27 @@ public class AdminListener
 
     public string? CertificatePin { get; private set; }
 
+    /// <summary>
+    /// Loads (or on first start creates) the TLS certificate. Program calls it before the host starts, so a bad
+    /// certificate setting stops WebAdmin at startup with the reason.
+    /// </summary>
+    public void LoadCertificate()
+    {
+        if (_certificate != null)
+            return;
+
+        _certificate = AdminCertificate.Load(_settings, _logger, out var source);
+        CertificatePin = AdminCertificate.Pin(_certificate);
+        _logger.LogInformation("Admin channel: TLS certificate {Subject} from {Source}, pin for serverext.cfg: adminCertSha256 {Pin}",
+            _certificate.Subject, source, CertificatePin);
+    }
+
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         if (_settings.Port == 16567 || _settings.PlainLoopbackPort == 16567)
             throw new InvalidOperationException("The admin channel must not use port 16567");
 
-        _certificate = AdminCertificate.LoadOrCreate(_settings.CertificatePath, _settings.CertificatePassword, _logger);
-        CertificatePin = AdminCertificate.Pin(_certificate);
-        _logger.LogInformation("Admin channel: TLS certificate {Subject}, pin for serverext.cfg: adminCertSha256 {Pin}", _certificate.Subject, CertificatePin);
+        LoadCertificate();
 
         var listeners = new List<Task> { ListenAsync(new IPEndPoint(IPAddress.Parse(_settings.BindAddress), _settings.Port), true, cancellationToken) };
         if (_settings.PlainLoopbackPort is { } plainPort)

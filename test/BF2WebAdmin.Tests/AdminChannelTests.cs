@@ -7,6 +7,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using BF2WebAdmin.Server.AdminChannel;
@@ -197,6 +198,154 @@ public class AdminChannelTests
         {
             File.Delete(path);
         }
+    }
+
+    /// <summary>A TLS 1.3 handshake with WebAdmin's side on <paramref name="certificate"/>; returns the pin the module saw.</summary>
+    private static async Task<string> TlsPinAsync(X509Certificate2 certificate)
+    {
+        var (webAdmin, module, _) = await ConnectAsync();
+        using var server = new SslStream(webAdmin);
+        string? seenPin = null;
+        using var client = new SslStream(module, false, (_, cert, _, _) =>
+        {
+            seenPin = Convert.ToHexString(SHA256.HashData(((X509Certificate2)cert!).PublicKey.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
+            return true;
+        });
+        var serverAuth = server.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
+        {
+            ServerCertificate = certificate,
+            EnabledSslProtocols = SslProtocols.Tls13,
+        });
+        await client.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = "webadmin", EnabledSslProtocols = SslProtocols.Tls13 });
+        await serverAuth;
+        Assert.Equal(SslProtocols.Tls13, server.SslProtocol);
+
+        // Data both ways, so the server's key was really used
+        await client.WriteAsync(new byte[] { 1, 2, 3 });
+        var buffer = new byte[3];
+        await server.ReadExactlyAsync(buffer);
+        Assert.Equal(new byte[] { 1, 2, 3 }, buffer);
+        return seenPin!;
+    }
+
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(false, "secret")]
+    [InlineData(true, null)]
+    [InlineData(true, "secret")]
+    public async Task CertificateFromTheSecretValue(bool pem, string? password)
+    {
+        // As --admin-cert-create prints it
+        using var created = AdminCertificate.Create();
+        var value = AdminCertificate.Export(created, pem, password);
+        Assert.Equal(pem, value.Contains("-----BEGIN"));
+        var settings = new AdminChannelSettings { Certificate = value, CertificatePassword = password };
+
+        using var certificate = AdminCertificate.Load(settings, NullLogger.Instance, out var source);
+        Assert.Equal(AdminCertificate.CertificateKey, source);
+        Assert.True(certificate.HasPrivateKey);
+        Assert.Equal(AdminCertificate.Pin(created), AdminCertificate.Pin(certificate));
+        Assert.Equal(AdminCertificate.Pin(created), await TlsPinAsync(certificate));
+    }
+
+    [Fact]
+    public void CertificateValueAllowsLineBreaks()
+    {
+        using var created = AdminCertificate.Create();
+        var value = AdminCertificate.Export(created, false, null);
+        var wrapped = string.Join("\n", value.Chunk(64).Select(c => new string(c))) + "\n";
+        using var certificate = AdminCertificate.FromValue(wrapped, null);
+        Assert.Equal(AdminCertificate.Pin(created), AdminCertificate.Pin(certificate));
+    }
+
+    [Fact]
+    public void CertificateValueWinsOverThePath()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"bf2wa-admin-test-{Guid.NewGuid():N}");
+        try
+        {
+            // An existing file at the path is not used
+            var existing = Path.Combine(directory, "existing.pfx");
+            using (var fromFile = AdminCertificate.LoadOrCreate(existing, null, NullLogger.Instance))
+            {
+                using var created = AdminCertificate.Create();
+                var settings = new AdminChannelSettings { Certificate = AdminCertificate.Export(created, false, null), CertificatePath = existing };
+                using var certificate = AdminCertificate.Load(settings, NullLogger.Instance, out _);
+                Assert.Equal(AdminCertificate.Pin(created), AdminCertificate.Pin(certificate));
+                Assert.NotEqual(AdminCertificate.Pin(fromFile), AdminCertificate.Pin(certificate));
+            }
+
+            // A missing file is not created
+            var missing = Path.Combine(directory, "missing", "admin-channel.pfx");
+            using (var created = AdminCertificate.Create())
+            {
+                var settings = new AdminChannelSettings { Certificate = AdminCertificate.Export(created, true, null), CertificatePath = missing };
+                using var certificate = AdminCertificate.Load(settings, NullLogger.Instance, out _);
+                Assert.Equal(AdminCertificate.Pin(created), AdminCertificate.Pin(certificate));
+            }
+
+            Assert.False(Directory.Exists(Path.Combine(directory, "missing")));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public void CertificateFromThePathWithoutAValue()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"bf2wa-admin-test-{Guid.NewGuid():N}.pfx");
+        try
+        {
+            using var certificate = AdminCertificate.Load(new AdminChannelSettings { CertificatePath = path, Certificate = " " }, NullLogger.Instance, out var source);
+            Assert.Equal(path, source);
+            Assert.True(File.Exists(path));
+            using var again = AdminCertificate.LoadOrCreate(path, null, NullLogger.Instance);
+            Assert.Equal(AdminCertificate.Pin(certificate), AdminCertificate.Pin(again));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    public static TheoryData<string> InvalidCertificateValues()
+    {
+        using var created = AdminCertificate.Create();
+        return new TheoryData<string>
+        {
+            // Not base64
+            "not a certificate",
+            // Base64, not PKCS#12
+            Convert.ToBase64String("hello, this is no certificate"u8.ToArray()),
+            // A truncated PKCS#12
+            AdminCertificate.Export(created, false, null)[..200],
+            // PEM with the certificate only
+            created.ExportCertificatePem(),
+            // An encrypted PKCS#12 without the password
+            AdminCertificate.Export(created, false, "secret"),
+        };
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidCertificateValues))]
+    public void InvalidCertificateValueIsAClearError(string value)
+    {
+        var settings = new AdminChannelSettings { Certificate = value };
+        var ex = Assert.Throws<InvalidOperationException>(() => AdminCertificate.Load(settings, NullLogger.Instance, out _));
+        Assert.Contains(AdminCertificate.CertificateKey, ex.Message);
+        // The secret never ends up in a log
+        Assert.DoesNotContain(value.Trim(), ex.Message);
+    }
+
+    [Fact]
+    public void ListenerFailsAtStartupOnAnInvalidCertificateValue()
+    {
+        var listener = new AdminListener(new AdminChannelSettings { Certificate = "bm90IGEgcGZ4" }, null!, NullLoggerFactory.Instance);
+        var ex = Assert.Throws<InvalidOperationException>(listener.LoadCertificate);
+        Assert.Contains(AdminCertificate.CertificateKey, ex.Message);
+        Assert.Null(listener.CertificatePin);
     }
 
     private sealed class RecordingHandler : IAdminSessionHandler

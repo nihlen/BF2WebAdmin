@@ -29,11 +29,14 @@ try
     var configPath = Path.Combine(ProjectContext.GetDirectory(), "Configuration");
     var profile = ProjectContext.GetEnvironmentName();
 
+    // The certificate commands print and exit; they also work without appsecrets.json (docker run --rm <image> ...)
+    var certificateCommand = args.Contains("--admin-pin") || args.Contains("--admin-cert-create");
+
     builder.Configuration
         .SetBasePath(configPath)
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
         .AddJsonFile($"appsettings.{profile}.json", optional: true, reloadOnChange: false)
-        .AddJsonFile("appsecrets.json", optional: false, reloadOnChange: false)
+        .AddJsonFile("appsecrets.json", optional: certificateCommand, reloadOnChange: false)
         .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false)
         .AddEnvironmentVariables();
 
@@ -57,20 +60,38 @@ try
 
     // Add services to the container.
 
+    if (certificateCommand)
+    {
+        var adminChannel = builder.Configuration.GetSection("ServerSettings:AdminChannel").Get<AdminChannelSettings>() ?? new AdminChannelSettings();
+        if (args.Contains("--admin-cert-create"))
+        {
+            // A new certificate for ServerSettings:AdminChannel:Certificate (a secret). Nothing is written to disk
+            var pem = args.Contains("--pem");
+            using var created = AdminCertificate.Create();
+            var encrypted = !string.IsNullOrEmpty(adminChannel.CertificatePassword);
+            Console.WriteLine($"# {AdminCertificate.CertificateKey} (env ServerSettings__AdminChannel__Certificate): " +
+                (pem ? "PEM, certificate and private key" : "base64 PKCS#12") +
+                (encrypted ? ", encrypted with the configured CertificatePassword" : ", no password"));
+            Console.WriteLine(AdminCertificate.Export(created, pem, adminChannel.CertificatePassword));
+            Console.WriteLine("# serverext.cfg on every game server");
+            Console.WriteLine($"adminCertSha256 {AdminCertificate.Pin(created)}");
+        }
+        else
+        {
+            // Prints the adminCertSha256 value for serverext.cfg of the configured certificate (the file is created if
+            // there is neither a Certificate value nor a file)
+            using var certificate = AdminCertificate.Load(adminChannel, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, out _);
+            Console.WriteLine(AdminCertificate.Pin(certificate));
+        }
+
+        return;
+    }
+
     var authSettings = builder.Configuration.GetSection("Authentication").Get<AuthSettings>();
     ArgumentNullException.ThrowIfNull(authSettings);
 
     var serverSettings = builder.Configuration.GetSection("ServerSettings").Get<ServerSettings>();
     ArgumentNullException.ThrowIfNull(serverSettings);
-
-    if (args.Contains("--admin-pin"))
-    {
-        // Creates the admin channel certificate if needed and prints the adminCertSha256 value for serverext.cfg
-        using var certificate = AdminCertificate.LoadOrCreate(serverSettings.AdminChannel.CertificatePath, serverSettings.AdminChannel.CertificatePassword,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        Console.WriteLine(AdminCertificate.Pin(certificate));
-        return;
-    }
 
     builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Authentication"));
     builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
@@ -220,6 +241,9 @@ try
 
     app.Logger.LogInformation("BF2WebAdmin.Server is starting");
     app.Logger.LogInformation("Current profile: {Profile}", profile);
+
+    // Fails here, before anything listens, when the admin channel certificate setting is unusable
+    app.Services.GetRequiredService<AdminListener>().LoadCertificate();
 
     if (connectionString.Contains(".sqlite"))
     {

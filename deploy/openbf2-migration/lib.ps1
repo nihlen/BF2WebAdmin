@@ -86,8 +86,16 @@ function Copy-ToHost {
     if ($LASTEXITCODE -ne 0) { throw "scp to $HostAlias`:$RemotePath failed" }
 }
 
-# 1Password CLI. Values are read with op read and never printed by these scripts.
+# Secrets: from work\secrets.json when it exists (filled by hand from 1Password for migration day, deleted after;
+# the author keeps the 1Password CLI out of these scripts), else from the 1Password CLI. Never printed.
+$SecretsFile = Join-Path $WorkDir 'secrets.json'
 function Read-OpField([string]$Item, [string]$Field) {
+    if (Test-Path $SecretsFile) {
+        $secrets = Get-Content $SecretsFile -Raw | ConvertFrom-Json
+        $p = $secrets.PSObject.Properties[$Field]
+        if ($p -and $p.Value -and -not ([string]$p.Value).StartsWith('<')) { return ([string]$p.Value).Trim() }
+        return $null
+    }
     $value = op read "op://$($Config.onePassword.vault)/$Item/$Field" 2>$null
     if ($LASTEXITCODE -ne 0) { return $null }
     return ($value -join "`n").Trim()

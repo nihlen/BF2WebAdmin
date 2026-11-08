@@ -125,13 +125,13 @@ collision meshes.
 
 ## Production configuration
 
-WebAdmin runs in Kubernetes with SQL Server and settings from env vars (secrets injected from 1Password). The game
-servers dial `bf2wa.nihlen.net:4300`.
+WebAdmin in a container, with settings from env vars and the certificate from a secret store. The game servers dial
+WebAdmin's public name and admin-channel port (`webadmin.example.com:4300` below).
 
 | Setting | Value |
 |---|---|
-| `ServerSettings__AdminChannel__Port` | `4300`, the old mm_webadmin port, so the firewall forward and the NodePort service stay as they are. The code default stays 4310 (the localtest relies on it) |
-| `ServerSettings__AdminChannel__Certificate` | The base64 PKCS#12 from `--admin-cert-create`, kept as a secret. With it set, a new pod uses the same certificate and never writes one. Without it, every new pod would create a certificate in its own home directory and break every server's pin |
+| `ServerSettings__AdminChannel__Port` | The listener port. Reusing 4300, the old mm_webadmin port, keeps existing firewall rules and port forwards. The code default is 4310 |
+| `ServerSettings__AdminChannel__Certificate` | The base64 PKCS#12 (or PEM) from `--admin-cert-create`, kept as a secret. With it set, a new container uses the same certificate and never writes one. Without it (and without a `CertificatePath` on a volume), every new container would create its own certificate and break every server's pin |
 | `ServerSettings__AdminChannel__CertificatePassword` | Not set: the secret store protects the value |
 | `Server.AdminKey` | One key per server, in `dbo.Server` (server edit form) |
 | `ServerSettings__Port` | Gone; an old value is ignored |
@@ -139,13 +139,11 @@ servers dial `bf2wa.nihlen.net:4300`.
 Each game server's `serverext.cfg`:
 
 ```
-adminConnect bf2wa.nihlen.net:4300
+adminConnect webadmin.example.com:4300
 adminServerId <public ip>:<game port>
 adminKey <the server's AdminKey>
 adminCertSha256 <the pin>
 ```
-
-The migration of the live servers (runbook, scripts, rollback) is [deploy/openbf2-migration](../deploy/openbf2-migration/README.md).
 
 `adminServerId` is the server's `Server.ServerId`, at most 20 characters in SQL Server. `--admin-pin` with the secret
 in the environment prints the pin, and WebAdmin logs it at startup. A certificate setting that cannot be used stops

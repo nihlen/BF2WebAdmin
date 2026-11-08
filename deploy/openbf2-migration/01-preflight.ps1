@@ -13,7 +13,7 @@ function Check([string]$Name, [scriptblock]$Test) {
 }
 
 Write-Step "Tools"
-Check "1Password CLI signed in" { op whoami *> $null; $LASTEXITCODE -eq 0 }
+if (Test-Path $SecretsFile) { Write-Ok "secrets from work\secrets.json (no 1Password CLI)" } else { Check "1Password CLI signed in" { op whoami *> $null; $LASTEXITCODE -eq 0 } }
 Check "WSL kubectl reaches the cluster" { (Invoke-Kubectl "get ns $($Config.cluster.namespace) -o name") -join '' }
 Check "WSL flux" { (Invoke-WslScript "flux version --client") -join ' ' }
 Check "pve-cluster checkout on main" { ((git -C $Config.cluster.repo rev-parse --abbrev-ref HEAD) -join '') -eq 'main' }
@@ -31,7 +31,7 @@ foreach ($h in $Config.hosts) {
 Write-Step "Secrets"
 $pin = Read-OpField $Config.onePassword.gameServersItem 'adminCertSha256'
 Check "pin in 1Password" { $pin -match '^[0-9a-f]{64}$' }
-Check "certificate in 1Password" { [bool](Read-OpField $Config.onePassword.webAdminItem 'ServerSettings__AdminChannel__Certificate') }
+if (-not (Test-Path $SecretsFile)) { Check "certificate in 1Password" { [bool](Read-OpField $Config.onePassword.webAdminItem 'ServerSettings__AdminChannel__Certificate') } }
 foreach ($s in $Config.servers) {
     Check "admin key for $($s.name)" { (Read-OpField $Config.onePassword.gameServersItem $s.name) -match '^[0-9a-f]{32,128}$' }
 }

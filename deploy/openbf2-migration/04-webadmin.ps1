@@ -85,7 +85,9 @@ switch ($Phase) {
         docker manifest inspect $image *> $null
         if ($LASTEXITCODE -eq 0) { Write-Ok "exists on Docker Hub" } else { Write-Fail "not found (create the GitHub release $($Config.webAdmin.version) after -Phase Hold)" }
         Write-Step "Certificate"
-        if (Read-OpField $Config.onePassword.webAdminItem 'ServerSettings__AdminChannel__Certificate') { Write-Ok "in 1Password" } else { Write-Fail "not in 1Password (02-secrets.ps1)" }
+        if (-not (Test-Path $SecretsFile)) {
+            if (Read-OpField $Config.onePassword.webAdminItem 'ServerSettings__AdminChannel__Certificate') { Write-Ok "in 1Password" } else { Write-Fail "not in 1Password (02-secrets.ps1)" }
+        }
         if (Test-SecretHasCertificate) { Write-Ok "in the cluster secret bf2-webadmin-env" } else { Write-Fail "not yet in the cluster secret (the 1Password operator syncs it; wait or restart the operator)" }
         Write-Step "Cluster"
         Write-Host "  deployment image: $(Get-DeploymentImage)"

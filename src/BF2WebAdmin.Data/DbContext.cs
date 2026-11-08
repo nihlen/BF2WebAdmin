@@ -21,7 +21,7 @@ public class BF2Context : DbContext
     public DbSet<ServerModule> ServerModules { get; set; }
     public DbSet<ServerPlayerAuth> ServerPlayerAuths { get; set; }
 
-    /// <summary>The BF2v2 site's dbo.JoinHistory (on SQL Server); here only for local development.</summary>
+    /// <summary>Player joins (dbo.JoinHistory on SQL Server), exported for the BF2v2 site.</summary>
     public DbSet<PlayerJoin> JoinHistory { get; set; }
 
     public BF2Context(DbContextOptions<BF2Context> options) : base(options)
@@ -39,6 +39,7 @@ public class BF2Context : DbContext
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.Entity<MatchRoundPlayer>().HasKey(c => new { c.RoundId, c.PlayerHash });
+        modelBuilder.Entity<Match>().HasIndex(m => m.ChangeSeq).IsUnique();
         modelBuilder.Entity<ServerModule>().HasKey(c => new { c.ServerGroup, c.Module });
         modelBuilder.Entity<ServerPlayerAuth>().HasKey(c => new { c.ServerGroup, c.PlayerHash });
         modelBuilder.Entity<PlayerJoin>(e =>

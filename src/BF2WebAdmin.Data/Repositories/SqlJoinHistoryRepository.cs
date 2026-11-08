@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Entities;
@@ -41,5 +43,21 @@ public class SqlJoinHistoryRepository : IJoinHistoryRepository
             ServerIpAddress = new DbString { Value = join.ServerIpAddress, IsAnsi = false, Length = PlayerJoin.IpAddressLength },
             join.JoinDate,
         });
+    }
+
+    public async Task<IReadOnlyList<PlayerJoin>> GetJoinsSinceAsync(long sinceId, int limit)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        return (await connection.QueryAsync<PlayerJoin>(
+            @"SELECT TOP (@Limit) [Id]
+                ,[Name]
+                ,[Guid]
+                ,[IpAddress]
+                ,[ServerIpAddress]
+                ,[JoinDate]
+            FROM [dbo].[JoinHistory]
+            WHERE [Id] > @SinceId
+            ORDER BY [Id]",
+            new { SinceId = sinceId, Limit = limit })).ToList();
     }
 }

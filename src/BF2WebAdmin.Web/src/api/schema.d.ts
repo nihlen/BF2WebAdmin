@@ -1102,6 +1102,117 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/export/v1/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    since?: number;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExportPageOfExportMatch"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/v1/servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExportServer"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/v1/joins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    since?: number;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExportPageOfExportJoin"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1165,8 +1276,94 @@ export interface components {
             /** Format: date-time */
             timestamp: string;
         };
+        ExportJoin: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            guid: string;
+            ipAddress: string;
+            serverIpAddress: string;
+            /** Format: date-time */
+            joinDate: string;
+        };
+        ExportMatch: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            changeSeq: number;
+            serverId: string;
+            serverName: string;
+            map: string;
+            type: string;
+            teamAHash: string;
+            teamAName: string;
+            /** Format: int32 */
+            teamAScore: number;
+            teamBHash: string;
+            teamBName: string;
+            /** Format: int32 */
+            teamBScore: number;
+            /** Format: date-time */
+            matchStart: null | string;
+            /** Format: date-time */
+            matchEnd: null | string;
+            rounds: components["schemas"]["ExportRound"][];
+        };
+        ExportPageOfExportJoin: {
+            items: components["schemas"]["ExportJoin"][];
+            /** Format: int64 */
+            next: number;
+            hasMore: boolean;
+        };
+        ExportPageOfExportMatch: {
+            items: components["schemas"]["ExportMatch"][];
+            /** Format: int64 */
+            next: number;
+            hasMore: boolean;
+        };
+        ExportRound: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int32 */
+            winningTeamId: number;
+            /** Format: double */
+            positionTrackerInterval: number;
+            /** Format: date-time */
+            roundStart: null | string;
+            /** Format: date-time */
+            roundEnd: null | string;
+            players: components["schemas"]["ExportRoundPlayer"][];
+        };
+        ExportRoundPlayer: {
+            playerHash: string;
+            playerName: string;
+            /** Format: int32 */
+            teamId: number;
+            subVehicle: null | string;
+            saidGo: boolean;
+            startPosition: null | string;
+            deathPosition: null | string;
+            /** Format: date-time */
+            deathTime: null | string;
+            killerHash: null | string;
+            killerWeapon: null | string;
+            killerPosition: null | string;
+            movementPath: null | components["schemas"]["JsonElement"];
+            projectilePaths: null | components["schemas"]["JsonElement"];
+        };
+        ExportServer: {
+            serverId: string;
+            serverGroup: string;
+            ipAddress: null | string;
+            /** Format: int32 */
+            gamePort: number;
+            /** Format: int32 */
+            queryPort: number;
+            isTestServer: boolean;
+        };
         /** @enum {unknown} */
         GameState: "PreGame" | "Playing" | "EndGame" | "Paused" | "Restart" | "NotConnected";
+        JsonElement: unknown;
         LoginRequest: {
             username: string;
             password: string;

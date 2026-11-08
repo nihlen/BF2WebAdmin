@@ -155,6 +155,29 @@ GO
 IF COL_LENGTH(N'[dbo].[Server]', N'IsTestServer') IS NULL
 	ALTER TABLE [dbo].[Server] ADD [IsTestServer] [bit] NOT NULL CONSTRAINT [DF_Server_IsTestServer] DEFAULT 0;
 GO
+-- The export cursor on Match (/api/export/v1/matches): a number from MatchChangeSeq on every write of a match or its
+-- rounds. WebAdmin applies these batches itself at startup (SqlServerSchemaUpdates.cs); they are here for a new database.
+IF COL_LENGTH(N'[dbo].[Match]', N'ChangeSeq') IS NULL
+	ALTER TABLE [dbo].[Match] ADD [ChangeSeq] [bigint] NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.sequences WHERE object_id = OBJECT_ID(N'[dbo].[MatchChangeSeq]'))
+	CREATE SEQUENCE [dbo].[MatchChangeSeq] AS [bigint] START WITH 1 INCREMENT BY 1;
+GO
+IF EXISTS (SELECT * FROM [dbo].[Match] WHERE [ChangeSeq] IS NULL)
+BEGIN
+	DECLARE @Base bigint = (SELECT ISNULL(MAX([ChangeSeq]), 0) FROM [dbo].[Match]);
+	WITH Numbered AS (SELECT [ChangeSeq], ROW_NUMBER() OVER (ORDER BY [MatchStart], [Id]) AS [RowNumber] FROM [dbo].[Match] WHERE [ChangeSeq] IS NULL)
+	UPDATE Numbered SET [ChangeSeq] = @Base + [RowNumber];
+	DECLARE @Next bigint = (SELECT MAX([ChangeSeq]) + 1 FROM [dbo].[Match]);
+	DECLARE @Current bigint = (SELECT CAST([current_value] AS bigint) FROM sys.sequences WHERE object_id = OBJECT_ID(N'[dbo].[MatchChangeSeq]'));
+	IF @Current >= @Next SET @Next = @Current + 1;
+	DECLARE @Restart nvarchar(200) = N'ALTER SEQUENCE [dbo].[MatchChangeSeq] RESTART WITH ' + CAST(@Next AS nvarchar(20));
+	EXEC (@Restart);
+END
+GO
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[Match]') AND name = N'IX_Match_ChangeSeq')
+	CREATE UNIQUE NONCLUSTERED INDEX [IX_Match_ChangeSeq] ON [dbo].[Match] ([ChangeSeq]) WHERE [ChangeSeq] IS NOT NULL;
+GO
 /****** Object:  Table [dbo].[ServerModule]    Script Date: 2022-08-06 02:21:05 ******/
 SET ANSI_NULLS ON
 GO

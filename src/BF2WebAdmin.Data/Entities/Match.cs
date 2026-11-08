@@ -21,6 +21,12 @@ public class Match
     public DateTime? MatchStart { get; set; }
     public DateTime? MatchEnd { get; set; }
 
+    /// <summary>
+    /// The export cursor (/api/export/v1/matches): a new, higher number on every write of the match or one of its rounds,
+    /// assigned under <see cref="MatchChangeLock"/> so the numbers commit in order. Null only before the first write.
+    /// </summary>
+    public long? ChangeSeq { get; set; }
+
     [Computed] public List<MatchRound> MatchRounds { get; set; } = new();
 }
 

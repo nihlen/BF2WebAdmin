@@ -19,7 +19,7 @@ modules ── IGameWriter (AdminGameWriter) ── typed commands / Console, in
 | File (`src/BF2WebAdmin.Server/AdminChannel/`) | Role |
 |---|---|
 | `AdminProtocol.cs` | Message types, records for every message and structure, `Encode`/`Decode`, `AdminFrameDecoder` (1 MiB inbound frames, nonzero reserved and oversize rejected), `AdminWriter`/`AdminReader` (strict UTF-8), the proof transcript |
-| `AdminCertificate.cs` | Creates WebAdmin's self-signed ECDSA P-256 certificate once (100 years) and computes the pin: SHA-256 of the SubjectPublicKeyInfo, lowercase hex |
+| `AdminCertificate.cs` | WebAdmin's self-signed ECDSA P-256 certificate (100 years): from `ServerSettings:AdminChannel:Certificate` (a secret: base64 PKCS#12 or PEM), else from the file, created once. Computes the pin: SHA-256 of the SubjectPublicKeyInfo, lowercase hex |
 | `AdminListener.cs` | TCP listener (default port 4310), `SslStream` TLS 1.3 only, then the handshake; TLS and handshake together within 10 s of the connect. Optional plain listener on 127.0.0.1 for `adminTls 0` |
 | `AdminHandshake.cs` | `Hello` → `Challenge` (WebAdmin proves the key first) → `Auth`, proofs compared with `CryptographicOperations.FixedTimeEquals`; version ≠ 1 is `Error` 1, unknown id or no key `Error` 8 |
 | `AdminSession.cs` | One link: read loop (answers `Ping`, completes requests), write loop (one ordered queue), apply loop (sequence check and `RequestSnapshot` on a gap, stream frames latest-wins), keepalive (`Ping` every 15 s, close after 45 s of silence), optional recording of every received message |
@@ -75,24 +75,38 @@ collision meshes.
 
 ## Setup
 
-1. **Certificate and pin.** WebAdmin creates its certificate on first start at `ServerSettings:AdminChannel:CertificatePath`
-   (default `%LOCALAPPDATA%\BF2WebAdmin\admin-channel.pfx`, or `~/.local/share/BF2WebAdmin/admin-channel.pfx` on Linux;
-   keep it on a volume in Docker, outside the repo) and logs:
+1. **Certificate and pin.** Two sources:
 
-   `Admin channel: TLS certificate CN=BF2WebAdmin admin channel, pin for serverext.cfg: adminCertSha256 <64 hex>`
+   - `ServerSettings:AdminChannel:Certificate`, for a secret in an env var (`ServerSettings__AdminChannel__Certificate`).
+     The primary format is base64 PKCS#12, one line (line breaks are ignored). PEM text with a `CERTIFICATE` and a
+     `PRIVATE KEY` (or `ENCRYPTED PRIVATE KEY`) block also works. `CertificatePassword` decrypts either. When it is set
+     it wins over `CertificatePath`, and WebAdmin never creates or writes a certificate.
+     `BF2WebAdmin.Server --admin-cert-create` prints a new one (base64 PKCS#12, or PEM with `--pem`; encrypted with
+     `CertificatePassword` if one is configured) and its `adminCertSha256` line, writes nothing and exits.
+   - Otherwise the PKCS#12 file at `ServerSettings:AdminChannel:CertificatePath`, created on first start (default
+     `%LOCALAPPDATA%\BF2WebAdmin\admin-channel.pfx`, or `~/.local/share/BF2WebAdmin/admin-channel.pfx` on Linux; keep it
+     on a volume in Docker, outside the repo).
 
-   `BF2WebAdmin.Server --admin-pin` creates or loads the certificate, prints only the pin and exits. Rotating the
-   certificate means updating every server's pin.
+   The key is imported with `UserKeySet` on Windows (SChannel cannot use an ephemeral key; a PEM goes through PKCS#12
+   first) and `EphemeralKeySet` on Linux (OpenSSL). The certificate is loaded before the host starts: an unusable
+   value stops WebAdmin with the setting's name in the error (never the value). WebAdmin logs:
+
+   `Admin channel: TLS certificate CN=BF2WebAdmin admin channel from <source>, pin for serverext.cfg: adminCertSha256 <64 hex>`
+
+   `BF2WebAdmin.Server --admin-pin` prints only the pin of the configured certificate (creating the file if neither
+   source exists) and exits. Both commands work without `appsecrets.json`. Rotating the certificate means updating
+   every server's pin.
 2. **Config** (`appsettings`/`appsecrets`):
 
    ```json
    "ServerSettings": {
      "IpAddress": "...",
-     "AdminChannel": { "Port": 4310, "BindAddress": "0.0.0.0", "CertificatePath": "/data/admin-channel.pfx", "CertificatePassword": "" }
+     "AdminChannel": { "Port": 4310, "BindAddress": "0.0.0.0", "Certificate": "<base64 PKCS#12>", "CertificatePath": "/data/admin-channel.pfx", "CertificatePassword": "" }
    }
    ```
 
-   `Port` must not be 16567. `ServerSettings:Port`, `PrintSendLog` and `PrintRecvLog` are gone.
+   `Port` must not be 16567. Set either `Certificate` or `CertificatePath`. `ServerSettings:Port`, `PrintSendLog` and
+   `PrintRecvLog` are gone.
 3. **Database.** Run the EF migration `AdminChannel` (SQLite) or the new `ALTER TABLE` lines in `Schema.sql`
    (SQL Server): `Server.AdminKey nvarchar(128) NULL`, `Server.IsTestServer bit NOT NULL DEFAULT 0`. Then set the key
    (and the test-server flag) in the server edit form.
@@ -108,6 +122,34 @@ collision meshes.
    Optional: `adminSendIdentity` (default 1 with TLS; WebAdmin needs the IPs and hashes), `adminAllowConsole` (default
    1; with 0 every raw console script of the modules is refused, see below), `adminAllowObjects` (default 1;
    `.nofences` needs it). `mm_webadmin` must not be loaded.
+
+## Production configuration
+
+WebAdmin runs in Kubernetes with SQL Server and settings from env vars (secrets injected from 1Password). The game
+servers dial `bf2wa.nihlen.net:4300`.
+
+| Setting | Value |
+|---|---|
+| `ServerSettings__AdminChannel__Port` | `4300`, the old mm_webadmin port, so the firewall forward and the NodePort service stay as they are. The code default stays 4310 (the localtest relies on it) |
+| `ServerSettings__AdminChannel__Certificate` | The base64 PKCS#12 from `--admin-cert-create`, kept as a secret. With it set, a new pod uses the same certificate and never writes one. Without it, every new pod would create a certificate in its own home directory and break every server's pin |
+| `ServerSettings__AdminChannel__CertificatePassword` | Not set: the secret store protects the value |
+| `Server.AdminKey` | One key per server, in `dbo.Server` (server edit form) |
+| `ServerSettings__Port` | Gone; an old value is ignored |
+
+Each game server's `serverext.cfg`:
+
+```
+adminConnect bf2wa.nihlen.net:4300
+adminServerId <public ip>:<game port>
+adminKey <the server's AdminKey>
+adminCertSha256 <the pin>
+```
+
+`adminServerId` is the server's `Server.ServerId`, at most 20 characters in SQL Server. `--admin-pin` with the secret
+in the environment prints the pin, and WebAdmin logs it at startup. A certificate setting that cannot be used stops
+WebAdmin at startup with the setting's name in the error. Replacing the certificate means updating `adminCertSha256`
+on every server at the same time. The game servers need restart policy `unless-stopped` (or Kubernetes' `Always`):
+`.restartserver` quits the server with exit code 0.
 
 ## What changed in the modules
 
@@ -167,7 +209,7 @@ Discord, and the web UI's rcon box. `MapModule`'s object spawning keeps the cons
 | Map and content | netsky content, `dalian_2_v_2` |
 | Ports | game 16569, GameSpy 29901, rcon 4721, bot channel 127.0.0.1:16705 |
 | Admin channel | Dials `host.docker.internal:4310` |
-| Clients | Bots from openbf2-server-ext `tools/testclient/serverext_client.py` at `0aab582`; web actions through `tools\hubclient`, i.e. the same hub methods the Blazor UI uses |
+| Clients | Bots from openbf2-server-ext `tools/testclient/serverext_client.py` at `0aab582`; web actions through `tools\hubclient`, i.e. the hub methods of the Blazor UI of the time (the React web UI replaced it on 2026-10-27) |
 
 **Build on OpenSSL 1.1.1.** This was new ground; phase 1 only ran 3.0.2. The module built with no warnings and its
 ctest suites (including the TLS test) passed. It links `libssl.so.1.1`/`libcrypto.so.1.1`, which the base image
@@ -208,14 +250,16 @@ already ships, so nothing was installed.
 - The CD-key hash (internet server only), country lookup from a real IP, and the `iga addAdmin` sync of real hashes.
 - A sequence gap at runtime. It is covered by unit tests; the module's own phase-1 test exercised the drop path.
 - Discord: not configured locally.
-- The Blazor pages themselves were not looked at. Their data path (the hub events and methods) was exercised with
-  hubclient.
+- The web UI. At the time it was Blazor, and only its data path (the hub events and methods) was exercised with
+  hubclient. The React web UI replaced it on 2026-10-27 and uses the web API for queries and commands; the hub only
+  sends live updates.
 
 ## Contract points that proved wrong or need attention
 
-1. **Bot channel chat is not UTF-8.** The bot channel's `Chat` delivered `§` (0xA7) as U+FFFD (`[�C1001netsky…`) to
-   the bot client, and the Windows console crashed printing it. The admin channel converts correctly. This is a
-   module finding for the bot channel, not for WebAdmin.
+1. **Bot channel chat was not UTF-8 (fixed).** The bot channel's `Chat` delivered `§` (0xA7) as U+FFFD
+   (`[�C1001netsky…`) to the bot client, and the Windows console crashed printing it. The module's protocol v3 converts
+   bot channel chat from Windows-1252 to UTF-8 like the admin channel (openbf2-server-ext `docs/protocol.md`, "Chat
+   text"). It was never a WebAdmin issue.
 2. **The typed `SpawnObject` does not fit map mods.** Most map-mod templates have no networkable, so
    `createObjectOnAllClients` creates server-only objects (phase-1 finding 17). `MapModule` keeps the console
    `ObjectSpawner` script, which needs `adminAllowConsole 1`. With `adminAllowConsole 0`, map mods, noclip, freeze,
@@ -244,7 +288,7 @@ already ships, so nothing was installed.
 | `openbf2\build.sh`, `openbf2\Dockerfile` | New: `git archive` of OpenBF2 `873d1b1` and openbf2-server-ext `0aab582` into a docker volume. Builds in `debian:bullseye` with `libssl-dev`, runs ctest, then builds the image FROM `cr.nihlen.net/library/bf2-netsky:2v2-nocheck`: binaries replaced, `openbf2.addModDll serverext`, `mm_webadmin` not loaded (ModManager and its rcon kept), `sv.internet 0`, the `SERVEREXT_CFG_EXTRA` hook, and an `ldd` check (`libssl1.1` is in the base image) |
 | `init-db.sql` | `AdminKey` and `IsTestServer` columns (create, or `ALTER` on an existing database). The local server row gets `AdminKey = $(AdminKey)` and `IsTestServer = 1` |
 | `start-webadmin.ps1` | Skips the BF2 container restart when the OpenBF2 variant runs |
-| `tools\hubclient` | Modes `--watch <s>`, `--rcon "<cmd>"`, `--get-server`, `--set-admin-key <hex>`. Uses the form login `/api/login`, MessagePack and the hub methods (`UserConnect`, `SelectServer`, `SendRconCommand`, `GetServer`, `SetServer`, `SendChatMessage`) that the React web UI replaced with the web API on 2026-10-27; it needs porting before it works again (`--watch` only needs `Subscribe` instead of `SelectServer`, JSON instead of MessagePack and the JSON login `POST /api/auth/login`) |
+| `tools\hubclient` | Modes `--watch <s>`, `--rcon "<cmd>"`, `--get-server`, `--set-admin-key <hex>`. Written for the old Blazor hub: form login `/api/login`, MessagePack, and hub methods (`UserConnect`, `SelectServer`, `SendRconCommand`, `GetServer`, `SetServer`, `SendChatMessage`) that no longer exist. Since 2026-10-27 the hub speaks JSON and only sends live updates (`Subscribe`), queries and commands go through the web API, and the login is `POST /api/auth/login` with JSON. Not ported, so it does not work against this branch (`--watch` would need `Subscribe`, JSON and the new login; the other modes the web API) |
 | `README.md` | The OpenBF2 variant |
 | `openbf2\build.sh` (2026-10-23, play session) | Module default `0d5967f` (protocol v3 + launch number); `ldd --version \| head -1` under `pipefail` could die of SIGPIPE (exit 141), now `sed -n 1p` |
 | `play-2v2.ps1`, `grant-admin.ps1`, `sidecar\` (2026-10-23) | New: a human plays 2v2 against bf2-bots' sidecar (published into `sidecar\`), `-Mode Pilot\|Gunner\|Status\|Stop`, WebAdmin in the background, logs in `logs\play\`; `grant-admin.ps1 -Name <n>` writes `name:<n>` into `ServerPlayerAuth` (B6) and restarts that WebAdmin, which reads auth only at start. README "Play session" |

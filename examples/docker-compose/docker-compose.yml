@@ -1,13 +1,16 @@
-version: "3.3"
 services:
   bf2-webadmin:
     container_name: bf2-webadmin
     # image: "nihlen/bf2-webadmin:latest" # Docker Hub
     image: "bf2webadmin-server:latest" # Local build
-    restart: on-failure
+    restart: unless-stopped
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:80
+      # The admin channel the game servers dial (default 4310). Never 16567
+      - ServerSettings__AdminChannel__Port=4300
+      # The certificate from --admin-cert-create, kept in .env next to this file (ADMIN_CERT=<base64>)
+      - ServerSettings__AdminChannel__Certificate=${ADMIN_CERT:?set ADMIN_CERT in .env}
     ports:
       - "80:80"
       - "4300:4300"
@@ -17,24 +20,23 @@ services:
       - "./bf2/webadmin/ServerLogs:/app/ServerLogs"
       - "./appsecrets.json:/app/Configuration/appsecrets.json"
 
+  # The game servers: OpenBF2 with the server extension. Their serverext.cfg needs (see the README):
+  #   adminConnect bf2-webadmin:4300
+  #   adminServerId bf2-server-1:16567          (ServerId in appsecrets.json)
+  #   adminKey <the server's AdminKey>
+  #   adminCertSha256 <the pin --admin-cert-create printed>
+  # How the image writes them, and its volumes, are in the image's documentation.
   bf2-server-1:
     container_name: bf2-server-1
-    image: "bf2:bf2hub-pb-mm-webadmin" # Local build
-    restart: on-failure
+    image: "bf2-openbf2:latest" # Your OpenBF2 game server image
+    # .restartserver quits the server with exit code 0, so on-failure would leave it stopped
+    restart: unless-stopped
     environment:
       - ENV_SERVER_NAME=Testserver 1
       - ENV_MAX_PLAYERS=16
       - ENV_SERVER_PORT=16567
       - ENV_GAMESPY_PORT=29900
-      - ENV_DEMOS_URL=http://www.example.com/
       - ENV_RCON_PASSWORD=rconpw123
-      - ENV_BF2WEBADMIN_HOST=bf2-webadmin
-      - ENV_BF2WEBADMIN_PORT=4300
-      - ENV_BF2WEBADMIN_TIMER_INTERVAL=300
-      - ENV_API_KEY=apikey123
-    volumes:
-      - "./bf2/server-1/server:/home/bf2/srv"
-      - "./bf2/server-1/volume:/volume"
     ports:
       - "8000:80/tcp"
       - "4711:4711/tcp"
@@ -45,22 +47,14 @@ services:
 
   bf2-server-2:
     container_name: bf2-server-2
-    image: "bf2:bf2hub-pb-mm-webadmin" # Local build
-    restart: on-failure
+    image: "bf2-openbf2:latest" # Your OpenBF2 game server image
+    restart: unless-stopped
     environment:
       - ENV_SERVER_NAME=Testserver 2
       - ENV_MAX_PLAYERS=16
       - ENV_SERVER_PORT=16569
       - ENV_GAMESPY_PORT=29901
-      - ENV_DEMOS_URL=http://www.example.com/
       - ENV_RCON_PASSWORD=rconpw123
-      - ENV_BF2WEBADMIN_HOST=bf2-webadmin
-      - ENV_BF2WEBADMIN_PORT=4300
-      - ENV_BF2WEBADMIN_TIMER_INTERVAL=300
-      - ENV_API_KEY=apikey123
-    volumes:
-      - "./bf2/server-2/server:/home/bf2/srv"
-      - "./bf2/server-2/volume:/volume"
     ports:
       - "8001:80/tcp"
       - "4721:4711/tcp"

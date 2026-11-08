@@ -34,7 +34,7 @@ deploy or test against a game server.
 
 ## Build and test
 
-The projects target .NET 9 (the AppHost .NET 10) and build with the installed .NET 10 SDK. `BF2WebAdmin.sln` holds
+All projects target .NET 10 and build with the installed .NET 10 SDK. `BF2WebAdmin.sln` holds
 the .NET projects (the AppHost too); the web UI is an npm project, not in the solution.
 
 The web UI needs Node 24, pinned in its `package.json` for Volta (the machine default is Node 20, too old for Vite).
@@ -43,9 +43,10 @@ The web UI needs Node 24, pinned in its `package.json` for Volta (the machine de
 
 ```powershell
 dotnet build src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj
-dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 220 tests on 2026-10-26
+dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 262 tests on 2026-11-08
 dotnet publish src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj -c Release -o <dir>
 BF2WebAdmin.Server.exe --admin-pin                                    # prints the admin-channel certificate pin
+BF2WebAdmin.Server.exe --admin-cert-create [--pem]                     # prints a new certificate for the Certificate secret, and its pin
 
 aspire run                                 # server + Vite dev server (aspire.config.json points at the AppHost)
 cd src\BF2WebAdmin.Web

@@ -121,7 +121,18 @@ try
 
     builder.Services.AddControllersWithViews();
     builder.Services.AddProblemDetails();
-    builder.Services.AddOpenApi();
+    builder.Services.AddOpenApi(options => options.AddSchemaTransformer((schema, _, _) =>
+    {
+        // Since .NET 10 a number is documented as "integer or string", because the web JSON defaults also read numbers
+        // from strings. The web UI sends numbers, so its generated types keep plain numbers
+        if (schema.Type is { } type && (type & (Microsoft.OpenApi.JsonSchemaType.Integer | Microsoft.OpenApi.JsonSchemaType.Number)) != 0)
+        {
+            schema.Type = type & ~Microsoft.OpenApi.JsonSchemaType.String;
+            schema.Pattern = null;
+        }
+
+        return Task.CompletedTask;
+    }));
 
     // TODO: DataProtection to persist logins
     builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

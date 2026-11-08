@@ -6,9 +6,9 @@ such as Heli2v2. [README.md](README.md) describes the product.
 ## Branches
 
 - `admin-channel` (checked out here): the game-server backend is the native admin channel of the OpenBF2 module
-  `libserverext.so` (openbf2-server-ext), not `mm_webadmin.py`. **Production runs it since 2026-11-08** (release 0.1.0,
-  all four live servers on OpenBF2; [deploy/openbf2-migration](deploy/openbf2-migration/README.md)). It is **not merged
-  into `master`** and stays a separate branch for now. The backend is described in [docs/admin-channel.md](docs/admin-channel.md). The wire contract is
+  `libserverext.so` (openbf2-server-ext), not `mm_webadmin.py`. **Production runs it since 2026-11-08** (release 0.1.0;
+  the migration runbook and scripts are in the author's private vps-setup repo, `C:\Data\Projects\VPS\openbf2-migration`).
+  It is **not merged into `master`** and stays a separate branch for now. The backend is described in [docs/admin-channel.md](docs/admin-channel.md). The wire contract is
   openbf2-server-ext `docs/admin-channel-draft.md`; code follows it.
 - `master`: the `mm_webadmin.py` text-socket version (port 4300, release 0.0.2), which production ran until 2026-11-08
   and is the rollback.
@@ -31,7 +31,6 @@ deploy or test against a game server.
 | `src/BF2WebAdmin.AppHost` | Aspire AppHost: runs the server, the Vite dev server and an optional OpenBF2 game server (`OpenBF2.cs`, started from the dashboard); publishes one server image with the web UI in `wwwroot` |
 | `src/BF2WebAdmin.Common`, `src/BF2WebAdmin.Shared` | Shared types and helpers |
 | `src/BF2WebAdmin.Data` | Data access, EF migrations (SQLite), `Schema.sql` (SQL Server) |
-| `deploy/openbf2-migration` | The production migration to OpenBF2 + the server extension + this branch: runbook (README), changelog, inventory `servers.json` and the PowerShell scripts (1Password, SQL Server, pve-cluster/Flux, the VPS game servers, rollback). Its `work/` holds secrets and is git-ignored |
 | `test/BF2WebAdmin.Tests` | Unit tests (admin codec against the golden file `Fixtures/admin-v1-golden.txt`, handshake, TLS, session, Heli2v2) |
 | `test/TestClient`, `test/TestCore`, `test/BF2WebAdmin.Benchmarks` | Old tools, not part of the test run |
 

@@ -1,2 +1,0 @@
-# git apply needs the patches with LF line endings
-*.patch text eol=lf

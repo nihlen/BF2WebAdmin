@@ -20,7 +20,6 @@
 //                .Enrich.FromLogContext()
 //                .WriteTo.Console()
 //                .WriteTo.File(@"Logs/server-.log", LogEventLevel.Verbose, "{Timestamp:HH:mm:ss} [{Level}] [{SourceContext}] {Message}{NewLine}{Exception}", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 31)
-//                .WriteTo.Seq("https://seq.nihlen.net", apiKey: "dUfPG2uHiZu3maaEhO3G", controlLevelSwitch: levelSwitch)
 //                .CreateLogger();
 
 //            LoggerFactory = new LoggerFactory()

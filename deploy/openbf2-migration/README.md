@@ -4,7 +4,8 @@ This runbook switches every live game server and WebAdmin at once. Before: retai
 and WebAdmin 0.0.2 (`master`). After: OpenBF2 servers with `libserverext.so` and WebAdmin 0.1.0 (`admin-channel`).
 WebAdmin 0.1.0 no longer speaks mm_webadmin, so the two cannot run side by side. Downtime is acceptable.
 
-Written 2026-11-08. Run every script from this folder with `powershell -ExecutionPolicy Bypass -File .\<script>.ps1`.
+Written 2026-11-08. **Done on 2026-11-08** (WebAdmin 0.1.0 at 05:39 UTC, de2 at 05:49, de at 05:55; all four servers
+authenticated, on the BF2Hub list, `06-verify.ps1` clean). Run every script from this folder with `powershell -ExecutionPolicy Bypass -File .\<script>.ps1`.
 Every script that changes something asks before it does.
 
 ## Decisions

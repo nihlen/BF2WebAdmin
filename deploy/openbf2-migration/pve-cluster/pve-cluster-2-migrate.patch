@@ -1,0 +1,69 @@
+diff --git a/kubernetes/apps/bf2/bf2-webadmin.yaml b/kubernetes/apps/bf2/bf2-webadmin.yaml
+index 126b2f3..4f5cca7 100644
+--- a/kubernetes/apps/bf2/bf2-webadmin.yaml
++++ b/kubernetes/apps/bf2/bf2-webadmin.yaml
+@@ -1,15 +1,22 @@
+-# BF2 WebAdmin: web UI + raw TCP 4300 that the BF2 game servers connect to (mm_webadmin).
+-# Production: bf2wa.nihlen.net (DNS-only, primary IP). On startup webadmin RCONs every server in dbo.Server
+-# (wa connectprivate 4300), so two webadmins with the same database would fight over the live servers.
++# BF2 WebAdmin: web UI + the admin channel on TCP 4300 (TLS 1.3, pinned certificate) that the OpenBF2 game servers
++# dial (libserverext.so, serverext.cfg adminConnect bf2wa.nihlen.net:4300). Since 0.1.0 (BF2WebAdmin admin-channel)
++# it no longer speaks mm_webadmin, so retail game servers cannot connect.
++# Production: bf2wa.nihlen.net (DNS-only, primary IP). A game server is identified by its ServerId and AdminKey
++# (dbo.Server) through an HMAC handshake, not by its IP. WebAdmin still RCONs each server at dbo.Server.IpAddress,
++# so two webadmins with the same database would fight over the live servers.
+ #
+ # Configuration: env vars (Section__Key) override the JSON files since the AddEnvironmentVariables change
+ # in BF2WebAdmin. Unused sections (Seq, Twitter, Mashape) are left empty.
+ # Network: game servers -> <host>:4300 (DNS-only, primary IP) -> OPNsense wanip:4300 -> 10.2.50.3:30430.
+-# Client IPs must stay intact (auth check + RCON back to the socket IP), hence externalTrafficPolicy: Local.
++# externalTrafficPolicy: Local keeps the client IP for the logs (no longer needed for auth).
+ ---
+ # 1Password item "bf2-webadmin-env", fields (values from the VPS appsecrets.json):
+ #   ConnectionStrings__BF2DB              Data Source=mssql;Initial Catalog=bf2;User ID=bf2;Password=...;TrustServerCertificate=True
+ #   Authentication__Admins__0__Username, Authentication__Admins__0__Password, Authentication__ApiKey
++#   ServerSettings__AdminChannel__Certificate  the admin channel's certificate, base64 PKCS#12 from
++#                                         `bf2-webadmin --admin-cert-create`. Its pin (adminCertSha256) and the game
++#                                         servers' admin keys are in the item "bf2-gameservers". Without it every new
++#                                         pod would create its own certificate and break every server's pin
+ #   RabbitMQ__Password
+ #   Discord__Webhooks__0__WebhookId, Discord__Webhooks__0__WebhookToken,
+ #   Discord__Webhooks__0__ServerGroupFilter, Discord__Webhooks__0__MessageTypeFilter (and __1__ for the second)
+@@ -142,7 +149,7 @@ spec:
+ 
+       containers:
+         - name: bf2-webadmin
+-          image: docker.io/nihlen/bf2-webadmin:0.0.2 # {"$imagepolicy": "flux-system:bf2-webadmin"}
++          image: docker.io/nihlen/bf2-webadmin:0.1.0 # {"$imagepolicy": "flux-system:bf2-webadmin"}
+           ports:
+             - name: http
+               containerPort: 80
+@@ -159,10 +166,9 @@ spec:
+             # TLS ends at Traefik
+             - name: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+               value: "true"
+-            # Public address the game servers connect to (resolved at startup, so DNS must exist)
+-            - name: ServerSettings__IpAddress
+-              value: bf2wa.nihlen.net
+-            - name: ServerSettings__Port
++            # The admin channel on the old mm_webadmin port, so the firewall, the OPNsense forward and the NodePort
++            # stay as they are (the code default is 4310). The certificate comes from bf2-webadmin-env
++            - name: ServerSettings__AdminChannel__Port
+               value: "4300"
+             - name: ServerSettings__ServerLogDirectory
+               value: /app/ServerLogs
+diff --git a/kubernetes/apps/image-automation/image-automation.yaml b/kubernetes/apps/image-automation/image-automation.yaml
+index becd4ef..0a004c4 100644
+--- a/kubernetes/apps/image-automation/image-automation.yaml
++++ b/kubernetes/apps/image-automation/image-automation.yaml
+@@ -75,9 +75,7 @@ spec:
+     name: bf2-webadmin
+   policy:
+     semver:
+-      # Held below 0.1.0 until the OpenBF2 migration: 0.1.0+ (BF2WebAdmin admin-channel) only works with OpenBF2
+-      # game servers, so it must not deploy before them. The migration commit sets ">=0.0.0" again
+-      range: "<0.1.0"
++      range: ">=0.0.0"
+ 
+ ---
+ apiVersion: image.toolkit.fluxcd.io/v1

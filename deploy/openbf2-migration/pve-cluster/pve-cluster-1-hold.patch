@@ -1,0 +1,15 @@
+diff --git a/kubernetes/apps/image-automation/image-automation.yaml b/kubernetes/apps/image-automation/image-automation.yaml
+index 0a004c4..becd4ef 100644
+--- a/kubernetes/apps/image-automation/image-automation.yaml
++++ b/kubernetes/apps/image-automation/image-automation.yaml
+@@ -75,7 +75,9 @@ spec:
+     name: bf2-webadmin
+   policy:
+     semver:
+-      range: ">=0.0.0"
++      # Held below 0.1.0 until the OpenBF2 migration: 0.1.0+ (BF2WebAdmin admin-channel) only works with OpenBF2
++      # game servers, so it must not deploy before them. The migration commit sets ">=0.0.0" again
++      range: "<0.1.0"
+ 
+ ---
+ apiVersion: image.toolkit.fluxcd.io/v1

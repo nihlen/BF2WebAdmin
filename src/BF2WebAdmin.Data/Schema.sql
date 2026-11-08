@@ -204,10 +204,10 @@ IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Jo
 BEGIN
 CREATE TABLE [dbo].[JoinHistory](
 	[Id] [int] IDENTITY(1,1) NOT NULL,
-	[Name] [nvarchar](100) NULL,
-	[Guid] [nvarchar](32) NULL,
-	[IpAddress] [nvarchar](32) NULL,
-	[ServerIpAddress] [nvarchar](32) NULL,
+	[Name] [nvarchar](100) NOT NULL,
+	[Guid] [nvarchar](32) NOT NULL,
+	[IpAddress] [nvarchar](32) NOT NULL,
+	[ServerIpAddress] [nvarchar](32) NOT NULL,
 	[JoinDate] [datetime2](7) NOT NULL,
 	[IsLikelySpoof] [bit] NOT NULL CONSTRAINT [DF_JoinHistory_IsLikelySpoof] DEFAULT 0,
  CONSTRAINT [PK_JoinHistory] PRIMARY KEY CLUSTERED

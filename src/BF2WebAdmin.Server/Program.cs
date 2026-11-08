@@ -32,11 +32,14 @@ try
     // The certificate commands print and exit; they also work without appsecrets.json (docker run --rm <image> ...)
     var certificateCommand = args.Contains("--admin-pin") || args.Contains("--admin-cert-create");
 
+    // The one-off database copy SQL Server -> Postgres (docs/database.md); the target can come from the environment
+    var copyCommand = args.Contains(DatabaseCopyCommand.Flag);
+
     builder.Configuration
         .SetBasePath(configPath)
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
         .AddJsonFile($"appsettings.{profile}.json", optional: true, reloadOnChange: false)
-        .AddJsonFile("appsecrets.json", optional: certificateCommand, reloadOnChange: false)
+        .AddJsonFile("appsecrets.json", optional: certificateCommand || copyCommand, reloadOnChange: false)
         .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false)
         .AddEnvironmentVariables();
 
@@ -84,6 +87,12 @@ try
             Console.WriteLine(AdminCertificate.Pin(certificate));
         }
 
+        return;
+    }
+
+    if (copyCommand)
+    {
+        Environment.ExitCode = await DatabaseCopyCommand.RunAsync(args, builder.Configuration);
         return;
     }
 
@@ -231,44 +240,21 @@ try
     // builder.Services.AddSingleton<MediatR.IMediator>(serviceProvider => new MediatR.Mediator(serviceProvider.GetRequiredService));
     // builder.Services.AddSingleton<INotificationHandler<ServerUpdated>>(c => c.GetRequiredService<ISocketServer>());
 
-    var connectionString = builder.Configuration.GetConnectionString("BF2DB");
-    if (connectionString.Contains(".sqlite"))
-    {
-        // SQLite
-        builder.Services.AddDbContext<BF2Context>(o => o.UseSqlite(connectionString));
-        builder.Services.AddScoped<IServerSettingsRepository, ServerSettingsRepository>();
-        builder.Services.AddScoped<IJoinHistoryRepository, JoinHistoryRepository>();
-        builder.Services.AddScoped<IMatchRepository, MatchRepository>();
-    }
-    else
-    {
-        builder.Services.AddSingleton<IServerSettingsRepository>(c => new SqlServerSettingsRepository(connectionString));
-        builder.Services.AddSingleton<IJoinHistoryRepository>(c => new SqlJoinHistoryRepository(connectionString));
-        builder.Services.AddSingleton<IMatchRepository>(c => new SqlMatchRepository(connectionString));
-    }
+    // SQLite, SQL Server or Postgres (Database:Provider, else from the connection string; docs/database.md)
+    var database = DatabaseSetup.FromConfiguration(builder.Configuration);
+    database.AddRepositories(builder.Services, maps: false, joins: true);
 
     var app = builder.Build();
 
     app.Logger.LogInformation("BF2WebAdmin.Server is starting");
     app.Logger.LogInformation("Current profile: {Profile}", profile);
+    app.Logger.LogInformation("Database: {Provider}", database.Provider);
 
     // Fails here, before anything listens, when the admin channel certificate setting is unusable
     app.Services.GetRequiredService<AdminListener>().LoadCertificate();
 
-    if (connectionString.Contains(".sqlite"))
-    {
-        // SQLite initialization
-        app.Logger.LogInformation("Running SQLite migrations");
-        using var scope = app.Services.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<BF2Context>();
-        await context.Database.MigrateAsync();
-    }
-    else
-    {
-        // SQL Server: the idempotent schema changes since Schema.sql's tables (the export cursor on Match)
-        app.Logger.LogInformation("Applying SQL Server schema updates");
-        await SqlServerSchemaUpdates.ApplyAsync(connectionString);
-    }
+    // EF migrations (SQLite, Postgres) or the idempotent SQL Server schema updates
+    await database.MigrateAsync(app.Services, app.Logger);
 
     app.UseResponseCompression();
 

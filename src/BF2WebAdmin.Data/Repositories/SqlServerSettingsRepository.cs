@@ -19,6 +19,10 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
     public SqlServerSettingsRepository(string connectionString)
     {
         _connectionString = connectionString;
+
+        // As BaseSqlRepository: Dapper.Contrib's Insert/Update use singular table names. It is a process-wide setting;
+        // without it here, an insert before any other SQL repository was created went to "ServerModules"
+        SqlMapperExtensions.TableNameMapper = type => type.Name;
     }
 
     public async Task<IEnumerable<string>> GetServerGroupsAsync()
@@ -184,6 +188,7 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
     {
         using var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
         using var connection = NewConnection;
+        connection.Open(); // one connection for the whole scope: a second open could promote it to a distributed transaction
         
         await connection.ExecuteAsync(@"DELETE FROM [dbo].[ServerModule] WHERE [ServerGroup] = @ServerGroup", new { ServerGroup = serverGroup });
         await connection.InsertAsync(moduleNames.Select(m => new ServerModule { ServerGroup = serverGroup, Module = m, IsEnabled = true }));
@@ -206,6 +211,7 @@ public class SqlServerSettingsRepository : IServerSettingsRepository
     {
         using var transaction = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
         using var connection = NewConnection;
+        connection.Open(); // one connection for the whole scope: a second open could promote it to a distributed transaction
 
         var existingPlayerAuth = await connection.QueryFirstOrDefaultAsync<ServerPlayerAuth>(
             @"SELECT TOP 1 spa.[ServerGroup], spa.[PlayerHash], spa.[AuthLevel] 

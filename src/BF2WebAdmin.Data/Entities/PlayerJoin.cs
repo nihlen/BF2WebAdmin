@@ -11,7 +11,8 @@ public class PlayerJoin
 {
     public const int NameLength = 100, GuidLength = 32, IpAddressLength = 32;
 
-    public int Id { get; set; }
+    /// <summary>bigint on Postgres (player_join.id); int on SQL Server (dbo.JoinHistory.Id) and SQLite.</summary>
+    public long Id { get; set; }
 
     /// <summary>The player name, clan tag included.</summary>
     public string Name { get; set; }
@@ -28,6 +29,6 @@ public class PlayerJoin
     /// <summary>UTC.</summary>
     public DateTime JoinDate { get; set; }
 
-    /// <summary>Set by BF2v2's spoof check; WebAdmin leaves it to the column default (0).</summary>
+    /// <summary>Set by BF2v2's spoof check; WebAdmin leaves it to the column default (0). Not in the Postgres table player_join.</summary>
     public bool IsLikelySpoof { get; set; }
 }

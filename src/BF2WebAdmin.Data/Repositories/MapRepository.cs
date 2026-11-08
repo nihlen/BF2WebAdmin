@@ -7,41 +7,48 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BF2WebAdmin.Data.Repositories;
 
+/// <summary>Map mods on EF Core (SQLite, Postgres), one short context per call.</summary>
 public class MapRepository : IMapRepository
 {
-    private readonly BF2Context _context;
+    private readonly IDbContextFactory<BF2Context> _contextFactory;
 
-    public MapRepository(BF2Context context)
+    public MapRepository(IDbContextFactory<BF2Context> contextFactory)
     {
-        _context = context;
+        _contextFactory = contextFactory;
     }
 
     public async Task<IEnumerable<MapMod>> GetAsync()
     {
-        return await _context.MapMods.ToListAsync();
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        return await context.MapMods.ToListAsync();
     }
 
     public async Task<MapMod> GetAsync(Guid id)
     {
-        return await _context.MapMods
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        return await context.MapMods
             .Include(mm => mm.MapModObjects)
             .FirstOrDefaultAsync(mm => mm.Id == id);
     }
 
     public async Task CreateAsync(MapMod map)
     {
-        await _context.MapMods.AddAsync(map);
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        await context.MapMods.AddAsync(map);
+        await context.SaveChangesAsync();
     }
 
     public async Task UpdateAsync(MapMod map)
     {
-        _context.MapMods.Update(map);
-        await _context.SaveChangesAsync();
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        context.MapMods.Update(map);
+        await context.SaveChangesAsync();
     }
 
     public async Task DeleteAsync(Guid id)
     {
-        _context.MapMods.Remove(new MapMod {Id = id });
-        await _context.SaveChangesAsync();
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        context.MapMods.Remove(new MapMod {Id = id });
+        await context.SaveChangesAsync();
     }
 }

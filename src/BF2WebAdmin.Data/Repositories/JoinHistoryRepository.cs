@@ -7,25 +7,27 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BF2WebAdmin.Data.Repositories;
 
-/// <summary>The JoinHistory table on SQLite.</summary>
+/// <summary>The player joins on EF Core: table JoinHistory on SQLite, player_join on Postgres.</summary>
 public class JoinHistoryRepository : IJoinHistoryRepository
 {
-    private readonly BF2Context _context;
+    private readonly IDbContextFactory<BF2Context> _contextFactory;
 
-    public JoinHistoryRepository(BF2Context context)
+    public JoinHistoryRepository(IDbContextFactory<BF2Context> contextFactory)
     {
-        _context = context;
+        _contextFactory = contextFactory;
     }
 
     public async Task InsertAsync(PlayerJoin join)
     {
-        await _context.JoinHistory.AddAsync(join);
-        await _context.SaveChangesAsync();
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        await context.JoinHistory.AddAsync(join);
+        await context.SaveChangesAsync();
     }
 
     public async Task<IReadOnlyList<PlayerJoin>> GetJoinsSinceAsync(long sinceId, int limit)
     {
-        return await _context.JoinHistory
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        return await context.JoinHistory
             .AsNoTracking()
             .Where(j => j.Id > sinceId)
             .OrderBy(j => j.Id)

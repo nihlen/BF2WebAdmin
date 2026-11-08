@@ -29,6 +29,7 @@ deploy or test against a game server.
 | `src/BF2WebAdmin.AppHost` | Aspire AppHost: runs the server, the Vite dev server and an optional OpenBF2 game server (`OpenBF2.cs`, started from the dashboard); publishes one server image with the web UI in `wwwroot` |
 | `src/BF2WebAdmin.Common`, `src/BF2WebAdmin.Shared` | Shared types and helpers |
 | `src/BF2WebAdmin.Data` | Data access, EF migrations (SQLite), `Schema.sql` (SQL Server) |
+| `deploy/openbf2-migration` | The production migration to OpenBF2 + the server extension + this branch: runbook (README), changelog, inventory `servers.json` and the PowerShell scripts (1Password, SQL Server, pve-cluster/Flux, the VPS game servers, rollback). Its `work/` holds secrets and is git-ignored |
 | `test/BF2WebAdmin.Tests` | Unit tests (admin codec against the golden file `Fixtures/admin-v1-golden.txt`, handshake, TLS, session, Heli2v2) |
 | `test/TestClient`, `test/TestCore`, `test/BF2WebAdmin.Benchmarks` | Old tools, not part of the test run |
 

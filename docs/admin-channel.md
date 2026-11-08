@@ -145,6 +145,8 @@ adminKey <the server's AdminKey>
 adminCertSha256 <the pin>
 ```
 
+The migration of the live servers (runbook, scripts, rollback) is [deploy/openbf2-migration](../deploy/openbf2-migration/README.md).
+
 `adminServerId` is the server's `Server.ServerId`, at most 20 characters in SQL Server. `--admin-pin` with the secret
 in the environment prints the pin, and WebAdmin logs it at startup. A certificate setting that cannot be used stops
 WebAdmin at startup with the setting's name in the error. Replacing the certificate means updating `adminCertSha256`

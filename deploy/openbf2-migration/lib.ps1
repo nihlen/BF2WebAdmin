@@ -1,0 +1,104 @@
+# Shared helpers for the OpenBF2 migration scripts. Windows PowerShell 5.1; dot-source it:  . "$PSScriptRoot\lib.ps1"
+# Run every script with: powershell -ExecutionPolicy Bypass -File .\<script>.ps1 (this PC's policy is AllSigned).
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version 2.0
+
+$Kit = $PSScriptRoot
+$Config = Get-Content (Join-Path $Kit 'servers.json') -Raw | ConvertFrom-Json
+# Per-run output (backups, rendered env files). Git-ignored: it holds secrets
+$WorkDir = Join-Path $Kit 'work'
+if (-not (Test-Path $WorkDir)) { New-Item -ItemType Directory -Force $WorkDir | Out-Null }
+
+function Write-Step([string]$Text) { Write-Host "`n=== $Text" -ForegroundColor Cyan }
+function Write-Ok([string]$Text) { Write-Host "  OK   $Text" -ForegroundColor Green }
+function Write-Warn([string]$Text) { Write-Host "  WARN $Text" -ForegroundColor Yellow }
+function Write-Fail([string]$Text) { Write-Host "  FAIL $Text" -ForegroundColor Red }
+
+function Confirm-Action([string]$Question) {
+    $answer = Read-Host "$Question [y/N]"
+    if ($answer -ne 'y') { throw "Stopped: '$Question' was not confirmed" }
+}
+
+function ConvertTo-WslPath([string]$Path) {
+    $full = [System.IO.Path]::GetFullPath($Path)
+    return '/mnt/' + $full.Substring(0, 1).ToLowerInvariant() + ($full.Substring(2) -replace '\\', '/')
+}
+
+function Write-LfFile([string]$Path, [string]$Text) {
+    [System.IO.File]::WriteAllText($Path, ($Text -replace "`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
+}
+
+# kubectl, talosctl and flux live in WSL (pve-cluster CLAUDE.md "Tooling"). Windows PowerShell 5.1 mangles quotes in
+# native arguments, so each call is written to a bash script file and run from there.
+function Invoke-WslScript {
+    param([Parameter(Mandatory)][string]$Script)
+    $file = Join-Path $WorkDir '_wsl.sh'
+    Write-LfFile $file ("set -euo pipefail`nexport KUBECONFIG='$($Config.cluster.kubeconfig)'`n" + $Script + "`n")
+    $out = wsl -d Ubuntu -- bash -ic "bash '$(ConvertTo-WslPath $file)'"
+    $code = $LASTEXITCODE
+    Remove-Item $file -ErrorAction SilentlyContinue
+    if ($code -ne 0) { throw "WSL script failed ($code):`n$Script`n$($out -join "`n")" }
+    return $out
+}
+
+function Invoke-Kubectl([Parameter(Mandatory)][string]$Arguments) {
+    return Invoke-WslScript "kubectl $Arguments"
+}
+
+# Runs T-SQL in the SQL Server pod as sa. The password never leaves the pod: sqlcmd reads it from the pod's env
+# (MSSQL_SA_PASSWORD, from the 1Password item mssql-env). The script goes in on stdin from a temporary file.
+function Invoke-Sql {
+    param([Parameter(Mandatory)][string]$Sql)
+    $sqlFile = Join-Path $WorkDir '_query.sql'
+    Write-LfFile $sqlFile $Sql
+    try {
+        $c = $Config.cluster
+        $script = "kubectl -n $($c.namespace) exec -i $($c.mssqlPod) -- bash -c " +
+            "'SQLCMDPASSWORD=`"`$MSSQL_SA_PASSWORD`" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -W -s `"|`" -d $($c.database) -i /dev/stdin' " +
+            "< '$(ConvertTo-WslPath $sqlFile)'"
+        return Invoke-WslScript $script
+    } finally {
+        Remove-Item $sqlFile -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-Ssh {
+    param([Parameter(Mandatory)][string]$HostAlias, [Parameter(Mandatory)][string]$Command, [string]$InputText)
+    if ($PSBoundParameters.ContainsKey('InputText')) {
+        $out = $InputText | ssh -o BatchMode=yes $HostAlias $Command
+    } else {
+        $out = ssh -o BatchMode=yes $HostAlias $Command
+    }
+    if ($LASTEXITCODE -ne 0) { throw "ssh $HostAlias failed ($LASTEXITCODE): $Command`n$out" }
+    return $out
+}
+
+function Copy-ToHost {
+    param([Parameter(Mandatory)][string]$HostAlias, [Parameter(Mandatory)][string]$LocalPath, [Parameter(Mandatory)][string]$RemotePath)
+    scp -q -o BatchMode=yes $LocalPath "${HostAlias}:$RemotePath"
+    if ($LASTEXITCODE -ne 0) { throw "scp to $HostAlias`:$RemotePath failed" }
+}
+
+# 1Password CLI. Values are read with op read and never printed by these scripts.
+function Read-OpField([string]$Item, [string]$Field) {
+    $value = op read "op://$($Config.onePassword.vault)/$Item/$Field" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return ($value -join "`n").Trim()
+}
+
+function Get-Servers([string[]]$Names) {
+    $all = @($Config.servers)
+    if (-not $Names -or $Names.Count -eq 0) { return $all }
+    $picked = @($all | Where-Object { $Names -contains $_.name })
+    $unknown = @($Names | Where-Object { -not ($all.name -contains $_) })
+    if ($unknown.Count -gt 0) { throw "Unknown server(s): $($unknown -join ', ')" }
+    return $picked
+}
+
+function New-AdminKey {
+    # 32 random bytes as 64 hex digits (Server.AdminKey takes 32-128 hex digits)
+    $bytes = New-Object byte[] 32
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    return (($bytes | ForEach-Object { $_.ToString('x2') }) -join '')
+}

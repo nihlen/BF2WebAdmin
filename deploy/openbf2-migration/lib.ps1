@@ -63,12 +63,18 @@ function Invoke-Sql {
     }
 }
 
+# Git's OpenSSH: Windows' own ssh.exe refuses ~/.ssh/config when another local user has permissions on it
+$GitSsh = 'C:\Program Files\Git\usr\bin\ssh.exe'
+$GitScp = 'C:\Program Files\Git\usr\bin\scp.exe'
+$Ssh = if (Test-Path $GitSsh) { $GitSsh } else { 'ssh' }
+$Scp = if (Test-Path $GitScp) { $GitScp } else { 'scp' }
+
 function Invoke-Ssh {
     param([Parameter(Mandatory)][string]$HostAlias, [Parameter(Mandatory)][string]$Command, [string]$InputText)
     if ($PSBoundParameters.ContainsKey('InputText')) {
-        $out = $InputText | ssh -o BatchMode=yes $HostAlias $Command
+        $out = $InputText | & $Ssh -o BatchMode=yes $HostAlias $Command
     } else {
-        $out = ssh -o BatchMode=yes $HostAlias $Command
+        $out = & $Ssh -o BatchMode=yes $HostAlias $Command
     }
     if ($LASTEXITCODE -ne 0) { throw "ssh $HostAlias failed ($LASTEXITCODE): $Command`n$out" }
     return $out
@@ -76,7 +82,7 @@ function Invoke-Ssh {
 
 function Copy-ToHost {
     param([Parameter(Mandatory)][string]$HostAlias, [Parameter(Mandatory)][string]$LocalPath, [Parameter(Mandatory)][string]$RemotePath)
-    scp -q -o BatchMode=yes $LocalPath "${HostAlias}:$RemotePath"
+    & $Scp -q -o BatchMode=yes $LocalPath "${HostAlias}:$RemotePath"
     if ($LASTEXITCODE -ne 0) { throw "scp to $HostAlias`:$RemotePath failed" }
 }
 

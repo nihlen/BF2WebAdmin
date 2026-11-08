@@ -107,6 +107,7 @@ try
     }
 
     builder.Services.AddSingleton<ViewerRegistry>();
+    builder.Services.AddSingleton<BF2WebAdmin.Server.Api.CommandLog>();
     builder.Services.AddSingleton(services => new GameServerRegistry(serverSettings.GameServers, services));
     builder.Services.AddSingleton<IGameServerRegistry>(services => services.GetRequiredService<GameServerRegistry>());
     builder.Services.AddSingleton(services => new AdminListener(serverSettings.AdminChannel, services.GetRequiredService<GameServerRegistry>(),

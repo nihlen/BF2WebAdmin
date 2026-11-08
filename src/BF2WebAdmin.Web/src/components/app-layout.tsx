@@ -79,9 +79,11 @@ function HubStatus() {
   const state = useHubState()
   if (state === HubConnectionState.Connected) return null
 
+  // Without the hub, the pages show old data: say so where it is seen
   return (
-    <span className="text-xs text-muted-foreground">
-      {state === HubConnectionState.Disconnected ? 'Live updates offline' : 'Connecting live updates…'}
+    <span role="status" className="flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+      <span className="size-1.5 animate-pulse rounded-full bg-current" />
+      {state === HubConnectionState.Disconnected ? 'Live updates offline, retrying' : 'Connecting live updates…'}
     </span>
   )
 }

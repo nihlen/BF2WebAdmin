@@ -22,9 +22,10 @@ const onError = (error: unknown) => {
 const queryClient = new QueryClient({
   queryCache: new QueryCache({ onError }),
   mutationCache: new MutationCache({
-    onError: (error) => {
+    // A mutation with meta: { silent: true } shows its own error (trackAction)
+    onError: (error, _variables, _context, mutation) => {
       onError(error)
-      if (!isUnauthorized(error)) toast.error(errorMessage(error))
+      if (!isUnauthorized(error) && !mutation.meta?.silent) toast.error(errorMessage(error))
     },
   }),
   defaultOptions: {

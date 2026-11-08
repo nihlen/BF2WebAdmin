@@ -81,6 +81,7 @@ public class AdminGameWriter : IGameWriter
         }
 
         text = text.Length > maxLength ? text[..maxLength] + "..." : text;
+        GameTextCapture.Add(text);
 
         if (useServerName)
         {
@@ -92,6 +93,8 @@ public class AdminGameWriter : IGameWriter
 
     public void SendPrivateMessage(Player player, string message)
     {
+        // A web or Discord user is a player with index -1: the answer only reaches it through the capture
+        GameTextCapture.Add(IsReal(player) ? $"(to {player.Name}) {message}" : message);
         if (IsReal(player))
             Fire(id => new CmdSay(id, CmdSay.TargetPlayer, Id(player), message));
     }
@@ -188,6 +191,30 @@ public class AdminGameWriter : IGameWriter
     }
 
     public void SendRestartMap() => Fire(id => new CmdMap(id, CmdMap.ActionRestart, 0, "", "", 0));
+
+    public Task RestartMapAsync() => RequestAsync(id => new CmdMap(id, CmdMap.ActionRestart, 0, "", "", 0));
+
+    public Task RunNextMapAsync() => RequestAsync(id => new CmdMap(id, CmdMap.ActionNext, 0, "", "", 0));
+
+    public Task RunMapAsync(string name, string mode, int size) =>
+        RequestAsync(id => new CmdMap(id, CmdMap.ActionByName, 0, name, mode, (ushort)Math.Clamp(size, 0, ushort.MaxValue)));
+
+    public async Task QuitAsync()
+    {
+        if (_server.Session is not { IsOpen: true })
+            throw new AdminCommandException($"{_server.Id} is not connected");
+
+        try
+        {
+            // The answer ("*** Game will exit! **") is queued before the engine stops, but the link may close first
+            await RequestAsync(id => new CmdConsole(id, "quit"), TimeSpan.FromSeconds(5));
+        }
+        catch (AdminCommandException e) when (e.Code is null)
+        {
+            // No reply, or the link closed: the server is quitting
+            _logger.LogInformation("Admin channel {ServerId}: no answer to quit ({Message})", _server.Id, e.Message);
+        }
+    }
 
     public void SendSetObjectActive(long consoleId)
     {

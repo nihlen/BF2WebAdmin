@@ -1,9 +1,20 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useBlocker, useNavigate } from '@tanstack/react-router'
+import { CircleCheck, CircleX, Eye, EyeOff } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, errorMessage, type ServerSettings } from '@/api/client'
 import { ConfirmButton } from '@/components/confirm-button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -60,6 +71,10 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
   const queryClient = useQueryClient()
   const [form, setForm] = useState(initial)
   const set = <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => setForm((f) => ({ ...f, [key]: value }))
+  const dirty = (Object.keys(initial) as (keyof ServerSettings)[]).some((key) => (form[key] ?? '') !== (initial[key] ?? ''))
+  // Set before the navigation after a save or a removal, which must not ask
+  const leaving = useRef(false)
+  const blocker = useBlocker({ shouldBlockFn: () => dirty && !leaving.current, enableBeforeUnload: () => dirty && !leaving.current, withResolver: true })
 
   const adminKeyInvalid = !!form.adminKey?.trim() && !adminKeyPattern.test(form.adminKey)
   const toDto = (): ServerSettings => ({
@@ -70,6 +85,7 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
   })
 
   const onSaved = async (savedId: string) => {
+    leaving.current = true
     toast.success('Server has been saved')
     await queryClient.invalidateQueries({ queryKey: ['get', '/api/servers'] })
     await navigate({ to: '/server/$serverId', params: { serverId: encodeServerId(savedId) } })
@@ -79,18 +95,12 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
   const update = api.useMutation('put', '/api/servers/{serverId}/settings', { onSuccess: (_, { body }) => onSaved(body.serverId) })
   const remove = api.useMutation('delete', '/api/servers/{serverId}', {
     onSuccess: async () => {
+      leaving.current = true
       toast.success('Server has been removed')
       await navigate({ to: '/' })
     },
   })
-  const test = api.useMutation('post', '/api/servers/test', {
-    onSuccess: (results) => {
-      for (const result of results) {
-        if (result.success) toast.success(`${result.type} response OK`)
-        else toast.error(`${result.type} response error`)
-      }
-    },
-  })
+  const test = api.useMutation('post', '/api/servers/test')
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -110,6 +120,13 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
   const number = (key: 'gamePort' | 'queryPort' | 'rconPort', label: string, props?: React.ComponentProps<typeof Input>) =>
     text(key, label, { type: 'number', min: 1, max: 65535, required: true, onChange: (e) => set(key, Number(e.target.value)), ...props })
 
+  const secret = (key: 'rconPassword' | 'discordBotToken', label: string, props?: React.ComponentProps<typeof Input>) => (
+    <Field>
+      <FieldLabel htmlFor={key}>{label}</FieldLabel>
+      <SecretInput id={key} value={form[key] ?? ''} onChange={(e) => set(key, e.target.value)} {...props} />
+    </Field>
+  )
+
   return (
     <form onSubmit={submit} className="max-w-2xl">
       <Card>
@@ -122,17 +139,15 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
               {number('queryPort', 'Query port')}
               {number('rconPort', 'Rcon port')}
             </div>
-            {text('rconPassword', 'Rcon password', { required: true })}
-            {text('discordBotToken', 'Discord bot token')}
+            {secret('rconPassword', 'Rcon password', { required: true })}
+            {secret('discordBotToken', 'Discord bot token')}
             {text('discordAdminChannel', 'Discord admin channel')}
             {text('discordNotificationChannel', 'Discord notification channel')}
             {text('discordMatchResultChannel', 'Discord match channel')}
             <Field data-invalid={adminKeyInvalid || undefined}>
               <FieldLabel htmlFor="adminKey">Admin channel key (adminKey, 32-128 hex digits)</FieldLabel>
-              <Input
+              <SecretInput
                 id="adminKey"
-                type="password"
-                autoComplete="off"
                 value={form.adminKey ?? ''}
                 aria-invalid={adminKeyInvalid}
                 onChange={(e) => set('adminKey', e.target.value)}
@@ -145,8 +160,8 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
             </Field>
           </FieldGroup>
         </CardContent>
-        <CardFooter className="gap-2">
-          <Button type="submit" disabled={create.isPending || update.isPending}>
+        <CardFooter className="flex-wrap gap-2">
+          <Button type="submit" disabled={create.isPending || update.isPending || !dirty}>
             Save
           </Button>
           <Button type="button" variant="outline" disabled={test.isPending} onClick={() => test.mutate({ body: toDto() })}>
@@ -163,8 +178,58 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
               Remove server
             </ConfirmButton>
           )}
+          {test.isPending && <p className="w-full text-sm text-muted-foreground">Testing the connection…</p>}
+          {test.data && !test.isPending && (
+            <ul className="w-full space-y-1 text-sm">
+              {test.data.map((result) => (
+                <li key={result.type} className="flex items-start gap-2">
+                  {result.success ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-emerald-500" /> : <CircleX className="mt-0.5 size-4 shrink-0 text-destructive" />}
+                  <span>
+                    <span className="font-medium">{result.type}</span>: {result.success ? 'OK' : 'failed'}
+                    {result.message && <span className="text-muted-foreground"> ({result.message})</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardFooter>
       </Card>
+
+      <AlertDialog open={blocker.status === 'blocked'} onOpenChange={(open) => !open && blocker.reset?.()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave without saving?</AlertDialogTitle>
+            <AlertDialogDescription>The changes to this server's settings are lost.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Stay</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => blocker.proceed?.()}>
+              Leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
+  )
+}
+
+/** A password field with a button that shows the text. */
+function SecretInput(props: Omit<React.ComponentProps<typeof Input>, 'type'>) {
+  const [shown, setShown] = useState(false)
+  return (
+    <div className="relative">
+      <Input {...props} type={shown ? 'text' : 'password'} autoComplete="off" className="pr-9" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        className="absolute top-1/2 right-1.5 -translate-y-1/2"
+        aria-label={shown ? 'Hide' : 'Show'}
+        title={shown ? 'Hide' : 'Show'}
+        onClick={() => setShown((s) => !s)}
+      >
+        {shown ? <EyeOff /> : <Eye />}
+      </Button>
+    </div>
   )
 }

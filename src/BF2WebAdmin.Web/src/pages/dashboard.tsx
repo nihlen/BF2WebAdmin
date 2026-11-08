@@ -11,11 +11,21 @@ import { encodeServerId } from '@/lib/server-id'
 
 export function DashboardPage() {
   const servers = useServers()
+  const list = servers.data ?? []
+  const online = list.filter((s) => s.socketState === 'Connected')
+  const players = online.reduce((sum, s) => sum + s.players, 0)
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-semibold">Servers</h1>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-semibold">Servers</h1>
+          {list.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {online.length} of {list.length} online, {players} {players === 1 ? 'player' : 'players'}
+            </p>
+          )}
+        </div>
         <Button nativeButton={false} render={<Link to="/server/add" />}>
           <Plus data-icon="inline-start" />
           Add server
@@ -24,6 +34,22 @@ export function DashboardPage() {
 
       {servers.isPending && <Skeleton className="h-40" />}
       {servers.isError && <p className="text-destructive">{errorMessage(servers.error)}</p>}
+      {servers.data?.length === 0 && (
+        <Card className="max-w-xl">
+          <CardHeader>
+            <CardTitle>No servers yet</CardTitle>
+            <CardDescription>
+              Add a game server with its address, ports and admin channel key. Its OpenBF2 server extension then connects to this WebAdmin.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button nativeButton={false} render={<Link to="/server/add" />}>
+              <Plus data-icon="inline-start" />
+              Add server
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {groupServers(servers.data ?? []).map(([group, groupServers]) => (
         <section key={group} className="space-y-4">
@@ -52,6 +78,8 @@ export function DashboardPage() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      aria-label={`Settings of ${server.name}`}
+                      title="Server settings"
                       nativeButton={false}
                       render={<Link to="/server/$serverId/edit" params={{ serverId: encodeServerId(server.id) }} />}
                     >
@@ -60,7 +88,9 @@ export function DashboardPage() {
                   </CardAction>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
-                  <Badge variant="secondary">{server.gameState}</Badge>
+                  <Badge variant={server.socketState === 'Connected' ? 'secondary' : 'destructive'}>
+                    {server.socketState === 'Connected' ? server.gameState : 'Offline'}
+                  </Badge>
                   {server.map && <Badge variant="secondary">{server.map}</Badge>}
                   <Badge variant="secondary">
                     {server.players} / {server.maxPlayers} players

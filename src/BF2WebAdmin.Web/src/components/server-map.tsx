@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { Player } from '@/api/client'
 import type { PlayerPosition } from '@/hooks/use-server-live'
+import { teamCanvasColor } from '@/lib/teams'
 
 const minimapUrl = (map: string) => `https://static.nihlen.net/bf2/minimaps/${map.toLowerCase()}.png`
 const zoomStep = 0.2
@@ -137,7 +138,7 @@ function drawMap(
     // Game Y grows north, canvas Y grows down
     const y = -lerp(position.previous.y, position.current.y, t) * view.scale + centerY
 
-    context.fillStyle = player.team === 2 ? '#60a5fa' : '#f87171'
+    context.fillStyle = teamCanvasColor(player.team)
     context.strokeText(player.name, x, y - 10)
     context.fillText(player.name, x, y - 10)
     context.beginPath()

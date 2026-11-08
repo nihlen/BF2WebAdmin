@@ -31,6 +31,9 @@ public interface IServerHubClient
     Task ProjectilePositionEvent(Events.ProjectilePositionEvent e);
     Task SocketStateEvent(Events.SocketStateEvent e);
 
+    /// <summary>A web user sent a command to the server (<see cref="Api.CommandLog"/>).</summary>
+    Task CommandLogEvent(Api.CommandLogEntryDto e);
+
     // Clients with the 3D viewer open on the server (SubscribeViewer)
     Task ViewerFrame(ViewerFrameDto e);
     Task MissileEvent(MissileSummaryDto e);

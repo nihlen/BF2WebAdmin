@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type Server } from '@/api/client'
 import { useHubEvent } from '@/api/hub'
+import { reportGameUpdate } from '@/lib/pending-actions'
 
 // One query key for the hook and the cache updates
 const serversQuery = api.queryOptions('get', '/api/servers')
@@ -15,10 +16,12 @@ export function useServerListUpdates() {
   const queryClient = useQueryClient()
 
   useHubEvent('ServerUpdateEvent', (event) => {
+    // The event carries a timeStamp as well, which the list does not need
+    const { timeStamp: _, ...server } = event
+    // Actions in progress wait for the map, game state or socket state they changed
+    reportGameUpdate(server.id, { server })
     queryClient.setQueryData<Server[]>(serversQuery.queryKey, (servers) => {
       if (!servers) return servers
-      // The event carries a timeStamp as well, which the list does not need
-      const { timeStamp: _, ...server } = event
       return servers.some((s) => s.id === server.id) ? servers.map((s) => (s.id === server.id ? server : s)) : [...servers, server]
     })
   })

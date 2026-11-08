@@ -363,8 +363,258 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CommandInfoDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/log": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CommandLogEntryDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/map": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/map/restart": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/map/next": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/pause": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "404": {
             "description": "Not Found"
@@ -601,10 +851,93 @@
           }
         }
       }
+    },
+    "/api/server-groups/{serverGroup}/auth": {
+      "get": {
+        "tags": [
+          "Player auth"
+        ],
+        "parameters": [
+          {
+            "name": "serverGroup",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlayerAuthDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Player auth"
+        ],
+        "parameters": [
+          {
+            "name": "serverGroup",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPlayerAuthRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ActionResponse": {
+        "required": [
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
       "Ban": {
         "type": "object",
         "properties": {
@@ -681,6 +1014,88 @@
           }
         }
       },
+      "CommandInfoDto": {
+        "required": [
+          "aliases",
+          "parameters",
+          "authLevel",
+          "modules"
+        ],
+        "type": "object",
+        "properties": {
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "authLevel": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CommandKind": {
+        "enum": [
+          "Chat",
+          "Command",
+          "Rcon",
+          "Action"
+        ]
+      },
+      "CommandLogEntryDto": {
+        "required": [
+          "id",
+          "serverId",
+          "time",
+          "user",
+          "kind",
+          "command",
+          "response",
+          "success"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CommandKind"
+          },
+          "command": {
+            "type": "string"
+          },
+          "response": {
+            "type": "string",
+            "nullable": true
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
       "CommandRequest": {
         "required": [
           "command"
@@ -689,6 +1104,24 @@
         "properties": {
           "command": {
             "type": "string"
+          }
+        }
+      },
+      "CommandResponse": {
+        "required": [
+          "command",
+          "output"
+        ],
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "output": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -741,6 +1174,29 @@
             "format": "int32"
           },
           "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "gameMode": {
+            "type": "string"
+          }
+        }
+      },
+      "MapRequest": {
+        "required": [
+          "name",
+          "gameMode",
+          "size"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "gameMode": {
             "type": "string"
           },
           "size": {
@@ -1084,6 +1540,32 @@
           }
         }
       },
+      "PlayerAuthDto": {
+        "required": [
+          "playerHash",
+          "authLevel",
+          "name",
+          "serverId"
+        ],
+        "type": "object",
+        "properties": {
+          "playerHash": {
+            "type": "string"
+          },
+          "authLevel": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "serverId": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
       "PlayerDto": {
         "type": "object",
         "properties": {
@@ -1302,6 +1784,22 @@
           }
         }
       },
+      "SetPlayerAuthRequest": {
+        "required": [
+          "playerHash",
+          "authLevel"
+        ],
+        "type": "object",
+        "properties": {
+          "playerHash": {
+            "type": "string"
+          },
+          "authLevel": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "SocketState": {
         "enum": [
           "Connected",
@@ -1332,6 +1830,11 @@
           },
           "success": {
             "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "default": null,
+            "nullable": true
           }
         }
       },
@@ -1375,6 +1878,9 @@
     },
     {
       "name": "Modules"
+    },
+    {
+      "name": "Player auth"
     }
   ]
 }

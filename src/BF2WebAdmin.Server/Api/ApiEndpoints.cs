@@ -7,6 +7,7 @@ using System.Xml.Serialization;
 using AspNetCore.Authentication.ApiKey;
 using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Data.Abstractions;
+using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Controllers;
 using BF2WebAdmin.Server.Entities;
@@ -29,6 +30,16 @@ public record CommandRequest(string Command);
 public record ChatRequest(string Message);
 public record RconResponse(string Request, string Response);
 public record ChatResponse(string? Response);
+/// <summary>What a "." command said in game while it ran; empty if it said nothing.</summary>
+public record CommandResponse(string Command, IReadOnlyList<string> Output);
+/// <summary>The answer of a server action, for the notification.</summary>
+public record ActionResponse(string Message);
+public record MapRequest(string Name, string GameMode, int Size);
+/// <summary>A chat command of a loaded module. Parameters are the names in the [Command] pattern.</summary>
+public record CommandInfoDto(IReadOnlyList<string> Aliases, IReadOnlyList<string> Parameters, int AuthLevel, IReadOnlyList<string> Modules);
+/// <summary>A player's auth level in a server group. Name and ServerId are set while the player is on a server of the group.</summary>
+public record PlayerAuthDto(string PlayerHash, int AuthLevel, string? Name, string? ServerId);
+public record SetPlayerAuthRequest(string PlayerHash, int AuthLevel);
 
 /// <summary>
 /// The web API used by the web UI (src/BF2WebAdmin.Web). Live updates go through <see cref="ServerHub"/>.
@@ -59,6 +70,12 @@ public static class ApiEndpoints
         servers.MapPost("/{serverId}/chat", SendChatAsync);
         servers.MapPost("/{serverId}/rcon", SendRconAsync);
         servers.MapPost("/{serverId}/commands", SendCustomCommandAsync);
+        servers.MapGet("/{serverId}/commands", GetCommands);
+        servers.MapGet("/{serverId}/log", (string serverId, CommandLog log) => log.Get(serverId));
+        servers.MapPost("/{serverId}/map", ChangeMapAsync);
+        servers.MapPost("/{serverId}/map/restart", RestartMapAsync);
+        servers.MapPost("/{serverId}/map/next", NextMapAsync);
+        servers.MapPost("/{serverId}/pause", TogglePauseAsync);
         servers.MapGet("/{serverId}/bans", GetBansAsync);
         servers.MapGet("/{serverId}/missiles", GetMissiles);
         servers.MapGet("/{serverId}/missiles/{key:int}", GetMissile);
@@ -68,6 +85,10 @@ public static class ApiEndpoints
         modules.MapGet("/server-groups/{serverGroup}/modules", GetServerGroupModulesAsync);
         modules.MapPut("/server-groups/{serverGroup}/modules", SetServerGroupModulesAsync);
         modules.MapPost("/server-groups/{serverGroup}/modules/reload", ReloadServerGroupModulesAsync);
+
+        var playerAuth = api.MapGroup("/server-groups/{serverGroup}/auth").WithTags("Player auth").RequireAuthorization(AdminPolicy);
+        playerAuth.MapGet("/", GetPlayerAuthAsync);
+        playerAuth.MapPut("/", SetPlayerAuthAsync);
     }
 
     private static async Task<Results<NoContent, UnauthorizedHttpResult>> LoginAsync(LoginRequest request, HttpContext context, IOptions<AuthSettings> authSettings)
@@ -190,66 +211,148 @@ public static class ApiEndpoints
 
     private static async Task<TestServerResult[]> TestServerAsync(ServerDataDto server, ILogger<RconClient> logger)
     {
-        bool validRcon;
-        bool validGamespy;
+        TestServerResult rcon;
+        TestServerResult gamespy;
 
         try
         {
             using var rconClient = new RconClient(IPAddress.Parse(server.IpAddress), server.RconPort, server.RconPassword, logger);
             var rconResponse = await rconClient.SendAsync("iga listAdmins");
-            validRcon = !string.IsNullOrWhiteSpace(rconResponse);
+            rcon = string.IsNullOrWhiteSpace(rconResponse)
+                ? new TestServerResult("RCON", false, $"No answer from {server.IpAddress}:{server.RconPort}")
+                : new TestServerResult("RCON", true);
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            validRcon = false;
+            rcon = new TestServerResult("RCON", false, e.Message);
         }
 
         try
         {
             var gamespyResponse = await new Gamespy3Service().QueryServerAsync(IPAddress.Parse(server.IpAddress), server.QueryPort);
-            validGamespy = !string.IsNullOrWhiteSpace(gamespyResponse.Name);
+            gamespy = string.IsNullOrWhiteSpace(gamespyResponse.Name)
+                ? new TestServerResult("Gamespy query", false, $"No server name from {server.IpAddress}:{server.QueryPort}")
+                : new TestServerResult("Gamespy query", true, gamespyResponse.Name);
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            validGamespy = false;
+            gamespy = new TestServerResult("Gamespy query", false, e.Message);
         }
 
-        return
-        [
-            new TestServerResult("RCON", validRcon),
-            new TestServerResult("Gamespy query", validGamespy)
-        ];
+        return [rcon, gamespy];
     }
 
-    private static async Task<Results<Ok<ChatResponse>, NotFound>> SendChatAsync(string serverId, ChatRequest request, ClaimsPrincipal user, IGameServerRegistry registry)
+    private static async Task<Results<Ok<ChatResponse>, NotFound>> SendChatAsync(string serverId, ChatRequest request, ClaimsPrincipal user, IGameServerRegistry registry,
+        CommandLog log)
     {
         if (GetWebModule(registry, serverId) is not { } module)
             return TypedResults.NotFound();
 
         Activity.Current?.SetTag("bf2wa.server-id", serverId);
         Activity.Current?.SetTag("bf2wa.custom-command", request.Message);
-        return TypedResults.Ok(new ChatResponse(await module.HandleAdminChatAsync(GetUserId(user), request.Message)));
+        var response = await module.HandleAdminChatAsync(GetUserId(user), request.Message);
+        var kind = request.Message.StartsWith('.') ? CommandKind.Command : request.Message.StartsWith('!') ? CommandKind.Rcon : CommandKind.Chat;
+        await log.AddAsync(serverId, GetUserId(user), kind, request.Message, response, true);
+        return TypedResults.Ok(new ChatResponse(response));
     }
 
-    private static async Task<Results<Ok<RconResponse>, NotFound>> SendRconAsync(string serverId, CommandRequest request, IGameServerRegistry registry)
+    private static async Task<Results<Ok<RconResponse>, NotFound>> SendRconAsync(string serverId, CommandRequest request, ClaimsPrincipal user,
+        IGameServerRegistry registry, CommandLog log)
     {
         if (GetWebModule(registry, serverId) is not { } module)
             return TypedResults.NotFound();
 
         Activity.Current?.SetTag("bf2wa.server-id", serverId);
         Activity.Current?.SetTag("bf2wa.custom-command", request.Command);
-        return TypedResults.Ok(new RconResponse(request.Command, await module.HandleRconCommandAsync(request.Command)));
+        var response = await module.HandleRconCommandAsync(request.Command);
+        await log.AddAsync(serverId, GetUserId(user), CommandKind.Rcon, request.Command, response, true);
+        return TypedResults.Ok(new RconResponse(request.Command, response));
     }
 
-    private static async Task<Results<NoContent, NotFound>> SendCustomCommandAsync(string serverId, CommandRequest request, ClaimsPrincipal user, IGameServerRegistry registry)
+    private static async Task<Results<Ok<CommandResponse>, NotFound>> SendCustomCommandAsync(string serverId, CommandRequest request, ClaimsPrincipal user,
+        IGameServerRegistry registry, CommandLog log)
     {
         if (GetWebModule(registry, serverId) is not { } module)
             return TypedResults.NotFound();
 
         Activity.Current?.SetTag("bf2wa.server-id", serverId);
         Activity.Current?.SetTag("bf2wa.custom-command", request.Command);
-        await module.HandleCustomCommandAsync(GetUserId(user), request.Command);
-        return TypedResults.NoContent();
+        var output = await module.HandleCustomCommandAsync(GetUserId(user), request.Command);
+        await log.AddAsync(serverId, GetUserId(user), CommandKind.Command, request.Command, output.Count > 0 ? string.Join('\n', output) : null, true);
+        return TypedResults.Ok(new CommandResponse(request.Command, output));
+    }
+
+    /// <summary>The chat commands of the server's loaded modules, for the command panel and the chat box's completion.</summary>
+    private static Results<Ok<CommandInfoDto[]>, NotFound> GetCommands(string serverId, IGameServerRegistry registry)
+    {
+        if (registry.GetGameServer(serverId) is not { } server)
+            return TypedResults.NotFound();
+
+        return TypedResults.Ok(server.ModManager.GetCommands()
+            .Select(c => new CommandInfoDto(c.Aliases, c.Parameters, (int)c.AuthLevel, c.Modules))
+            .ToArray());
+    }
+
+    /// <summary>Run a map of the rotation now (the admin channel's typed Map command, by name, mode and size).</summary>
+    private static Task<Results<Ok<ActionResponse>, BadRequest<string>, NotFound>> ChangeMapAsync(string serverId, MapRequest request, ClaimsPrincipal user,
+        IGameServerRegistry registry, CommandLog log) =>
+        RunActionAsync(serverId, user, registry, log, $"Change map to {request.Name} ({request.GameMode}, {request.Size})", async server =>
+        {
+            await server.GameWriter.RunMapAsync(request.Name, request.GameMode, request.Size);
+            return $"Loading {request.Name}";
+        });
+
+    private static Task<Results<Ok<ActionResponse>, BadRequest<string>, NotFound>> RestartMapAsync(string serverId, ClaimsPrincipal user,
+        IGameServerRegistry registry, CommandLog log) =>
+        RunActionAsync(serverId, user, registry, log, "Restart map", async server =>
+        {
+            await server.GameWriter.RestartMapAsync();
+            return "Restarting the round";
+        });
+
+    private static Task<Results<Ok<ActionResponse>, BadRequest<string>, NotFound>> NextMapAsync(string serverId, ClaimsPrincipal user,
+        IGameServerRegistry registry, CommandLog log) =>
+        RunActionAsync(serverId, user, registry, log, "Run next map", async server =>
+        {
+            await server.GameWriter.RunNextMapAsync();
+            return "Loading the next map";
+        });
+
+    private static Task<Results<Ok<ActionResponse>, BadRequest<string>, NotFound>> TogglePauseAsync(string serverId, ClaimsPrincipal user,
+        IGameServerRegistry registry, CommandLog log) =>
+        RunActionAsync(serverId, user, registry, log, "Toggle pause", async server =>
+        {
+            var output = await server.GameWriter.ConsoleAsync("gameLogic.togglePause");
+            return output.Count > 0 ? string.Join('\n', output) : "Pause toggled";
+        });
+
+    /// <summary>Runs a typed admin channel command. A refusal or a closed link is a 400 with the reason, which the web UI shows.</summary>
+    private static async Task<Results<Ok<ActionResponse>, BadRequest<string>, NotFound>> RunActionAsync(string serverId, ClaimsPrincipal user,
+        IGameServerRegistry registry, CommandLog log, string description, Func<IGameServer, Task<string>> action)
+    {
+        if (registry.GetGameServer(serverId) is not { } server)
+            return TypedResults.NotFound();
+
+        Activity.Current?.SetTag("bf2wa.server-id", serverId);
+        Activity.Current?.SetTag("bf2wa.custom-command", description);
+        try
+        {
+            var message = await action(server);
+            await log.AddAsync(serverId, GetUserId(user), CommandKind.Action, description, message, true);
+            return TypedResults.Ok(new ActionResponse(message));
+        }
+        catch (AdminCommandException e)
+        {
+            var message = e.Code switch
+            {
+                AdminErrorCode.Unavailable => "The server refused: the map is not in its rotation",
+                AdminErrorCode.Disabled => "The server refused: disabled in its serverext.cfg",
+                AdminErrorCode.Refused => $"The server refused: {e.Message}",
+                _ => e.Message,
+            };
+            await log.AddAsync(serverId, GetUserId(user), CommandKind.Action, description, message, false);
+            return TypedResults.BadRequest(message);
+        }
     }
 
     /// <summary>The server's ban list (BF2CC "iga" banlist, an XML document).</summary>
@@ -297,6 +400,66 @@ public static class ApiEndpoints
 
         return TypedResults.NoContent();
     }
+
+    /// <summary>The players with an auth level other than the default (All) in the group, highest first.</summary>
+    private static async Task<PlayerAuthDto[]> GetPlayerAuthAsync(string serverGroup, IServerSettingsRepository repository, IGameServerRegistry registry)
+    {
+        var online = OnlinePlayers(serverGroup, registry);
+        return (await repository.GetPlayerAuthAsync(serverGroup))
+            .Where(a => a.AuthLevel != (int)Common.Auth.All)
+            .Select(a => online.TryGetValue(a.PlayerHash, out var p)
+                ? new PlayerAuthDto(a.PlayerHash, a.AuthLevel, p.Name, p.ServerId)
+                : new PlayerAuthDto(a.PlayerHash, a.AuthLevel, NameFromKey(a.PlayerHash), null))
+            .OrderByDescending(a => a.AuthLevel)
+            .ThenBy(a => a.Name ?? a.PlayerHash, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static readonly int[] AuthLevels = Enum.GetValues<Common.Auth>().Where(a => a != Common.Auth.None).Select(a => (int)a).ToArray();
+
+    // ServerPlayerAuth.PlayerHash is nvarchar(50)
+    private const int MaxPlayerHashLength = 50;
+
+    /// <summary>
+    /// Set a player's auth level in the group, by CD-key hash (or the "name:" key of a test server). The default level,
+    /// All (10), is how an entry is removed: the row stays, with the level a player without a row has. The group's
+    /// servers read the new levels at once.
+    /// </summary>
+    private static async Task<Results<NoContent, BadRequest<string>>> SetPlayerAuthAsync(string serverGroup, SetPlayerAuthRequest request, ClaimsPrincipal user,
+        IServerSettingsRepository repository, IGameServerRegistry registry, CommandLog log)
+    {
+        var hash = request.PlayerHash?.Trim() ?? "";
+        if (hash.Length == 0 || hash.Length > MaxPlayerHashLength)
+            return TypedResults.BadRequest($"The player hash must be 1-{MaxPlayerHashLength} characters");
+        if (!AuthLevels.Contains(request.AuthLevel))
+            return TypedResults.BadRequest($"Unknown auth level {request.AuthLevel}");
+        if (hash == WebModule.WebAdminHashGod || hash.StartsWith("DiscordBotHash", StringComparison.Ordinal))
+            return TypedResults.BadRequest("That hash belongs to WebAdmin itself");
+
+        await repository.SetPlayerAuthAsync(serverGroup, hash, request.AuthLevel);
+
+        var name = OnlinePlayers(serverGroup, registry).TryGetValue(hash, out var p) ? p.Name : NameFromKey(hash) ?? hash;
+        foreach (var server in registry.GetGameServers(serverGroup))
+        {
+            await server.ModManager.GetAuthPlayersAsync();
+            await log.AddAsync(server.Id, GetUserId(user), CommandKind.Action,
+                $"Set the auth level of {name} to {(Common.Auth)request.AuthLevel} ({request.AuthLevel})", null, true);
+        }
+
+        return TypedResults.NoContent();
+    }
+
+    private static Dictionary<string, (string Name, string ServerId)> OnlinePlayers(string serverGroup, IGameServerRegistry registry)
+    {
+        var players = new Dictionary<string, (string Name, string ServerId)>();
+        foreach (var server in registry.GetGameServers(serverGroup))
+        foreach (var player in server.Players.Where(p => !string.IsNullOrEmpty(p.Hash)))
+            players.TryAdd(player.Hash, (player.Name, server.Id));
+        return players;
+    }
+
+    /// <summary>A test server keys players without a CD-key hash by name ("name:" + name).</summary>
+    private static string? NameFromKey(string playerHash) => playerHash.StartsWith("name:", StringComparison.Ordinal) ? playerHash[5..] : null;
 
     private static WebModule? GetWebModule(IGameServerRegistry registry, string serverId) =>
         registry.GetGameServer(serverId)?.ModManager.GetModule<WebModule>();

@@ -1,3 +1,4 @@
 namespace BF2WebAdmin.Shared.Communication.DTOs;
 
-public record TestServerResult(string Type, bool Success);
+/// <summary>One check of "Test connection": what failed, in Message, when Success is false.</summary>
+public record TestServerResult(string Type, bool Success, string? Message = null);

@@ -58,6 +58,21 @@ public interface IGameWriter
     /// <summary>Restart the current round (admin.restartMap).</summary>
     void SendRestartMap();
 
+    /// <summary>Restart the current round and wait for the module's answer; a refusal throws <see cref="AdminChannel.AdminCommandException"/>.</summary>
+    Task RestartMapAsync();
+
+    /// <summary>Run the next map of the rotation (admin.runNextLevel).</summary>
+    Task RunNextMapAsync();
+
+    /// <summary>Run a map of the rotation by name, mode and size (0 any). A map that is not in the rotation is <see cref="AdminErrorCode.Unavailable"/>.</summary>
+    Task RunMapAsync(string name, string mode, int size);
+
+    /// <summary>
+    /// Quit the game server cleanly (the console's <c>quit</c>): the engine stops at the next frame and exits with code 0,
+    /// so the module unloads and the link closes normally. Whatever runs the server (a container restart policy) starts it again.
+    /// </summary>
+    Task QuitAsync();
+
     /// <summary>Make an object the console's active object for the raw console lines that follow (object.active idN).</summary>
     void SendSetObjectActive(long consoleId);
 

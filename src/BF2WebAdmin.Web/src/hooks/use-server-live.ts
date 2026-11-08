@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { api, type Player, type ServerSnapshot, type Vector3 } from '@/api/client'
+import { api, type CommandLogEntry, type Player, type ServerSnapshot, type Vector3 } from '@/api/client'
 import { onHubReconnected, useHubEvent, useServerSubscription } from '@/api/hub'
+import { reportGameUpdate } from '@/lib/pending-actions'
 
 const maxLogEntries = 500
 
@@ -17,6 +18,9 @@ export type PlayerPosition = {
 
 export const snapshotQuery = (serverId: string) => api.queryOptions('get', '/api/servers/{serverId}', { params: { path: { serverId } } })
 
+/** The commands web users sent to the server (kept by WebAdmin in memory), oldest first. */
+export const commandLogQuery = (serverId: string) => api.queryOptions('get', '/api/servers/{serverId}/log', { params: { path: { serverId } } })
+
 /**
  * A server's state: the snapshot from the API, kept current by the hub's game events. Positions arrive several times
  * a second per player, so they go to the positions ref (for the map) instead of the query cache.
@@ -26,6 +30,9 @@ export function useServerLive(serverId: string) {
   const subscribed = useServerSubscription(serverId)
   const query = snapshotQuery(serverId)
   const snapshot = useQuery({ ...query, enabled: subscribed, staleTime: Infinity })
+  const logQuery = commandLogQuery(serverId)
+  // Kept current by CommandLogEvent, like the snapshot
+  useQuery({ ...logQuery, enabled: subscribed, staleTime: Infinity })
   const positions = useRef(new Map<number, PlayerPosition>())
 
   // Events that arrive before the snapshot are already in it
@@ -51,6 +58,7 @@ export function useServerLive(serverId: string) {
       onHubReconnected(() => {
         positions.current.clear()
         void queryClient.invalidateQueries({ queryKey: snapshotQuery(serverId).queryKey })
+        void queryClient.invalidateQueries({ queryKey: commandLogQuery(serverId).queryKey })
       }),
     [queryClient, serverId],
   )
@@ -85,6 +93,8 @@ export function useServerLive(serverId: string) {
   useHubEvent('MapChangeEvent', (e) => {
     update((s) => ({ ...s, server: { ...s.server, map: e.map }, teams: e.teams }))
     log(`Map ${e.map} (${e.size})`, e.timeStamp)
+    // Sent at every round start, so it also confirms a round restart
+    reportGameUpdate(serverId, { roundStart: { map: e.map } })
   })
 
   useHubEvent('ChatEvent', (e) => {
@@ -100,11 +110,23 @@ export function useServerLive(serverId: string) {
     log(`${playerName(e.playerId)} left`, e.timeStamp)
     update((s) => ({ ...s, players: s.players.filter((p) => p.index !== e.playerId) }))
     positions.current.delete(e.playerId)
+    // Confirms a kick or a ban
+    const players = queryClient.getQueryData<ServerSnapshot>(query.queryKey)?.players
+    if (players) reportGameUpdate(serverId, { players })
   })
 
   useHubEvent('PlayerTeamEvent', (e) => {
     updatePlayer(e.playerId, (p) => ({ ...p, team: e.teamId }))
     log(`${playerName(e.playerId)} changed to team ${e.teamId}`, e.timeStamp)
+    const players = queryClient.getQueryData<ServerSnapshot>(query.queryKey)?.players
+    if (players) reportGameUpdate(serverId, { players })
+  })
+
+  useHubEvent('CommandLogEvent', (e) => {
+    if (e.serverId !== serverId) return
+    queryClient.setQueryData<CommandLogEntry[]>(logQuery.queryKey, (entries) =>
+      entries && !entries.some((x) => x.id === e.id) ? [...entries, e].slice(-maxLogEntries) : entries,
+    )
   })
 
   useHubEvent('PlayerScoreEvent', (e) => {

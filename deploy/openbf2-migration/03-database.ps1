@@ -69,10 +69,10 @@ $updates = foreach ($s in Get-Servers) {
     " UPDATE dbo.Server SET IsTestServer = 0 WHERE ServerId = N'$($s.serverId)';"
 }
 Invoke-Sql ("SET XACT_ABORT ON; BEGIN TRAN;`n" + ($updates -join "`n") + "`nCOMMIT;") | Out-Null
-$check = Invoke-Sql @"
+$keyRows = Invoke-Sql @"
 SET NOCOUNT ON;
 SELECT ServerId, CASE WHEN AdminKey IS NULL THEN 'no key' ELSE 'key set (' + CAST(LEN(AdminKey) AS nvarchar(5)) + ' hex)' END, IsTestServer
 FROM dbo.Server ORDER BY ServerId;
 "@
-$check | ForEach-Object { Write-Host "  $_" }
+$keyRows | ForEach-Object { Write-Host "  $_" }
 Write-Ok "keys written"

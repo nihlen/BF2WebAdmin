@@ -15,7 +15,7 @@ namespace BF2WebAdmin.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.4");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
 
             modelBuilder.Entity("BF2WebAdmin.Data.Entities.MapMod", b =>
                 {
@@ -192,6 +192,39 @@ namespace BF2WebAdmin.Data.Migrations
                     b.HasIndex("MatchId");
 
                     b.ToTable("MatchRoundPlayers");
+                });
+
+            modelBuilder.Entity("BF2WebAdmin.Data.Entities.PlayerJoin", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Guid")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsLikelySpoof")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("JoinDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ServerIpAddress")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("JoinHistory", (string)null);
                 });
 
             modelBuilder.Entity("BF2WebAdmin.Data.Entities.Server", b =>

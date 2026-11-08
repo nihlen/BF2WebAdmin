@@ -17,15 +17,17 @@ public class AdminStateApplier : IAdminSessionHandler
 
     private readonly GameServer _server;
     private readonly ILogger<AdminStateApplier> _logger;
+    private readonly IJoinHistoryWriter? _joinHistory;
     private readonly Dictionary<int, KillKind> _lastKillKind = new();
     private AdminSession? _session;
     // While a viewer is open the streams run at 30 Hz; the modules still get them at the tracker rate
     private uint _nextPlayerTick, _nextProjectileTick, _nextVehicleTick;
 
-    public AdminStateApplier(GameServer server, ILogger<AdminStateApplier> logger)
+    public AdminStateApplier(GameServer server, ILogger<AdminStateApplier> logger, IJoinHistoryWriter? joinHistory = null)
     {
         _server = server;
         _logger = logger;
+        _joinHistory = joinHistory;
     }
 
     public async ValueTask OnMessageAsync(AdminSession session, AdminMessage message)
@@ -395,6 +397,7 @@ public class AdminStateApplier : IAdminSessionHandler
                     await _server.RemovePlayerAsync(stale, time);
 
                 await _server.AddPlayerAsync(CreatePlayer(ev.Player), time);
+                RecordJoin(ev.Player, time);
                 break;
             }
 
@@ -497,6 +500,26 @@ public class AdminStateApplier : IAdminSessionHandler
             case EvDamage or EvProjectileFired or EvProjectileHit:
                 // Opt-in streams 16 and 17; WebAdmin does not subscribe to them
                 break;
+        }
+    }
+
+    /// <summary>
+    /// A new connect (not a snapshot after a reconnect or resync) goes to dbo.JoinHistory for the BF2v2 site, for every
+    /// server whatever its modules. Queued; the database never holds up the apply loop.
+    /// </summary>
+    private void RecordJoin(AdminPlayerInfo info, DateTimeOffset time)
+    {
+        if (_joinHistory == null)
+            return;
+
+        try
+        {
+            if (JoinHistoryWriter.CreateJoin(info, _server.ServerInfo.IpAddress, _server.IpAddress, time) is { } join)
+                _joinHistory.Enqueue(join);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Admin channel {ServerId}: could not record the join of player {Index} '{Name}'", _server.Id, info.Id, info.Name);
         }
     }
 

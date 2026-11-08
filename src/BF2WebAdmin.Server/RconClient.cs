@@ -69,9 +69,9 @@ public class RconClient : IRconClient, IDisposable
         _writer = new BinaryWriter(_stream);
 
         var authenticated = false;
-        while (!_reader.EndOfStream)
+        // ReadLineAsync returns null at the end of the stream (EndOfStream would block in an async method)
+        while (await _reader.ReadLineAsync() is { } msg)
         {
-            var msg = await _reader.ReadLineAsync();
             _logger.LogDebug("RCON read: {Message}", msg);
             if (string.IsNullOrWhiteSpace(msg))
                 continue;

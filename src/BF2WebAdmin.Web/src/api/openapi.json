@@ -1,5 +1,5 @@
 {
-  "openapi": "3.0.1",
+  "openapi": "3.1.1",
   "info": {
     "title": "BF2WebAdmin.Server | v1",
     "version": "1.0.0"
@@ -942,40 +942,58 @@
         "type": "object",
         "properties": {
           "datetime": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "nick": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "method": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "period": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "address": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "cdkeyhash": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "profileid": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "by": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "reason": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -1009,8 +1027,10 @@
         "type": "object",
         "properties": {
           "response": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -1088,8 +1108,10 @@
             "type": "string"
           },
           "response": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "success": {
             "type": "boolean"
@@ -1213,17 +1235,23 @@
             "format": "uuid"
           },
           "playerId": {
-            "type": "integer",
-            "format": "int32",
-            "nullable": true
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           },
           "playerName": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "teamName": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "type": {
             "type": "string"
@@ -1473,12 +1501,16 @@
             "type": "string"
           },
           "hitPart": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "hitRoot": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "hitPlayer": {
             "type": "integer",
@@ -1557,12 +1589,16 @@
             "format": "int32"
           },
           "name": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "serverId": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -1600,10 +1636,24 @@
             "$ref": "#/components/schemas/ScoreDto"
           },
           "position": {
-            "$ref": "#/components/schemas/Vector3"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Vector3"
+              }
+            ]
           },
           "rotation": {
-            "$ref": "#/components/schemas/Vector3"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Vector3"
+              }
+            ]
           }
         }
       },
@@ -1687,8 +1737,10 @@
             "type": "string"
           },
           "adminKey": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "isTestServer": {
             "type": "boolean"
@@ -1716,8 +1768,10 @@
             "format": "int32"
           },
           "map": {
-            "type": "string",
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "players": {
             "type": "integer",
@@ -1832,9 +1886,10 @@
             "type": "boolean"
           },
           "message": {
-            "type": "string",
-            "default": null,
-            "nullable": true
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -1864,8 +1919,7 @@
             "type": "number",
             "format": "double"
           }
-        },
-        "nullable": true
+        }
       }
     }
   },

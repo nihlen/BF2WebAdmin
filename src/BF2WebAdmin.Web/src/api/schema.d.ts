@@ -1110,15 +1110,15 @@ export interface components {
             message: string;
         };
         Ban: {
-            datetime: string | null;
-            nick: string | null;
-            method: string | null;
-            period: string | null;
-            address: string | null;
-            cdkeyhash: string | null;
-            profileid: string | null;
-            by: string | null;
-            reason: string | null;
+            datetime: null | string;
+            nick: null | string;
+            method: null | string;
+            period: null | string;
+            address: null | string;
+            cdkeyhash: null | string;
+            profileid: null | string;
+            by: null | string;
+            reason: null | string;
         };
         ChatLogDto: {
             message: components["schemas"]["MessageDto"];
@@ -1129,7 +1129,7 @@ export interface components {
             message: string;
         };
         ChatResponse: {
-            response: string | null;
+            response: null | string;
         };
         CommandInfoDto: {
             aliases: string[];
@@ -1148,7 +1148,7 @@ export interface components {
             user: string;
             kind: components["schemas"]["CommandKind"];
             command: string;
-            response: string | null;
+            response: null | string;
             success: boolean;
         };
         CommandRequest: {
@@ -1189,9 +1189,9 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** Format: int32 */
-            playerId: number | null;
-            playerName: string | null;
-            teamName: string | null;
+            playerId: null | number;
+            playerName: null | string;
+            teamName: null | string;
             type: string;
             channel: string;
             flags: string;
@@ -1253,8 +1253,8 @@ export interface components {
             /** Format: int32 */
             flags: number;
             outcome: string;
-            hitPart: string | null;
-            hitRoot: string | null;
+            hitPart: null | string;
+            hitRoot: null | string;
             /** Format: int32 */
             hitPlayer: number;
             hitRewound: boolean;
@@ -1279,8 +1279,8 @@ export interface components {
             playerHash: string;
             /** Format: int32 */
             authLevel: number;
-            name: string | null;
-            serverId: string | null;
+            name: null | string;
+            serverId: null | string;
         };
         PlayerDto: {
             name: string;
@@ -1295,8 +1295,8 @@ export interface components {
             team: number;
             isAlive: boolean;
             score: components["schemas"]["ScoreDto"];
-            position: components["schemas"]["Vector3"];
-            rotation: components["schemas"]["Vector3"];
+            position: null | components["schemas"]["Vector3"];
+            rotation: null | components["schemas"]["Vector3"];
         };
         RconResponse: {
             request: string;
@@ -1329,7 +1329,7 @@ export interface components {
             discordAdminChannel: string;
             discordNotificationChannel: string;
             discordMatchResultChannel: string;
-            adminKey: string | null;
+            adminKey: null | string;
             isTestServer: boolean;
         };
         ServerDto: {
@@ -1340,7 +1340,7 @@ export interface components {
             gamePort: number;
             /** Format: int32 */
             queryPort: number;
-            map: string | null;
+            map: null | string;
             /** Format: int32 */
             players: number;
             /** Format: int32 */
@@ -1372,8 +1372,7 @@ export interface components {
         TestServerResult: {
             type: string;
             success: boolean;
-            /** @default null */
-            message: string | null;
+            message?: null | string;
         };
         UserDto: {
             name: string;
@@ -1385,7 +1384,7 @@ export interface components {
             y: number;
             /** Format: double */
             z: number;
-        } | null;
+        };
     };
     responses: never;
     parameters: never;

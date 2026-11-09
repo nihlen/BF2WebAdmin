@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import type { ServerActions } from '@/hooks/use-server-actions'
 import { authLevels, defaultAuthLevel } from '@/lib/auth-levels'
+import { banLength } from '@/lib/bans'
 import { teamTextColor } from '@/lib/teams'
 import { cn } from '@/lib/utils'
 import { formatTime } from '@/lib/format'
@@ -86,7 +87,7 @@ function PlayerDetails({
 }) {
   const bans = api.useQuery('get', '/api/servers/{serverId}/bans', { params: { path: { serverId } } })
   const playerBans = (bans.data ?? []).filter(
-    (b) => (player.hash && b.cdkeyhash === player.hash) || (player.ipAddress && b.address === player.ipAddress) || b.nick === player.name,
+    (b) => (!!player.hash && b.identifier === player.hash) || (!!player.ipAddress && b.identifier === player.ipAddress) || b.name === player.name,
   )
   const inputs = playerInputs(actions, onInput)
   const team = teams.find((t) => t.id === player.team)
@@ -165,13 +166,14 @@ function PlayerDetails({
           {bans.isPending && <p className="text-muted-foreground">Loading…</p>}
           {bans.data && playerBans.length === 0 && <p className="text-muted-foreground">None for this name, hash or address</p>}
           <ul className="space-y-2">
-            {playerBans.map((ban, i) => (
-              <li key={i} className={cn('rounded-md border p-2', 'text-sm')}>
+            {playerBans.map((ban) => (
+              <li key={ban.identifier} className={cn('rounded-md border p-2', 'text-sm')}>
                 <div>
-                  {ban.datetime ? formatTime(ban.datetime) : '?'} · {ban.period} · by {ban.by}
+                  {ban.bannedAt ? formatTime(ban.bannedAt) : '?'} · {banLength(ban)}
+                  {ban.bannedBy && ` · by ${ban.bannedBy}`}
                 </div>
                 <div className="text-muted-foreground">
-                  {ban.nick}: {ban.reason}
+                  {ban.name ?? ban.identifier}: {ban.reason}
                 </div>
               </li>
             ))}

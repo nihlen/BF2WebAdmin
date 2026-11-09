@@ -240,6 +240,30 @@ CREATE TABLE [dbo].[JoinHistory](
 ) ON [PRIMARY]
 END
 GO
+/****** Object:  Table [dbo].[ServerBan] ******/
+-- Who banned whom and why (SqlServerSchemaUpdates.ServerBan has the same statement). The ban itself is in the game server's own ban list.
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[ServerBan]') AND type in (N'U'))
+BEGIN
+CREATE TABLE [dbo].[ServerBan](
+	[ServerId] [nvarchar](50) NOT NULL,
+	[Identifier] [nvarchar](64) NOT NULL,
+	[ByCdKey] [bit] NOT NULL,
+	[Name] [nvarchar](100) NULL,
+	[BannedBy] [nvarchar](100) NULL,
+	[Reason] [nvarchar](200) NULL,
+	[BannedAt] [datetime2](7) NOT NULL,
+ CONSTRAINT [PK_ServerBan] PRIMARY KEY CLUSTERED
+(
+	[ServerId] ASC,
+	[Identifier] ASC
+)
+)
+END
+GO
 IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE object_id = OBJECT_ID(N'[dbo].[FK_MapModObject_MapMod]') AND parent_object_id = OBJECT_ID(N'[dbo].[MapModObject]'))
 ALTER TABLE [dbo].[MapModObject]  WITH CHECK ADD  CONSTRAINT [FK_MapModObject_MapMod] FOREIGN KEY([MapModId])
 REFERENCES [dbo].[MapMod] ([Id])

@@ -9,12 +9,12 @@ using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Logging;
+using BF2WebAdmin.Server.Services;
 using BF2WebAdmin.Shared;
 
 namespace BF2WebAdmin.Server.Modules.BF2;
 
 public class BF2Module : BaseModule,
-    IHandleEventAsync<MapChangedEvent>,
     IHandleEventAsync<PlayerJoinEvent>,
     IHandleEventAsync<PlayerLeftEvent>,
     IHandleEventAsync<PlayerSpawnEvent>,
@@ -59,6 +59,7 @@ public class BF2Module : BaseModule,
     private readonly ICountryResolver _countryResolver;
     private readonly IServerSettingsRepository _serverSettingsRepository;
     private readonly IChatLogger _chatLogger;
+    private readonly ServerAdmin _admin;
     private readonly Random _random;
     private readonly IDictionary<int, bool> _newPlayers = new Dictionary<int, bool>();
     private const int DefaultDelay = 25; // 1000/35 fps ~ 28.5
@@ -69,9 +70,10 @@ public class BF2Module : BaseModule,
     // TODO: does this need to be static for all servers to get it?
     public event Action<string, string> ServerGroupMessage;
 
-    public BF2Module(IGameServer server, ICountryResolver countryResolver, IServerSettingsRepository serverSettingsRepository, IChatLogger chatLogger, ILogger<BF2Module> logger, CancellationTokenSource cts) : base(server, logger, cts)
+    public BF2Module(IGameServer server, ICountryResolver countryResolver, IServerSettingsRepository serverSettingsRepository, IServerBanRepository banRepository, IChatLogger chatLogger, ILogger<BF2Module> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _gameServer = server;
+        _admin = new ServerAdmin(server, banRepository);
         _countryResolver = countryResolver;
         _serverSettingsRepository = serverSettingsRepository;
         _chatLogger = chatLogger;
@@ -162,8 +164,7 @@ public class BF2Module : BaseModule,
 
         try
         {
-            await _gameServer.GameWriter.KickAsync(player, $"Kicked by {command.Message.Player.DisplayName}");
-            _gameServer.GameWriter.SendText($"Kicked {player.DisplayName}");
+            await _admin.KickAsync(player, null, command.Message.Player.DisplayName);
         }
         catch (AdminCommandException ex)
         {
@@ -183,9 +184,7 @@ public class BF2Module : BaseModule,
         try
         {
             // By CD key when the player has one, else by address (LAN and test servers have no CD-key hashes)
-            var byCdKey = !string.IsNullOrEmpty(player.Hash) && !player.HasNameKey;
-            await _gameServer.GameWriter.BanAsync(player, byCdKey, null, $"Banned by {command.Message.Player.DisplayName}");
-            _gameServer.GameWriter.SendText($"Banned {player.DisplayName}");
+            await _admin.BanAsync(player, BanLength.Permanent, null, command.Message.Player.DisplayName);
         }
         catch (AdminCommandException ex)
         {
@@ -563,28 +562,6 @@ public class BF2Module : BaseModule,
         await _serverSettingsRepository.SetPlayerAuthAsync(_gameServer.ModManager.ServerSettings.ServerGroup, target.Hash, command.Level);
         await _gameServer.ModManager.GetAuthPlayersAsync();
         _gameServer.GameWriter.SendText($"Player {command.Name} auth level set to {command.Level}");
-    }
-
-    public async ValueTask HandleAsync(MapChangedEvent e)
-    {
-        if (_gameServer.ServerInfo == null)
-        {
-            Logger.LogWarning("Couldn't update admins - ServerInfo missing");
-            return;
-        }
-
-        var rconClient = new RconClient(_gameServer.IpAddress, _gameServer.ServerInfo.RconPort, _gameServer.ServerInfo.RconPassword, Logger);
-
-        // Delete existing admins and add new admins from DB
-        var ingameAdminResponse = await rconClient.SendAsync("iga listAdmins");
-        var ingameAdmins = ingameAdminResponse.Split("\n").Where(l => l.Length > 40).Select(l => l.Substring(7, 32));
-        var admins = _gameServer.ModManager.AuthPlayers.SelectMany(p => p.ToList());
-        
-        var commands = new List<string>();
-        commands.AddRange(ingameAdmins.Select(a => $"iga delAdmin {a}"));
-        // Name keys (test servers) are not CD-key hashes, so ModManager's admin list cannot use them
-        commands.AddRange(admins.Where(a => !a.PlayerHash.StartsWith(Player.NameKeyPrefix)).Select(a => $"iga addAdmin {a.PlayerHash} all"));
-        var response = await rconClient.SendAsync(commands);
     }
 
     public async ValueTask HandleAsync(PlayerJoinEvent e)

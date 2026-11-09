@@ -88,6 +88,13 @@ public class PostgresBF2Context : BF2Context
                 e.Property(property).Metadata.SetMaxLength(null);
             }
         });
+
+        modelBuilder.Entity<ServerBan>(e =>
+        {
+            e.ToTable("server_ban");
+            foreach (var property in new[] { nameof(ServerBan.ServerId), nameof(ServerBan.Identifier), nameof(ServerBan.Name), nameof(ServerBan.BannedBy), nameof(ServerBan.Reason) })
+                e.Property(property).Metadata.SetMaxLength(null);
+        });
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

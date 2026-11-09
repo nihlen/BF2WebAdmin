@@ -52,8 +52,11 @@ public interface IGameWriter
     /// <summary>Kick a connected human player. The module refuses bots (AI-flagged players) with <see cref="AdminErrorCode.Refused"/>.</summary>
     Task KickAsync(Player player, string reason);
 
-    /// <summary>Ban a connected human player, permanently when <paramref name="duration"/> is null. Bots and a CD-key ban without a hash are refused.</summary>
-    Task BanAsync(Player player, bool byCdKey, TimeSpan? duration, string reason);
+    /// <summary>
+    /// Ban a connected human player in the engine's ban list (which kicks it; permanent and timed bans are saved in the server's
+    /// settings/banlist.con). Bots and a CD-key ban without a hash are refused. <see cref="Services.ServerAdmin"/> also records it.
+    /// </summary>
+    Task BanAsync(Player player, bool byCdKey, Services.BanLength length, string reason);
 
     /// <summary>Restart the current round (admin.restartMap).</summary>
     void SendRestartMap();

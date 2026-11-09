@@ -645,8 +645,251 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Ban"
+                    "$ref": "#/components/schemas/BanDto"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/bans/{identifier}": {
+      "delete": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/players/{index}/warn": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayerActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/players/{index}/kick": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayerActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/players/{index}/ban": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -1038,52 +1281,42 @@
           }
         }
       },
-      "Ban": {
+      "BanDto": {
+        "required": [
+          "identifier",
+          "byCdKey",
+          "kind",
+          "expiresAt",
+          "name",
+          "bannedBy",
+          "reason",
+          "bannedAt"
+        ],
         "type": "object",
         "properties": {
-          "datetime": {
+          "identifier": {
+            "type": "string"
+          },
+          "byCdKey": {
+            "type": "boolean"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BanKind"
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "name": {
             "type": [
               "null",
               "string"
             ]
           },
-          "nick": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "method": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "period": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "address": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "cdkeyhash": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "profileid": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "by": {
+          "bannedBy": {
             "type": [
               "null",
               "string"
@@ -1094,6 +1327,38 @@
               "null",
               "string"
             ]
+          },
+          "bannedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "BanKind": {
+        "enum": [
+          "Permanent",
+          "Round",
+          "Timed"
+        ]
+      },
+      "BanRequest": {
+        "required": [
+          "reason",
+          "length"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "length": {
+            "type": "string"
           }
         }
       },
@@ -2011,6 +2276,20 @@
           }
         }
       },
+      "PlayerActionRequest": {
+        "required": [
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "PlayerAuthDto": {
         "required": [
           "playerHash",
@@ -2155,13 +2434,6 @@
           "queryPort": {
             "type": "integer",
             "format": "int32"
-          },
-          "rconPort": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "rconPassword": {
-            "type": "string"
           },
           "discordBotToken": {
             "type": "string"

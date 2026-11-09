@@ -49,7 +49,7 @@ public class PostgresTests
         Assert.Equal(new[]
         {
             "map_mod", "map_mod_object", "match", "match_round", "match_round_player", "match_round_player_path", "player_join",
-            "server", "server_module", "server_player_auth",
+            "server", "server_ban", "server_module", "server_player_auth",
         }, tables);
 
         var columns = (await connection.QueryAsync<(string Table, string Column, string Type, string Nullable)>(
@@ -153,6 +153,13 @@ public class PostgresTests
 
         // The text columns are NOT NULL, as in production's JoinHistory
         await Assert.ThrowsAsync<DbUpdateException>(() => joins.InsertAsync(new PlayerJoin { Name = "p3", JoinDate = Start }));
+    }
+
+    [PostgresFact]
+    public async Task BanRecordsRoundTrip()
+    {
+        await using var db = await ScratchPostgres.CreateAsync(migrate: true);
+        await ServerAdminTests.RepositoryRoundTripsAsync(new ServerBanRepository(db.Factory));
     }
 
     [PostgresFact]

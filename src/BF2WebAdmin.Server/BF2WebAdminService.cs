@@ -86,8 +86,6 @@ public class ServerInfo
     public string IpAddress { get; set; }
     public int GamePort { get; set; }
     public int QueryPort { get; set; }
-    public int RconPort { get; set; }
-    public string RconPassword { get; set; }
     public DiscordBotConfig DiscordBot { get; set; }
     public string ServerGroup { get; set; }
 

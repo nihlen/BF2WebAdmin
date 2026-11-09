@@ -13,7 +13,7 @@ export type GameMap = Schemas['MapDto']
 export type ChatLogEntry = Schemas['ChatLogDto']
 export type EventLogEntry = Schemas['EventLogDto']
 export type Message = Schemas['MessageDto']
-export type Ban = Schemas['Ban']
+export type Ban = Schemas['BanDto']
 export type RconResponse = Schemas['RconResponse']
 // Vector3 is nullable as a schema, because PlayerDto.Position is
 export type Vector3 = NonNullable<Schemas['Vector3']>

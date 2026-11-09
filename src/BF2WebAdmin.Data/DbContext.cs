@@ -24,6 +24,9 @@ public class BF2Context : DbContext
     /// <summary>Player joins (dbo.JoinHistory on SQL Server), exported for the BF2v2 site.</summary>
     public DbSet<PlayerJoin> JoinHistory { get; set; }
 
+    /// <summary>Who banned whom and why; the bans themselves are in each game server's own ban list.</summary>
+    public DbSet<ServerBan> ServerBans { get; set; }
+
     public BF2Context(DbContextOptions<BF2Context> options) : base(options)
     {
     }
@@ -54,6 +57,16 @@ public class BF2Context : DbContext
             e.Property(j => j.Guid).HasMaxLength(PlayerJoin.GuidLength);
             e.Property(j => j.IpAddress).HasMaxLength(PlayerJoin.IpAddressLength);
             e.Property(j => j.ServerIpAddress).HasMaxLength(PlayerJoin.IpAddressLength);
+        });
+        modelBuilder.Entity<ServerBan>(e =>
+        {
+            e.ToTable("ServerBan");
+            e.HasKey(b => new { b.ServerId, b.Identifier });
+            e.Property(b => b.ServerId).HasMaxLength(ServerBan.ServerIdLength);
+            e.Property(b => b.Identifier).HasMaxLength(ServerBan.IdentifierLength);
+            e.Property(b => b.Name).HasMaxLength(ServerBan.NameLength);
+            e.Property(b => b.BannedBy).HasMaxLength(ServerBan.BannedByLength);
+            e.Property(b => b.Reason).HasMaxLength(ServerBan.ReasonLength);
         });
     }
 

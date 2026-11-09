@@ -8,7 +8,7 @@ import { trackAction } from '@/lib/pending-actions'
 const silent = { meta: { silent: true } }
 const sameName = (a: string | null | undefined, b: string) => a?.toLowerCase() === b.toLowerCase()
 
-/** Ban lengths for iga ban (ModManager's ban manager): Round, Perm, or a number of seconds. */
+/** Ban lengths (BanLength on the server): Round, Perm, or a number of seconds. */
 export const banPeriods = [
   { value: 'Round', label: 'This round' },
   { value: String(60 * 60), label: '1 hour' },
@@ -37,12 +37,15 @@ export function useServerActions(serverId: string, snapshot: ServerSnapshot | un
   const nextMapMutation = api.useMutation('post', '/api/servers/{serverId}/map/next', silent)
   const pause = api.useMutation('post', '/api/servers/{serverId}/pause', silent)
   const command = api.useMutation('post', '/api/servers/{serverId}/commands', silent)
-  const rcon = api.useMutation('post', '/api/servers/{serverId}/rcon', silent)
+  const warnMutation = api.useMutation('post', '/api/servers/{serverId}/players/{index}/warn', silent)
+  const kickMutation = api.useMutation('post', '/api/servers/{serverId}/players/{index}/kick', silent)
+  const banMutation = api.useMutation('post', '/api/servers/{serverId}/players/{index}/ban', silent)
+  const unbanMutation = api.useMutation('delete', '/api/servers/{serverId}/bans/{identifier}', silent)
   const chat = api.useMutation('post', '/api/servers/{serverId}/chat')
   const auth = api.useMutation('put', '/api/server-groups/{serverGroup}/auth', silent)
 
   const runCommand = async (text: string) => (await command.mutateAsync({ params, body: { command: text } })).output
-  const runRcon = async (text: string) => (await rcon.mutateAsync({ params, body: { command: text } })).response
+  const playerParams = (player: Player) => ({ path: { serverId, index: player.index } })
 
   /** A "." command; the notification shows what it said in game. */
   const custom = (text: string, key = `command:${text}`) =>
@@ -162,8 +165,8 @@ export function useServerActions(serverId: string, snapshot: ServerSnapshot | un
         serverId,
         key: `warn:${player.index}`,
         sending: `Warning ${player.name}…`,
-        run: () => runRcon(`iga warn ${player.index} ${reason}`),
-        sent: (response) => response,
+        run: () => warnMutation.mutateAsync({ params: playerParams(player), body: { reason } }),
+        sent: (response) => response.message,
       }),
 
     kick: (player: Player, reason: string) =>
@@ -171,8 +174,8 @@ export function useServerActions(serverId: string, snapshot: ServerSnapshot | un
         serverId,
         key: `kick:${player.index}`,
         sending: `Kicking ${player.name}…`,
-        run: () => runRcon(`iga kick ${player.index} ${reason}`),
-        sent: (response) => response,
+        run: () => kickMutation.mutateAsync({ params: playerParams(player), body: { reason } }),
+        sent: (response) => response.message,
         until: {
           check: ({ players }) => !!players && !players.some((p) => p.index === player.index),
           success: `${player.name} has left the server`,
@@ -181,14 +184,14 @@ export function useServerActions(serverId: string, snapshot: ServerSnapshot | un
         },
       }),
 
-    /** The player sees a message first; the ban takes effect a few seconds later. */
+    /** The engine bans and kicks at once; the player list shows it when the player has left. */
     ban: (player: Player, reason: string, period: string) =>
       trackAction({
         serverId,
         key: `ban:${player.index}`,
         sending: `Banning ${player.name}…`,
-        run: () => runRcon(`iga ban ${player.index} ${period} ${reason}`),
-        sent: (response) => response,
+        run: () => banMutation.mutateAsync({ params: playerParams(player), body: { reason, length: period } }),
+        sent: (response) => response.message,
         until: {
           check: ({ players }) => {
             const gone = !!players && !players.some((p) => p.index === player.index)
@@ -207,11 +210,11 @@ export function useServerActions(serverId: string, snapshot: ServerSnapshot | un
         key: `unban:${identifier}`,
         sending: `Unbanning ${nick ?? identifier}…`,
         run: async () => {
-          const response = await runRcon(`!unban ${identifier}`)
+          const response = await unbanMutation.mutateAsync({ params: { path: { serverId, identifier } } })
           await queryClient.invalidateQueries({ queryKey: bansKey })
           return response
         },
-        sent: (response) => response,
+        sent: (response) => response.message,
       }),
 
     /** Any "." command, such as from the command panel. */

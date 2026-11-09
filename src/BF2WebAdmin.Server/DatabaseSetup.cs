@@ -35,6 +35,7 @@ public sealed record DatabaseSetup(DatabaseProvider Provider, string ConnectionS
                 AddContextFactory(services);
                 services.AddScoped<IServerSettingsRepository, ServerSettingsRepository>();
                 services.AddScoped<IMatchRepository, MatchRepository>();
+                services.AddScoped<IServerBanRepository, ServerBanRepository>();
                 if (maps)
                     services.AddScoped<IMapRepository, MapRepository>();
                 if (joins)
@@ -44,6 +45,7 @@ public sealed record DatabaseSetup(DatabaseProvider Provider, string ConnectionS
             case DatabaseProvider.SqlServer:
                 services.AddSingleton<IServerSettingsRepository>(_ => new SqlServerSettingsRepository(ConnectionString));
                 services.AddSingleton<IMatchRepository>(_ => new SqlMatchRepository(ConnectionString));
+                services.AddSingleton<IServerBanRepository>(_ => new SqlServerBanRepository(ConnectionString));
                 if (maps)
                     services.AddSingleton<IMapRepository>(_ => new SqlMapRepository(ConnectionString));
                 if (joins)

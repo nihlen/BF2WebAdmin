@@ -52,8 +52,6 @@ public static class OpenBF2
             .WithEnvironment(prefix + "IpAddress", "127.0.0.1")
             .WithEnvironment(prefix + "GamePort", gamePort.ToString())
             .WithEnvironment(prefix + "QueryPort", queryPort.ToString())
-            .WithEnvironment(prefix + "RconPort", rconPort.ToString())
-            .WithEnvironment(prefix + "RconPassword", rconPassword)
             .WithEnvironment(prefix + "AdminKey", adminKey)
             // Bots and players without a CD-key hash are keyed by name
             .WithEnvironment(prefix + "IsTestServer", "true")

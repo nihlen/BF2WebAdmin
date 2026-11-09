@@ -3,7 +3,6 @@ using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using System.Xml.Serialization;
 using AspNetCore.Authentication.ApiKey;
 using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Data.Abstractions;
@@ -13,6 +12,7 @@ using BF2WebAdmin.Server.Controllers;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Modules.BF2;
+using BF2WebAdmin.Server.Services;
 using BF2WebAdmin.Shared;
 using BF2WebAdmin.Shared.Communication.DTOs;
 using Mapster;
@@ -35,6 +35,10 @@ public record CommandResponse(string Command, IReadOnlyList<string> Output);
 /// <summary>The answer of a server action, for the notification.</summary>
 public record ActionResponse(string Message);
 public record MapRequest(string Name, string GameMode, int Size);
+/// <summary>A warning or kick; without a reason a default one is used.</summary>
+public record PlayerActionRequest(string? Reason);
+/// <summary>A ban: Length is Perm, Round, a number of seconds, or a number with m, h, d or w (<see cref="BanLength.TryParse"/>).</summary>
+public record BanRequest(string? Reason, string Length);
 /// <summary>A chat command of a loaded module. Parameters are the names in the [Command] pattern.</summary>
 public record CommandInfoDto(IReadOnlyList<string> Aliases, IReadOnlyList<string> Parameters, int AuthLevel, IReadOnlyList<string> Modules);
 /// <summary>A player's auth level in a server group. Name and ServerId are set while the player is on a server of the group.</summary>
@@ -77,6 +81,10 @@ public static class ApiEndpoints
         servers.MapPost("/{serverId}/map/next", NextMapAsync);
         servers.MapPost("/{serverId}/pause", TogglePauseAsync);
         servers.MapGet("/{serverId}/bans", GetBansAsync);
+        servers.MapDelete("/{serverId}/bans/{identifier}", UnbanAsync);
+        servers.MapPost("/{serverId}/players/{index:int}/warn", WarnPlayerAsync);
+        servers.MapPost("/{serverId}/players/{index:int}/kick", KickPlayerAsync);
+        servers.MapPost("/{serverId}/players/{index:int}/ban", BanPlayerAsync);
         servers.MapGet("/{serverId}/missiles", GetMissiles);
         servers.MapGet("/{serverId}/missiles/{key:int}", GetMissile);
 
@@ -166,8 +174,6 @@ public static class ApiEndpoints
             IpAddress = serverInfo.IpAddress,
             GamePort = serverInfo.GamePort,
             QueryPort = serverInfo.QueryPort,
-            RconPort = serverInfo.RconPort,
-            RconPassword = serverInfo.RconPassword,
             DiscordBotToken = serverInfo.DiscordBot?.Token ?? "",
             DiscordAdminChannel = serverInfo.DiscordBot?.AdminChannel ?? "",
             DiscordNotificationChannel = serverInfo.DiscordBot?.NotificationChannel ?? "",
@@ -211,23 +217,17 @@ public static class ApiEndpoints
             await hub.Clients.All.ServerUpdateEvent(server);
     }
 
-    private static async Task<TestServerResult[]> TestServerAsync(ServerDataDto server, ILogger<RconClient> logger)
+    /// <summary>Whether the server's admin channel is connected (the server dials WebAdmin; it needs a saved row with its admin key) and whether its GameSpy query answers.</summary>
+    private static async Task<TestServerResult[]> TestServerAsync(ServerDataDto server, IGameServerRegistry registry)
     {
-        TestServerResult rcon;
+        TestServerResult channel;
         TestServerResult gamespy;
 
-        try
-        {
-            using var rconClient = new RconClient(IPAddress.Parse(server.IpAddress), server.RconPort, server.RconPassword, logger);
-            var rconResponse = await rconClient.SendAsync("iga listAdmins");
-            rcon = string.IsNullOrWhiteSpace(rconResponse)
-                ? new TestServerResult("RCON", false, $"No answer from {server.IpAddress}:{server.RconPort}")
-                : new TestServerResult("RCON", true);
-        }
-        catch (Exception e)
-        {
-            rcon = new TestServerResult("RCON", false, e.Message);
-        }
+        var serverId = string.IsNullOrWhiteSpace(server.ServerId) ? $"{server.IpAddress}:{server.GamePort}" : server.ServerId;
+        channel = registry.GetGameServer(serverId) is { SocketState: SocketState.Connected }
+            ? new TestServerResult("Admin channel", true, "Connected")
+            : new TestServerResult("Admin channel", false,
+                $"{serverId} is not connected. The server connects by itself once it is saved here with the admin key of its serverext.cfg");
 
         try
         {
@@ -241,7 +241,7 @@ public static class ApiEndpoints
             gamespy = new TestServerResult("Gamespy query", false, e.Message);
         }
 
-        return [rcon, gamespy];
+        return [channel, gamespy];
     }
 
     private static async Task<Results<Ok<ChatResponse>, NotFound>> SendChatAsync(string serverId, ChatRequest request, ClaimsPrincipal user, IGameServerRegistry registry,
@@ -266,7 +266,7 @@ public static class ApiEndpoints
 
         Activity.Current?.SetTag("bf2wa.server-id", serverId);
         Activity.Current?.SetTag("bf2wa.custom-command", request.Command);
-        var response = await module.HandleRconCommandAsync(request.Command);
+        var response = await module.HandleRconCommandAsync(GetUserId(user), request.Command);
         await log.AddAsync(serverId, GetUserId(user), CommandKind.Rcon, request.Command, response, true);
         return TypedResults.Ok(new RconResponse(request.Command, response));
     }
@@ -345,37 +345,62 @@ public static class ApiEndpoints
         }
         catch (AdminCommandException e)
         {
-            var message = e.Code switch
-            {
-                AdminErrorCode.Unavailable => "The server refused: the map is not in its rotation",
-                AdminErrorCode.Disabled => "The server refused: disabled in its serverext.cfg",
-                AdminErrorCode.Refused => $"The server refused: {e.Message}",
-                _ => e.Message,
-            };
+            var message = ServerAdmin.Describe(e);
             await log.AddAsync(serverId, GetUserId(user), CommandKind.Action, description, message, false);
             return TypedResults.BadRequest(message);
         }
     }
 
-    /// <summary>The server's ban list (BF2CC "iga" banlist, an XML document).</summary>
-    private static async Task<Results<Ok<List<Ban>>, NotFound>> GetBansAsync(string serverId, IGameServerRegistry registry)
+    /// <summary>The server's ban list (the engine's, read over the admin channel) with who banned and why, newest first.</summary>
+    private static async Task<Results<Ok<IReadOnlyList<BanDto>>, BadRequest<string>, NotFound>> GetBansAsync(string serverId, IGameServerRegistry registry,
+        IServerBanRepository bans)
     {
-        if (GetWebModule(registry, serverId) is not { } module)
+        if (registry.GetGameServer(serverId) is not { } server)
             return TypedResults.NotFound();
 
-        var response = await module.HandleRconCommandAsync("!banlist");
         try
         {
-            using var reader = new StringReader(response);
-            var banlist = new XmlSerializer(typeof(Banlist)).Deserialize(reader) as Banlist;
-            return TypedResults.Ok(banlist?.Bans ?? []);
+            return TypedResults.Ok(await new ServerAdmin(server, bans).GetBansAsync());
         }
-        catch (InvalidOperationException)
+        catch (AdminCommandException e)
         {
-            // Not a ban list, such as "Empty response"
-            return TypedResults.Ok(new List<Ban>());
+            return TypedResults.BadRequest(ServerAdmin.Describe(e));
         }
     }
+
+    private static Task<Results<Ok<ActionResponse>, BadRequest<string>, NotFound>> UnbanAsync(string serverId, string identifier, ClaimsPrincipal user,
+        IGameServerRegistry registry, IServerBanRepository bans, CommandLog log) =>
+        RunActionAsync(serverId, user, registry, log, $"Unban {identifier}", server => new ServerAdmin(server, bans).UnbanAsync(identifier));
+
+    private static Task<Results<Ok<ActionResponse>, BadRequest<string>, NotFound>> WarnPlayerAsync(string serverId, int index, PlayerActionRequest request,
+        ClaimsPrincipal user, IGameServerRegistry registry, IServerBanRepository bans, CommandLog log) =>
+        RunActionAsync(serverId, user, registry, log, $"Warn {PlayerName(registry, serverId, index)}: {request.Reason}", server =>
+        {
+            var admin = new ServerAdmin(server, bans);
+            return Task.FromResult(admin.Warn(admin.GetPlayer(index), request.Reason, GetUserId(user)));
+        });
+
+    private static Task<Results<Ok<ActionResponse>, BadRequest<string>, NotFound>> KickPlayerAsync(string serverId, int index, PlayerActionRequest request,
+        ClaimsPrincipal user, IGameServerRegistry registry, IServerBanRepository bans, CommandLog log) =>
+        RunActionAsync(serverId, user, registry, log, $"Kick {PlayerName(registry, serverId, index)}: {request.Reason}", server =>
+        {
+            var admin = new ServerAdmin(server, bans);
+            return admin.KickAsync(admin.GetPlayer(index), request.Reason, GetUserId(user));
+        });
+
+    private static Task<Results<Ok<ActionResponse>, BadRequest<string>, NotFound>> BanPlayerAsync(string serverId, int index, BanRequest request,
+        ClaimsPrincipal user, IGameServerRegistry registry, IServerBanRepository bans, CommandLog log) =>
+        RunActionAsync(serverId, user, registry, log, $"Ban {PlayerName(registry, serverId, index)} ({request.Length}): {request.Reason}", server =>
+        {
+            if (!BanLength.TryParse(request.Length, out var length))
+                throw new AdminCommandException($"Not a ban length: '{request.Length}' (Perm, Round, seconds, or 30m, 12h, 7d, 2w)", AdminErrorCode.InvalidValue);
+
+            var admin = new ServerAdmin(server, bans);
+            return admin.BanAsync(admin.GetPlayer(index), length, request.Reason, GetUserId(user));
+        });
+
+    private static string PlayerName(IGameServerRegistry registry, string serverId, int index) =>
+        registry.GetGameServer(serverId)?.Players.FirstOrDefault(p => p.Index == index)?.DisplayName ?? $"player {index}";
 
     private static async Task<string[]> GetServerGroupModulesAsync(string serverGroup, IServerSettingsRepository repository)
     {

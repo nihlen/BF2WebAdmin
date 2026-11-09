@@ -78,8 +78,6 @@ public class GameServerRegistry : IGameServerRegistry
                 IpAddress = s.IpAddress,
                 GamePort = s.GamePort,
                 QueryPort = s.QueryPort,
-                RconPort = s.RconPort,
-                RconPassword = s.RconPassword,
                 ServerGroup = s.ServerGroup,
                 AdminKey = s.AdminKey,
                 IsTestServer = s.IsTestServer,

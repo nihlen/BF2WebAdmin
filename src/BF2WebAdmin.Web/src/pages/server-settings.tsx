@@ -30,8 +30,6 @@ const newServer: ServerSettings = {
   ipAddress: '',
   gamePort: 16567,
   queryPort: 29900,
-  rconPort: 4711,
-  rconPassword: '',
   discordBotToken: '',
   discordAdminChannel: '',
   discordNotificationChannel: '',
@@ -117,10 +115,10 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
     </Field>
   )
 
-  const number = (key: 'gamePort' | 'queryPort' | 'rconPort', label: string, props?: React.ComponentProps<typeof Input>) =>
+  const number = (key: 'gamePort' | 'queryPort', label: string, props?: React.ComponentProps<typeof Input>) =>
     text(key, label, { type: 'number', min: 1, max: 65535, required: true, onChange: (e) => set(key, Number(e.target.value)), ...props })
 
-  const secret = (key: 'rconPassword' | 'discordBotToken', label: string, props?: React.ComponentProps<typeof Input>) => (
+  const secret = (key: 'discordBotToken', label: string, props?: React.ComponentProps<typeof Input>) => (
     <Field>
       <FieldLabel htmlFor={key}>{label}</FieldLabel>
       <SecretInput id={key} value={form[key] ?? ''} onChange={(e) => set(key, e.target.value)} {...props} />
@@ -134,12 +132,10 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
           <FieldGroup>
             {text('serverGroup', 'Server group', { required: true })}
             {text('ipAddress', 'IP address', { required: true, readOnly: !!serverId })}
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               {number('gamePort', 'Game port', { readOnly: !!serverId })}
               {number('queryPort', 'Query port')}
-              {number('rconPort', 'Rcon port')}
             </div>
-            {secret('rconPassword', 'Rcon password', { required: true })}
             {secret('discordBotToken', 'Discord bot token')}
             {text('discordAdminChannel', 'Discord admin channel')}
             {text('discordNotificationChannel', 'Discord notification channel')}

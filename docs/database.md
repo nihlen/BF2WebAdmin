@@ -49,6 +49,7 @@ Database `bf2webadmin`, `snake_case` singular table names, `timestamptz` in UTC,
 | `match_round_player` | No `match_id` (a player reaches its match through the round) and no paths. Index on `player_hash` |
 | `match_round_player_path` | One row per player per round with a path: `movement_path` and `projectile_paths`, the gzip bytes of the JSON as `bytea`. Read only where a whole match is needed (the export, resuming a match), never by lists |
 | `player_join` | The player joins (`JoinHistory` on the other providers), `id bigint` from an identity, no `is_likely_spoof` (BF2v2's, not WebAdmin's) |
+| `server_ban` | Who banned whom and why (`ServerBan` on the other providers), key `(server_id, identifier)`; the bans themselves are the game servers' own lists (docs/admin-channel.md). The copier does not copy it |
 
 In C# the paths stay `MatchRoundPlayer.MovementPathJson` and `ProjectilePathsJson`, base64 strings of the same gzip
 bytes; `MatchRepository` converts them.

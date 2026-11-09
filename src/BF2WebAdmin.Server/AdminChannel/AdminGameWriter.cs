@@ -4,6 +4,7 @@ using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Entities;
+using BF2WebAdmin.Server.Services;
 
 namespace BF2WebAdmin.Server.AdminChannel;
 
@@ -181,12 +182,17 @@ public class AdminGameWriter : IGameWriter
         await RequestAsync(id => new CmdKick(id, Id(player), reason));
     }
 
-    public async Task BanAsync(Player player, bool byCdKey, TimeSpan? duration, string reason)
+    public async Task BanAsync(Player player, bool byCdKey, BanLength length, string reason)
     {
         if (!IsReal(player))
             throw new AdminCommandException($"no player {player.Index}", AdminErrorCode.UnknownPlayer);
 
-        var (kind, seconds) = duration == null ? (CmdBan.DurationPermanent, 0u) : (CmdBan.DurationSeconds, (uint)duration.Value.TotalSeconds);
+        var (kind, seconds) = length.Kind switch
+        {
+            BanKind.Round => (CmdBan.DurationRound, 0u),
+            BanKind.Timed => (CmdBan.DurationSeconds, (uint)length.Duration.TotalSeconds),
+            _ => (CmdBan.DurationPermanent, 0u),
+        };
         await RequestAsync(id => new CmdBan(id, Id(player), byCdKey ? CmdBan.ByCdKey : CmdBan.ByAddress, kind, seconds, reason));
     }
 

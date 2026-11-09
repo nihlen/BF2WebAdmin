@@ -376,6 +376,42 @@ namespace BF2WebAdmin.Data.Migrations.Postgres
                     b.ToTable("server", (string)null);
                 });
 
+            modelBuilder.Entity("BF2WebAdmin.Data.Entities.ServerBan", b =>
+                {
+                    b.Property<string>("ServerId")
+                        .HasColumnType("text")
+                        .HasColumnName("server_id");
+
+                    b.Property<string>("Identifier")
+                        .HasColumnType("text")
+                        .HasColumnName("identifier");
+
+                    b.Property<DateTime>("BannedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("banned_at");
+
+                    b.Property<string>("BannedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("banned_by");
+
+                    b.Property<bool>("ByCdKey")
+                        .HasColumnType("boolean")
+                        .HasColumnName("by_cd_key");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text")
+                        .HasColumnName("reason");
+
+                    b.HasKey("ServerId", "Identifier")
+                        .HasName("pk_server_ban");
+
+                    b.ToTable("server_ban", (string)null);
+                });
+
             modelBuilder.Entity("BF2WebAdmin.Data.Entities.ServerModule", b =>
                 {
                     b.Property<string>("ServerGroup")

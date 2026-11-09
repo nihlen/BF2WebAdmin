@@ -4,7 +4,9 @@ using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Api;
 using BF2WebAdmin.Server.Commands.BF2;
+using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Hubs;
+using BF2WebAdmin.Server.Services;
 using BF2WebAdmin.Shared.Communication.DTOs;
 using BF2WebAdmin.Shared.Communication.Events;
 using Microsoft.AspNetCore.SignalR;
@@ -36,12 +38,17 @@ public class WebModule : BaseModule,
     private readonly IHubContext<ServerHub, IServerHubClient> _serverHub;
     private readonly IServerSettingsRepository _serverSettingsRepository;
 
+    /// <summary>Kicks, warnings, bans and the "!" commands of this server, for the web API.</summary>
+    public ServerAdmin Admin { get; }
+
     private IServerHubClient ClientsAll => _serverHub.Clients.All;
     private IServerHubClient ClientsGroup => _serverHub.Clients.Group(_gameServer.Id);
 
-    public WebModule(IGameServer server, IHubContext<ServerHub, IServerHubClient> serverHub, IServerSettingsRepository serverSettingsRepository, ILogger<WebModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
+    public WebModule(IGameServer server, IHubContext<ServerHub, IServerHubClient> serverHub, IServerSettingsRepository serverSettingsRepository,
+        IServerBanRepository banRepository, ILogger<WebModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _gameServer = server;
+        Admin = new ServerAdmin(server, banRepository);
         _serverHub = serverHub;
         _serverSettingsRepository = serverSettingsRepository;
     }
@@ -211,7 +218,7 @@ public class WebModule : BaseModule,
         });
     }
 
-    /// <summary>A message from the web chat box: "." runs a custom command, "!" an rcon command (its response is returned), anything else is said in game.</summary>
+    /// <summary>A message from the web chat box: "." runs a custom command, "!" an admin command (<see cref="ServerAdmin.RunAsync"/>, its answer is returned), anything else is said in game.</summary>
     public async ValueTask<string?> HandleAdminChatAsync(string userId, string message)
     {
         if (message.StartsWith("."))
@@ -221,18 +228,23 @@ public class WebModule : BaseModule,
         }
 
         if (message.StartsWith("!"))
-            return await HandleRconCommandAsync(message);
+            return await HandleRconCommandAsync(userId, message);
 
         GameServer.GameWriter.SendText($"[§C1001{userId}§C1001] {message}", false, true);
         return null;
     }
 
-    /// <summary>Runs an rcon command ("!" shortcuts such as "!k" are expanded) and returns its response with IP addresses removed.</summary>
-    public async ValueTask<string> HandleRconCommandAsync(string message)
+    /// <summary>Runs a "!" admin command (<see cref="ServerAdmin.Help"/>) and returns its answer or why it failed, with IP addresses removed.</summary>
+    public async ValueTask<string> HandleRconCommandAsync(string userId, string message)
     {
-        var command = GetRconCommand(message);
-        var response = await SendRconCommandAsync(command);
-        return GetObfuscatedResponse(response);
+        try
+        {
+            return GetObfuscatedResponse(await Admin.RunAsync(message, userId));
+        }
+        catch (AdminCommandException e)
+        {
+            return GetObfuscatedResponse(ServerAdmin.Describe(e));
+        }
     }
 
     /// <summary>

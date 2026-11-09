@@ -41,7 +41,7 @@ The seam the inventory suggested holds: modules still see `IGameServer`, the `Ga
 - `Server.IsTestServer` (decision B6): players are keyed (`Player.Hash`) by the CD-key hash when the module sends one.
   Without a hash (every player on a LAN server, bots, `adminSendIdentity 0`) a test server keys them by name as
   `name:<name>`, which cannot collide with a 32-digit hash. On other servers such a player has an empty key: no auth
-  level, and it is logged. Name keys are never sent to ModManager's `iga addAdmin`.
+  level, and it is logged. A player without a CD-key hash is banned by address.
 
 ### Ordering and resync
 
@@ -165,7 +165,8 @@ on every server at the same time. The game servers need restart policy `unless-s
 | `.repair` | `damage <id> 10000` | `SetHealth` fraction 1 |
 | Teleport + rotate pairs (pad, dance, playback, portals) | two text commands | one `Teleport` with both |
 | `.clear`, `.undo` | `admin.restartmap` console line | `Map` restart |
-| `.kick <Name>`, `.ban <Name>` | (none; `!kick` goes to ModManager's `iga` over classic rcon) | new chat commands on the typed `Kick`/`Ban`; the refusal is said in chat |
+| `.kick <Name>`, `.ban <Name>` | (none; `!kick` goes to ModManager's `iga` over classic rcon) | new chat commands on the typed `Kick`/`Ban` (through `ServerAdmin`, below); the refusal is said in chat |
+| Kick, warn, ban and unban from the web UI and Discord, `!` commands, the ban list | ModManager's `iga` and `banlist` over classic rcon (`RconClient`); the in-game admin list synced with `iga addAdmin` on every map change | `Services/ServerAdmin.cs` over the admin channel (2026-11-09), see below; `RconClient`, the admin sync and the server form's rcon port and password are gone |
 | Kill classification | event-name split, kill/death order guessed, victim position wrong | `Kill` kind and positions; `PlayerKillEvent` for kills and roadkills (`"roadkill"` weapon as before), team kills, suicides and crashes as `PlayerDeathEvent` with `IsSuicide`, as before. ChopperMayhem's baserape check uses the correct victim position |
 | Projectile owner | nearest `ahe_` player guessed | the module's owner |
 | Text | Windows-1252 out, UTF-8 in (`§` arrived as `�`, `Message.Text` mapped it back) | UTF-8 both ways; the module converts at the engine, `§` intact; the `�` hack is gone |
@@ -173,10 +174,31 @@ on every server at the same time. The game servers need restart policy `unless-s
 | Player joins for the BF2v2 site (`dbo.JoinHistory`) | BF2v2's collector scraped the PunkBuster logs through `bf2tool.php` on each game server (PunkBuster GUID in `Guid`); OpenBF2 has no PunkBuster, so no rows since the migration | WebAdmin writes them (2026-11-08), see below |
 | Removed | `SocketServer.cs`, `GameReader.cs`, `EventHandler.cs`, `GameWriter.cs`, `IGameReader.cs`, `IEventHandler.cs`, the `wa connect` loop, the mm_autobalancer team workaround | |
 
-Unchanged on purpose: ModManager's classic rcon (`RconClient`) for `iga` admin sync, `!` commands from the web UI and
-Discord, and the web UI's rcon box. `MapModule`'s object spawning keeps the console `ObjectSpawner` script
+Unchanged on purpose: `MapModule`'s object spawning keeps the console `ObjectSpawner` script
 (`RconScript.AddObject`): the typed `SpawnObject` creates server-only objects for templates without a networkable
 (the module's finding 17), and the script makes the template networkable first.
+
+### Kicks, bans and the `!` commands (`ServerAdmin`)
+
+Since 2026-11-09 WebAdmin uses no classic rcon, so the game servers need no ModManager. `Services/ServerAdmin.cs` does
+for the web API (`POST /api/servers/{id}/players/{index}/warn|kick|ban`, `GET` and `DELETE /api/servers/{id}/bans`), the
+web chat box and Discord (`!` commands, `ServerAdmin.Help`) and the in-game `.kick`/`.ban`:
+
+- **Kick** is the typed `Kick`; **warn** a chat message to everyone.
+- **Ban** is the typed `Ban`, by CD-key hash, or by address for a player without one: permanent, this round, or for a
+  time (`BanLength`: `Perm`, `Round`, seconds, `30m`, `12h`, `7d`, `2w`). The engine keeps the ban in its own list and
+  saves permanent and timed bans to the server's `settings/banlist.con`, so it holds without WebAdmin. WebAdmin records
+  the name, who banned and the reason in `ServerBan` (`server_ban` on Postgres), keyed by server and identifier.
+- **The ban list** is the engine's (`admin.listBannedKeys`, `admin.listBannedAddresses` over the console) joined with
+  those records; a record whose ban the engine no longer has (lifted elsewhere, expired, a round ban after the round) is
+  not shown. **Unban** is `admin.removeKeyFromBanList` or `admin.removeAddressFromBanList` (a 32-digit hex identifier
+  is a key), **clear** `admin.clearBanList`; both remove the records too.
+- **Other `!` commands** are console lines (`!sv.serverName`, `!exec <line>`), `!list` (`admin.listPlayers`) and
+  `!map <map> <mode> [size]` (the typed `Map`, maps of the rotation only; ModManager's `map` could run any map).
+  They need `adminAllowConsole 1`.
+
+ModManager's bans were mirrored in `banlist.con` already, so they stayed in force; their names and reasons
+(`mm_bans.xml`) were copied into `server_ban` once.
 
 ### Player joins (`dbo.JoinHistory`)
 
@@ -298,8 +320,7 @@ already ships, so nothing was installed.
 6. **The key is visible to edit-form users.** `GET /api/servers/{id}/settings` (the hub's `GetServer` before the React
    web UI) returns `AdminKey` to Administrator-role users of the edit
    form (shown as a password field). It cannot be hashed: HMAC needs the raw key.
-7. **Kick and ban.** The web UI and Discord still kick and ban through ModManager's `iga` (classic rcon). The typed
-   commands are reached only through the new `.kick`/`.ban` chat commands.
+7. **Kick and ban.** Since 2026-11-09 every kick and ban goes through the typed commands (`ServerAdmin`, above).
 
 ## Local test environment changes (`BF2WebAdmin-localtest`, not a git repo; originals in `scratch\orig-2026-10-23\`)
 

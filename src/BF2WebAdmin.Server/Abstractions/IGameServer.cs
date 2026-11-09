@@ -25,7 +25,6 @@ public interface IGameServer
     IPAddress ConnectedIpAddress { get; }
     int GamePort { get; }
     int QueryPort { get; }
-    int RconPort { get; }
     int MaxPlayers { get; }
     GameState State { get; }
     SocketState SocketState { get; }

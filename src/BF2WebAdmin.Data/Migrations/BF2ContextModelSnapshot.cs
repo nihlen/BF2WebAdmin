@@ -202,7 +202,7 @@ namespace BF2WebAdmin.Data.Migrations
 
             modelBuilder.Entity("BF2WebAdmin.Data.Entities.PlayerJoin", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
@@ -277,6 +277,39 @@ namespace BF2WebAdmin.Data.Migrations
                     b.HasKey("ServerId");
 
                     b.ToTable("Servers");
+                });
+
+            modelBuilder.Entity("BF2WebAdmin.Data.Entities.ServerBan", b =>
+                {
+                    b.Property<string>("ServerId")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Identifier")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("BannedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BannedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("ByCdKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ServerId", "Identifier");
+
+                    b.ToTable("ServerBan", (string)null);
                 });
 
             modelBuilder.Entity("BF2WebAdmin.Data.Entities.ServerModule", b =>

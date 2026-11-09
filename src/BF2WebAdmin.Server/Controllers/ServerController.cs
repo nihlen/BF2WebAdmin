@@ -68,8 +68,6 @@ public class ServerController : Controller
                 IpAddress = server.ServerInfo.IpAddress,
                 GamePort = server.ServerInfo.GamePort,
                 QueryPort = server.ServerInfo.QueryPort,
-                RconPort = server.ServerInfo.RconPort,
-                RconPassword = server.ServerInfo.RconPassword,
                 DiscordBotToken = server.ServerInfo.DiscordBot.Token,
                 DiscordAdminChannel = server.ServerInfo.DiscordBot.AdminChannel,
                 DiscordNotificationChannel = server.ServerInfo.DiscordBot.NotificationChannel,

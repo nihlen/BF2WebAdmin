@@ -31,8 +31,9 @@ Modifying settings in `serversettings.con`, `modnanager.con` or `maplist.con` is
 
 * A host running Linux or Windows. The Docker setup is tested on Linux containers
 * A Battlefield 2 server running OpenBF2 with the server extension module `libserverext.so` (openbf2-server-ext),
-  loaded with `openbf2.addModDll serverext`. ModManager stays for its rcon (`iga` admin sync and `!` commands);
-  `mm_webadmin.py` is not used any more and must not be loaded
+  loaded with `openbf2.addModDll serverext`. WebAdmin needs nothing else on the server: kicks, bans and console
+  commands go over that admin channel, so neither ModManager's rcon nor `mm_webadmin.py` is used (the latter must not be
+  loaded)
 
 ## Usage
 

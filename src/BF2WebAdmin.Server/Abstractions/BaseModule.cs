@@ -55,20 +55,6 @@ public abstract class BaseModule : IModule
         GameServer.GameWriter.SendTeam(player, player.Team.Id == 1 ? 2 : 1, kill: true);
     }
 
-    protected static string GetRconCommand(string text)
-    {
-        if (text.StartsWith("!m ")) return "map" + text[2..];
-        if (text.StartsWith("!map ")) return "map" + text[4..];
-        if (text.StartsWith("!w ")) return "iga warn" + text[2..];
-        if (text.StartsWith("!warn ")) return "iga warn" + text[5..];
-        if (text.StartsWith("!k ")) return "iga kick" + text[2..];
-        if (text.StartsWith("!kick ")) return "iga kick" + text[5..];
-        if (text.StartsWith("!b ")) return "iga ban" + text[2..];
-        if (text.StartsWith("!ban ")) return "iga ban" + text[4..];
-
-        return text.TrimStart('!');
-    }
-
     protected static string GetObfuscatedResponse(string text)
     {
         var result = Regex.Replace(
@@ -79,12 +65,6 @@ public abstract class BaseModule : IModule
         );
 
         return result.Length > 1 ? result : "Empty response";
-    }
-
-    protected async Task<string> SendRconCommandAsync(string command)
-    {
-        var rcon = new RconClient(GameServer.IpAddress, GameServer.ServerInfo.RconPort, GameServer.ServerInfo.RconPassword, Logger);
-        return await rcon.SendAsync(command);
     }
 
     // protected void RunBackgroundTask(string description, Func<Task> func)

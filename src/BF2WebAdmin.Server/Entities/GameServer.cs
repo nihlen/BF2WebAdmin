@@ -37,7 +37,6 @@ public class GameServer : IGameServer
     public IPAddress ConnectedIpAddress { get; private set; } = IPAddress.None;
     public int GamePort { get; private set; }
     public int QueryPort { get; private set; }
-    public int RconPort => ServerInfo.RconPort;
     public int MaxPlayers { get; private set; }
 
     public GameState State { get; private set; } = GameState.NotConnected;

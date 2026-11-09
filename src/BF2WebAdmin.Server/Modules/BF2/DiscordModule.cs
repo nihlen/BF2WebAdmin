@@ -5,7 +5,9 @@ using System.Threading.Channels;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Common.External;
+using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
+using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Services;
@@ -44,6 +46,7 @@ public class DiscordModule : BaseModule,
     private readonly IGameServer _game;
     private readonly IGameStreamService _gameStreamService;
     private readonly ITaskRunner _taskRunner;
+    private readonly ServerAdmin _admin;
     private readonly IDictionary<int, bool> _newPlayers = new Dictionary<int, bool>();
     private readonly Channel<(ISocketMessageChannel Channel, string? Text, Embed? Embed)> _discordMessageChannel;
     private IEnumerable<SocketTextChannel> _adminChannels;
@@ -199,43 +202,18 @@ public class DiscordModule : BaseModule,
 # Use custom commands
 .<command>
 
-# Change to a specific map
-!map:m <map> <gametype> <size> (e.g. !m daqing_2_v_2 gpm_cq 16)
-
-# Kick a player from the server with a message
-!kick:k <playerid> ""<reason>""
-
-# Ban a player from the server with a message
-!ban:b <playerid> ""<reason>""
-
-# Ban a player for a specified timer period from the server with a message
-!banby <playerid> <bannedby> <period> ""<reason>""
-
-# Display the current banlist
-!banlist
-
-# Clear the current banlist
-!clearbans
-
-# Unban a player with an optional reason
-!unban <address|cdkey> ""<reason>""
-
-# List the players on the server
-!list
-
-# Print a list of players and their profileids
-!profileids
-
-# Execute a console command
-!exec```";
+# Admin commands
+" + ServerAdmin.Help + "```";
 
     private ServerInfo.DiscordBotConfig Config => _game.ServerInfo.DiscordBot;
 
-    public DiscordModule(IGameServer server, IGameStreamService gameStreamService, ITaskRunner taskRunner, ILogger<DiscordModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
+    public DiscordModule(IGameServer server, IGameStreamService gameStreamService, ITaskRunner taskRunner, IServerBanRepository banRepository, ILogger<DiscordModule> logger,
+        CancellationTokenSource cts) : base(server, logger, cts)
     {
         _game = server;
         _gameStreamService = gameStreamService;
         _taskRunner = taskRunner;
+        _admin = new ServerAdmin(server, banRepository);
 
         if (string.IsNullOrWhiteSpace(server.ServerInfo.DiscordBot?.Token))
             return;
@@ -331,8 +309,17 @@ public class DiscordModule : BaseModule,
             }
             else if (message.Content.StartsWith("!"))
             {
-                var command = GetRconCommand(message.Content);
-                var response = await SendRconCommandAsync(command);
+                var by = (message.Author as SocketGuildUser)?.Nickname ?? message.Author.Username;
+                string response;
+                try
+                {
+                    response = await _admin.RunAsync(message.Content, by);
+                }
+                catch (AdminCommandException e)
+                {
+                    response = ServerAdmin.Describe(e);
+                }
+
                 _discordMessageChannel.Writer.TryWrite((message.Channel, $"```{GetObfuscatedResponse(response)}```", null));
             }
             else if (message.Content.StartsWith("."))

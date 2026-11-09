@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -36,11 +37,27 @@ END",
 	CREATE UNIQUE NONCLUSTERED INDEX [IX_Match_ChangeSeq] ON [dbo].[Match] ([ChangeSeq]) WHERE [ChangeSeq] IS NOT NULL;",
     };
 
+    /// <summary>dbo.ServerBan, the descriptions of the game servers' bans (see <see cref="Entities.ServerBan"/>), as in Schema.sql.</summary>
+    public static readonly string[] ServerBan =
+    {
+        @"IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[ServerBan]') AND type in (N'U'))
+CREATE TABLE [dbo].[ServerBan](
+	[ServerId] [nvarchar](50) NOT NULL,
+	[Identifier] [nvarchar](64) NOT NULL,
+	[ByCdKey] [bit] NOT NULL,
+	[Name] [nvarchar](100) NULL,
+	[BannedBy] [nvarchar](100) NULL,
+	[Reason] [nvarchar](200) NULL,
+	[BannedAt] [datetime2](7) NOT NULL,
+ CONSTRAINT [PK_ServerBan] PRIMARY KEY CLUSTERED ([ServerId] ASC, [Identifier] ASC)
+);",
+    };
+
     public static async Task ApplyAsync(string connectionString)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
-        foreach (var batch in ExportCursor)
+        foreach (var batch in ExportCursor.Concat(ServerBan))
         {
             await connection.ExecuteAsync(batch);
         }

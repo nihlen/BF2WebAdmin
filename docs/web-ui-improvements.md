@@ -34,8 +34,8 @@ Not done:
 - Showing or setting the next map without running it: the admin channel's `Map` command has no such action, and the
   server does not send the next map.
 - "Offline for N minutes" on the dashboard: WebAdmin does not keep the time of the last disconnect.
-- Timed bans pass the number of seconds to `iga ban`. That is the ModManager ban manager's format as I understand it,
-  but it has not been tried on a server.
+- Timed bans passed the number of seconds to `iga ban`. Since 2026-11-09 bans are the admin channel's typed `Ban`
+  (`POST /api/servers/{id}/players/{index}/ban`), see admin-channel.md.
 
 ### Restarting a server
 

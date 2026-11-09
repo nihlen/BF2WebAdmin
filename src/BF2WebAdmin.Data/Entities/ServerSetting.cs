@@ -10,8 +10,13 @@ public class Server
     public string IpAddress { get; set; }
     public int GamePort { get; set; }
     public int QueryPort { get; set; }
+
+    /// <summary>Unused since WebAdmin stopped using classic rcon (everything goes over the admin channel); the columns stay so existing databases need no change.</summary>
     public int RconPort { get; set; }
+
+    /// <summary>Unused, see <see cref="RconPort"/>.</summary>
     public string RconPassword { get; set; }
+
     public string DiscordBotToken { get; set; }
     public string DiscordAdminChannel { get; set; }
     public string DiscordNotificationChannel { get; set; }

@@ -58,6 +58,28 @@
         }
       }
     },
+    "/api/health/servers/{serverId}": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/servers": {
       "get": {
         "tags": [
@@ -2637,6 +2659,9 @@
   "tags": [
     {
       "name": "Auth"
+    },
+    {
+      "name": "Health"
     },
     {
       "name": "Servers"

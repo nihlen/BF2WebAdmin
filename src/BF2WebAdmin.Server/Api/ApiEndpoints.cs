@@ -63,6 +63,9 @@ public static class ApiEndpoints
         auth.MapPost("/logout", (Delegate)LogoutAsync);
         auth.MapGet("/me", (ClaimsPrincipal user) => new UserDto(user.Identity?.Name ?? "")).RequireAuthorization(AdminPolicy);
 
+        // For monitoring (Gatus): 200 while the game server's admin channel is connected, 503 while it is not, 404 for an unknown server
+        api.MapGet("/health/servers/{serverId}", GetServerHealthAsync).AllowAnonymous().WithTags("Health");
+
         var servers = api.MapGroup("/servers").WithTags("Servers").RequireAuthorization(AdminPolicy);
         servers.MapGet("/", GetServersAsync);
         servers.MapPost("/", CreateServerAsync);
@@ -133,6 +136,16 @@ public static class ApiEndpoints
         var servers = registry.GetGameServers().Select(s => (ServerDto)s.ToServerUpdate()).ToList();
         servers.AddRange((await registry.GetDisconnectedServersAsync()).Select(s => s.ToServerUpdate()));
         return servers;
+    }
+
+    private static async Task<IResult> GetServerHealthAsync(string serverId, IGameServerRegistry registry)
+    {
+        if (registry.GetGameServer(serverId) is { SocketState: SocketState.Connected })
+            return TypedResults.Text("connected");
+
+        var known = registry.GetGameServer(serverId) is not null
+                    || (await registry.GetDisconnectedServersAsync()).Any(s => s.ServerId == serverId);
+        return known ? TypedResults.Text("not connected", statusCode: StatusCodes.Status503ServiceUnavailable) : TypedResults.NotFound();
     }
 
     private static async Task<Results<Ok<ServerSnapshotDto>, NotFound>> GetServerAsync(string serverId, IGameServerRegistry registry)

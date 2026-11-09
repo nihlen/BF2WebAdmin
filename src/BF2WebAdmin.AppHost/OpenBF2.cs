@@ -8,18 +8,19 @@ namespace BF2WebAdmin.AppHost;
 /// <summary>
 /// An optional OpenBF2 game server with the server extension (libserverext.so), as a container that starts only from the
 /// dashboard. Nothing is pulled or created until then. The AppHost sets up both ends of the admin channel: the
-/// container's serverext settings (adminConnect, adminServerId, adminKey, adminCertSha256) and the matching
-/// ServerSettings:GameServers entry for the server, so the game server shows up in WebAdmin without adding it.
+/// container's admin channel settings (ENV_ADMIN_CONNECT, ENV_ADMIN_SERVER_ID, ENV_ADMIN_KEY, ENV_ADMIN_CERT_SHA256, as
+/// for the production images of bf2-docker) and the matching ServerSettings:GameServers entry for the server, so the game
+/// server shows up in WebAdmin without adding it. The server has no rcon: console lines go through WebAdmin.
 /// </summary>
 public static class OpenBF2
 {
     // Must not be 16567 (reserved for the author's sessions) or the localtest's ports (openbf2-server-ext docs/system.md)
     private const int DefaultGamePort = 16575;
     private const int DefaultQueryPort = 29907;
-    private const int DefaultRconPort = 4727;
     private const int DefaultBotPort = 16708;
 
-    // The localtest's image (BF2WebAdmin-localtest openbf2/build.sh); it exists only on machines that built it
+    // The localtest's image (BF2WebAdmin-localtest openbf2/build.sh: the production 2v2 image with local builds of
+    // OpenBF2 and the module, its bot channel on 16705 of all interfaces); it exists only on machines that built it
     private const string DefaultImage = "bf2wa-localtest-openbf2:latest";
 
     // An index of its own, so it does not merge with servers configured in the server's appsecrets.json
@@ -30,14 +31,12 @@ public static class OpenBF2
         var config = builder.Configuration.GetSection("OpenBF2");
         var gamePort = config.GetValue("GamePort", DefaultGamePort);
         var queryPort = config.GetValue("QueryPort", DefaultQueryPort);
-        var rconPort = config.GetValue("RconPort", DefaultRconPort);
         var botPort = config.GetValue("BotPort", DefaultBotPort);
         var (image, tag) = SplitImage(config["Image"] ?? DefaultImage);
 
         // New for every AppHost run unless configured: the container is recreated on every run as well. The key is the
         // admin channel's HMAC key (hex), the same on both ends
         var adminKey = config["AdminKey"] ?? Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
-        var rconPassword = config["RconPassword"] ?? Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(12));
 
         // The game server pins WebAdmin's certificate, so the AppHost uses (or creates) the one the server uses and tells
         // the server where it is
@@ -61,14 +60,7 @@ public static class OpenBF2
             .WithEnvironment(prefix + "DiscordBot__NotificationChannel", "")
             .WithEnvironment(prefix + "DiscordBot__MatchResultChannel", "");
 
-        var serverExtensionSettings = string.Join(';',
-            $"adminConnect host.docker.internal:{adminChannelPort}",
-            $"adminServerId {serverId}",
-            $"adminKey {adminKey}",
-            $"adminCertSha256 {pin}",
-            "allowTeleport 1",
-            "allowRoundRestart 1");
-
+        var adminConnect = $"host.docker.internal:{adminChannelPort}";
         builder.AddContainer("openbf2", image, tag)
             // A local image: never look for it in a registry
             .WithImagePullPolicy(ImagePullPolicy.Never)
@@ -80,13 +72,18 @@ public static class OpenBF2
             .WithEnvironment("ENV_MAX_PLAYERS", "16")
             .WithEnvironment("ENV_SERVER_PORT", gamePort.ToString())
             .WithEnvironment("ENV_GAMESPY_PORT", queryPort.ToString())
-            .WithEnvironment("ENV_RCON_PASSWORD", rconPassword)
-            .WithEnvironment("SERVEREXT_CFG_EXTRA", serverExtensionSettings)
-            // BF2 announces its own ports, so the host ports are the container ports (no proxy). Rcon and the bot channel
-            // listen on fixed ports inside the image
+            // Not announced to BF2Hub (the localtest image's default too)
+            .WithEnvironment("ENV_INTERNET", "0")
+            .WithEnvironment("ENV_ADMIN_CONNECT", adminConnect)
+            .WithEnvironment("ENV_ADMIN_SERVER_ID", serverId)
+            .WithEnvironment("ENV_ADMIN_KEY", adminKey)
+            .WithEnvironment("ENV_ADMIN_CERT_SHA256", pin)
+            // Appended to serverext.cfg by the localtest image: for the bot channel's test client
+            .WithEnvironment("SERVEREXT_CFG_EXTRA", "allowTeleport 1;allowRoundRestart 1")
+            // BF2 announces its own ports, so the host ports are the container ports (no proxy). The bot channel listens
+            // on a fixed port inside the image
             .WithPortEndpoint("game", gamePort, gamePort, ProtocolType.Udp)
             .WithPortEndpoint("query", queryPort, queryPort, ProtocolType.Udp)
-            .WithPortEndpoint("rcon", rconPort, 4711, ProtocolType.Tcp)
             .WithPortEndpoint("bots", botPort, 16705, ProtocolType.Tcp);
     }
 

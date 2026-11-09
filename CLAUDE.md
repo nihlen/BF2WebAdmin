@@ -45,7 +45,7 @@ The web UI needs Node 24, pinned in its `package.json` for Volta (the machine de
 
 ```powershell
 dotnet build src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj
-dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 305 tests on 2026-11-08, 8 skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
+dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 353 tests on 2026-11-09, some skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
 dotnet publish src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj -c Release -o <dir>
 BF2WebAdmin.Server.exe --admin-pin                                    # prints the admin-channel certificate pin
 BF2WebAdmin.Server.exe --admin-cert-create [--pem]                     # prints a new certificate for the Certificate secret, and its pin
@@ -67,14 +67,16 @@ configuration). Running the server without Aspire next to the localtest needs `S
 
 The `openbf2` resource in the Aspire dashboard is a game server container (OpenBF2 with the server extension) that
 starts only when you press Start; nothing is pulled or created before. Its image is local and never pulled:
-`bf2wa-localtest-openbf2:latest`, built by the localtest's `openbf2/build.sh`; other machines set `OpenBF2:Image`.
-The AppHost connects both ends: the container's `adminConnect` (the dev admin port), `adminServerId 127.0.0.1:16575`, a
-new admin key per run and the pin of the dev certificate (`%LOCALAPPDATA%\BF2WebAdmindmin-channel.pfx`, created by
-the AppHost if missing), and the matching `ServerSettings:GameServers` entry for the server, so the game server is in
-the server list without adding it. Ports: game 16575/udp, query 29907/udp, rcon 127.0.0.1:4727, bot channel
-127.0.0.1:16708. Configuration section `OpenBF2` in the AppHost (`Image`, `GamePort`, `QueryPort`, `RconPort`,
-`BotPort`, `AdminKey`, `RconPassword`, `ServerGroup`, `ServerName`, `CertificatePath`). Do not save that server in the
-edit form: a database row wins over the configured entry and keeps a key from an earlier run.
+`bf2wa-localtest-openbf2:latest`, built by the localtest's `openbf2/build.sh` (the production 2v2 image of bf2-docker,
+without ModManager or rcon, with local builds of OpenBF2 and the module); other machines set `OpenBF2:Image`.
+The AppHost connects both ends: the container's `ENV_ADMIN_CONNECT` (the dev admin port), `ENV_ADMIN_SERVER_ID
+127.0.0.1:16575`, a new admin key per run and the pin of the dev certificate
+(`%LOCALAPPDATA%\BF2WebAdmin\admin-channel.pfx`, created by the AppHost if missing), and the matching
+`ServerSettings:GameServers` entry for the server, so the game server is in the server list without adding it. Ports:
+game 16575/udp, query 29907/udp, bot channel 127.0.0.1:16708; no rcon (console lines go through WebAdmin).
+Configuration section `OpenBF2` in the AppHost (`Image`, `GamePort`, `QueryPort`, `BotPort`, `AdminKey`,
+`ServerGroup`, `ServerName`, `CertificatePath`). Do not save that server in the edit form: a database row wins over the
+configured entry and keeps a key from an earlier run.
 
 End-to-end tests run in the localtest; see `system.md`. `setup.ps1` publishes this working tree, so uncommitted changes
 are included; it records the commit and the changed paths in its `app\source.txt`.

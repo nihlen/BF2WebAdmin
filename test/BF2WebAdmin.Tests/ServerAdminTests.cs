@@ -225,6 +225,57 @@ public class ServerAdminTests
         await _bans.Received(1).RemoveBansAsync(ServerId);
     }
 
+    [Theory]
+    [InlineData(".kick 3", true)]
+    [InlineData("!k 3", true)]
+    [InlineData("!B netsky", true)]
+    [InlineData(".banlist", true)]
+    [InlineData("!switch", false)]
+    [InlineData("!sv.serverName", false)]
+    public void AdminCommandsAreKnownWithEitherPrefix(string text, bool expected)
+    {
+        Assert.Equal(expected, ServerAdmin.IsAdminCommand(text));
+    }
+
+    [Theory]
+    [InlineData(".kick 3", true)]
+    [InlineData("!k 3", true)]
+    [InlineData("!", false)]
+    [InlineData(".", false)]
+    [InlineData("hello", false)]
+    public void ChatCommandsStartWithADotOrABang(string text, bool expected)
+    {
+        Assert.Equal(expected, BF2WebAdmin.Server.ModManager.IsCommandText(text));
+    }
+
+    [Fact]
+    public async Task ADotWorksLikeABang()
+    {
+        await _admin.RunAsync(".kick netsky spam", "alex");
+
+        await _writer.Received(1).KickAsync(_netsky, "spam");
+    }
+
+    [Theory]
+    [InlineData(typeof(BF2WebAdmin.Server.Commands.KickCommand), "kick|k", "kick netsky spam")]
+    [InlineData(typeof(BF2WebAdmin.Server.Commands.WarnCommand), "warn|w", "warn netsky spam")]
+    [InlineData(typeof(BF2WebAdmin.Server.Commands.BanCommand), "ban|b", "ban netsky spam")]
+    [InlineData(typeof(BF2WebAdmin.Server.Commands.UnbanCommand), "unban", "unban netsky spam")]
+    [InlineData(typeof(BF2WebAdmin.Server.Commands.RunMapCommand), "map|m", "map netsky spam")]
+    [InlineData(typeof(BF2WebAdmin.Server.Commands.BanListCommand), "banlist", "banlist")]
+    [InlineData(typeof(BF2WebAdmin.Server.Commands.ClearBansCommand), "clearbans", "clearbans")]
+    [InlineData(typeof(BF2WebAdmin.Server.Commands.ListPlayersCommand), "list", "list")]
+    public void TheAdminCommandsAreChatCommands(Type type, string aliases, string line)
+    {
+        var attribute = Assert.Single(type.GetCustomAttributes(typeof(BF2WebAdmin.Server.Extensions.CommandAttribute), false)
+            .Cast<BF2WebAdmin.Server.Extensions.CommandAttribute>());
+        Assert.Equal(aliases.Split('|'), attribute.Aliases);
+        var command = (BF2WebAdmin.Server.Commands.AdminChatCommand)Activator.CreateInstance(type)!;
+        command.Args = "netsky spam";
+        Assert.Equal(line, command.Line);
+        Assert.True(ServerAdmin.IsAdminCommand("!" + line));
+    }
+
     // ---------------------------------------------------------------- repositories
 
     private static ServerBan Record(string identifier, string reason) => new()

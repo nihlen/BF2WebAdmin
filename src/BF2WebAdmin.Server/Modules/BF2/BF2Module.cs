@@ -53,7 +53,13 @@ public class BF2Module : BaseModule,
     IHandleCommand<SwitchIdCommand>,
     IHandleCommand<SwitchAllCommand>,
     IHandleCommandAsync<KickCommand>,
-    IHandleCommandAsync<BanCommand>
+    IHandleCommandAsync<WarnCommand>,
+    IHandleCommandAsync<BanCommand>,
+    IHandleCommandAsync<UnbanCommand>,
+    IHandleCommandAsync<BanListCommand>,
+    IHandleCommandAsync<ClearBansCommand>,
+    IHandleCommandAsync<RunMapCommand>,
+    IHandleCommandAsync<ListPlayersCommand>
 {
     private readonly IGameServer _gameServer;
     private readonly ICountryResolver _countryResolver;
@@ -153,42 +159,32 @@ public class BF2Module : BaseModule,
         _gameServer.GameWriter.SendKill(player, destroyVehicle: true);
     }
 
-    public async ValueTask HandleAsync(KickCommand command)
-    {
-        var player = _gameServer.GetPlayerByName(command.Name);
-        if (player == null)
-        {
-            _gameServer.GameWriter.SendText("Player not found");
-            return;
-        }
+    // The admin commands, the same as "!" in the web chat box and Discord. Kicks, warnings and bans are announced in
+    // the chat by ServerAdmin; the other answers and every refusal go to the player who asked
+    public ValueTask HandleAsync(KickCommand command) => RunAdminCommandAsync(command, announced: true);
+    public ValueTask HandleAsync(WarnCommand command) => RunAdminCommandAsync(command, announced: true);
+    public ValueTask HandleAsync(BanCommand command) => RunAdminCommandAsync(command, announced: true);
+    public ValueTask HandleAsync(UnbanCommand command) => RunAdminCommandAsync(command, announced: false);
+    public ValueTask HandleAsync(BanListCommand command) => RunAdminCommandAsync(command, announced: false);
+    public ValueTask HandleAsync(ClearBansCommand command) => RunAdminCommandAsync(command, announced: false);
+    public ValueTask HandleAsync(RunMapCommand command) => RunAdminCommandAsync(command, announced: false);
+    public ValueTask HandleAsync(ListPlayersCommand command) => RunAdminCommandAsync(command, announced: false);
 
+    private async ValueTask RunAdminCommandAsync(AdminChatCommand command, bool announced)
+    {
+        var issuer = command.Message.Player;
         try
         {
-            await _admin.KickAsync(player, null, command.Message.Player.DisplayName);
+            var answer = await _admin.RunAsync(command.Line, issuer.DisplayName);
+            if (!announced)
+            {
+                foreach (var line in GetObfuscatedResponse(answer).Split('\n'))
+                    _gameServer.GameWriter.SendPrivateMessage(issuer, line);
+            }
         }
-        catch (AdminCommandException ex)
+        catch (AdminCommandException e)
         {
-            _gameServer.GameWriter.SendText($"Kick refused: {ex.Message}");
-        }
-    }
-
-    public async ValueTask HandleAsync(BanCommand command)
-    {
-        var player = _gameServer.GetPlayerByName(command.Name);
-        if (player == null)
-        {
-            _gameServer.GameWriter.SendText("Player not found");
-            return;
-        }
-
-        try
-        {
-            // By CD key when the player has one, else by address (LAN and test servers have no CD-key hashes)
-            await _admin.BanAsync(player, BanLength.Permanent, null, command.Message.Player.DisplayName);
-        }
-        catch (AdminCommandException ex)
-        {
-            _gameServer.GameWriter.SendText($"Ban refused: {ex.Message}");
+            _gameServer.GameWriter.SendPrivateMessage(issuer, ServerAdmin.Describe(e));
         }
     }
 

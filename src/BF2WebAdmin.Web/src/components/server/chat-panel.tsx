@@ -143,7 +143,7 @@ function ChatInput({ players, commands, onSend }: { players: Player[]; commands:
       )}
       <Input
         aria-label="Chat message or command"
-        placeholder='Message, ".command" or "!rcon command"  (↑ history, Tab completes)'
+        placeholder='Message, ".command", "!command" or "!console line"  (↑ history, Tab completes)'
         value={text}
         onChange={(e) => update(e.target.value)}
         onBlur={() => setDismissed(true)}

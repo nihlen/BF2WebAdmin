@@ -307,7 +307,10 @@ public class DiscordModule : BaseModule,
             {
                 _discordMessageChannel.Writer.TryWrite((message.Channel, HelpText, null));
             }
-            else if (message.Content.StartsWith("!"))
+            // Both prefixes work for both kinds: the admin commands (".kick" too) answer here, "!switch" runs the chat
+            // command, and a "!" line that is neither is a console line
+            else if (ServerAdmin.IsAdminCommand(message.Content) && (message.Content.StartsWith('!') || message.Content.StartsWith('.'))
+                     || (message.Content.StartsWith('!') && !_game.ModManager.IsCommand(WebModule.Alias(message.Content))))
             {
                 var by = (message.Author as SocketGuildUser)?.Nickname ?? message.Author.Username;
                 string response;
@@ -322,7 +325,7 @@ public class DiscordModule : BaseModule,
 
                 _discordMessageChannel.Writer.TryWrite((message.Channel, $"```{GetObfuscatedResponse(response)}```", null));
             }
-            else if (message.Content.StartsWith("."))
+            else if (message.Content.StartsWith('.') || message.Content.StartsWith('!'))
             {
                 await _game.ModManager.HandleFakeChatMessageAsync(new Message
                 {

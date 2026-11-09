@@ -29,7 +29,8 @@ public class ModManager : IModManager
     private static IReadOnlyPolicyRegistry<string>? PolicyRegistry;
     public static readonly string[] DefaultModuleNames = { nameof(BF2Module), nameof(LogModule), nameof(WebModule) };
 
-    private const string CommandPrefix = ".";
+    /// <summary>Chat commands start with "." or "!" ("!" was ModManager's in-game admin prefix, which the servers no longer run).</summary>
+    public static bool IsCommandText(string text) => text.Length > 1 && text[0] is '.' or '!';
 
     private readonly IModuleResolver _moduleResolver;
     private readonly IGameServer _gameServer;
@@ -290,7 +291,7 @@ public class ModManager : IModManager
 
         // Cleanup *DEAD*
         message.Text = Regex.Replace(message.Text, @"^\*[^\*]+\*", string.Empty, RegexOptions.Compiled);
-        if (message.Text.StartsWith(CommandPrefix))
+        if (IsCommandText(message.Text))
             return HandleCommandAsync(message);
 
         return ValueTask.CompletedTask;
@@ -308,7 +309,7 @@ public class ModManager : IModManager
     private async ValueTask HandleCommandAsync(Message message)
     {
         // TODO: rate limit low users
-        var cmd = message.Text[CommandPrefix.Length..];
+        var cmd = message.Text[1..];
         var parts = cmd.Split(' ');
         var alias = parts[0];
         var parameters = parts.Skip(1).ToArray();

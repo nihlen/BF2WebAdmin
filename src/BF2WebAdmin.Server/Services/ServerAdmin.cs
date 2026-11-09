@@ -97,6 +97,7 @@ public sealed class ServerAdmin
         !map (!m) <map> <mode> [size]           run a map of the rotation (e.g. !m dalian_2_v_2 gpm_cq 16)
         !list                                   the players (admin.listPlayers)
         !<console command>                      any other console line, e.g. !sv.serverName (!exec <line> also works)
+        "." works as well as "!" (.kick, .k); in game both run these commands except the console lines
         """;
 
     private static readonly Regex HashPattern = new("^[0-9a-f]{32}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -223,10 +224,18 @@ public sealed class ServerAdmin
         return "The ban list is empty";
     }
 
-    /// <summary>Runs a "!" command (see <see cref="Help"/>) and returns its answer.</summary>
+    private static readonly HashSet<string> Verbs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "k", "kick", "w", "warn", "b", "ban", "unban", "banlist", "clearbans", "m", "map", "list", "exec", "help",
+    };
+
+    /// <summary>Whether a "!" or "." line is one of <see cref="RunAsync"/>'s own commands (not a console line or a module's chat command).</summary>
+    public static bool IsAdminCommand(string text) => Verbs.Contains(Split(text.Trim().TrimStart('!', '.')).Head);
+
+    /// <summary>Runs a "!" command (see <see cref="Help"/>; a leading "." works too) and returns its answer.</summary>
     public async Task<string> RunAsync(string text, string by)
     {
-        var line = text.Trim().TrimStart('!').Trim();
+        var line = text.Trim().TrimStart('!', '.').Trim();
         var (verb, rest) = Split(line);
 
         switch (verb.ToLowerInvariant())

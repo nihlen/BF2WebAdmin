@@ -196,6 +196,12 @@ web chat box and Discord (`!` commands, `ServerAdmin.Help`) and the in-game `.ki
 - **Other `!` commands** are console lines (`!sv.serverName`, `!exec <line>`), `!list` (`admin.listPlayers`) and
   `!map <map> <mode> [size]` (the typed `Map`, maps of the rotation only; ModManager's `map` could run any map).
   They need `adminAllowConsole 1`.
+- **Both prefixes.** With ModManager gone, `!` no longer belongs to its in-game admin, so `.` and `!` work alike
+  everywhere: in game every chat command takes either (`!k`, `.kick`, `!switch`); kick (`k`), warn (`w`), ban (`b`),
+  unban, banlist, clearbans, map (`m`) and list are chat commands too (`Commands/KickBanCommands.cs`, kick, warn, map and
+  list at Admin, ban and unban at SuperAdmin, clearbans at God), and their answers go privately to the player who asked.
+  In the web chat box and Discord an admin command runs directly with either prefix, a module's command with either,
+  and a `!` line that is neither is a console line (web users and Discord's admin channel only, never in game).
 
 ModManager's bans were mirrored in `banlist.con` already, so they stayed in force; their names and reasons
 (`mm_bans.xml`) were copied into `server_ban` once.

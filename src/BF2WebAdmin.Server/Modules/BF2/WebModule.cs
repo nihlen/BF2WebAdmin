@@ -218,10 +218,18 @@ public class WebModule : BaseModule,
         });
     }
 
-    /// <summary>A message from the web chat box: "." runs a custom command, "!" an admin command (<see cref="ServerAdmin.RunAsync"/>, its answer is returned), anything else is said in game.</summary>
+    /// <summary>
+    /// A message from the web chat box, its answer returned. "." and "!" work alike: an admin command (<see cref="ServerAdmin.Help"/>,
+    /// such as "!k" or ".kick") runs directly, a module's chat command ("!switch", ".switch") as a God-level web user, and a "!"
+    /// line that is neither is a console line. Anything else is said in game.
+    /// </summary>
     public async ValueTask<string?> HandleAdminChatAsync(string userId, string message)
     {
-        if (message.StartsWith("."))
+        var isCommand = message.StartsWith('.') || message.StartsWith('!');
+        if (isCommand && ServerAdmin.IsAdminCommand(message))
+            return await HandleRconCommandAsync(userId, message);
+
+        if (message.StartsWith('.') || (message.StartsWith('!') && GameServer.ModManager.IsCommand(Alias(message))))
         {
             var output = await HandleCustomCommandAsync(userId, message);
             return output.Count > 0 ? string.Join('\n', output) : null;
@@ -247,13 +255,16 @@ public class WebModule : BaseModule,
         }
     }
 
+    /// <summary>The command name of a "." or "!" line.</summary>
+    public static string Alias(string message) => message.TrimStart('.', '!').Split(' ', 2)[0];
+
     /// <summary>
     /// Runs a "." chat command as a God-level web user and returns what it said in game while it ran
     /// (<see cref="GameTextCapture"/>), or "Unknown command".
     /// </summary>
     public async ValueTask<IReadOnlyList<string>> HandleCustomCommandAsync(string userId, string message)
     {
-        var alias = message.TrimStart('.').Split(' ', 2)[0];
+        var alias = Alias(message);
         if (!GameServer.ModManager.IsCommand(alias))
             return [$"Unknown command .{alias}"];
 

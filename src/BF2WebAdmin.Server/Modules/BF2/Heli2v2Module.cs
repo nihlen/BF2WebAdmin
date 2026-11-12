@@ -79,6 +79,10 @@ public class Heli2v2Module : BaseModule,
     private Player _stalker;
     private Player _stalked;
 
+    // Match and round writes, in order (a match is inserted before its rounds and its end), off the apply loop. A write keeps
+    // retrying for up to ~34 minutes (RetryPolicyLongAsync) while the game goes on
+    private readonly SerialTaskQueue _saves;
+
     public Heli2v2Module(IGameServer server, IMatchRepository matchRepository, IDelayProvider delayProvider, TimeProvider timeProvider, ITaskRunner taskRunner, IReadOnlyPolicyRegistry<string> policyRegistry, ILogger<Heli2v2Module> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _gameServer = server;
@@ -87,6 +91,7 @@ public class Heli2v2Module : BaseModule,
         _timeProvider = timeProvider;
         _taskRunner = taskRunner;
         _policyRegistry = policyRegistry;
+        _saves = new SerialTaskQueue(logger);
         ClearMatches();
         SetupRoundEvents();
     }
@@ -498,25 +503,43 @@ public class Heli2v2Module : BaseModule,
                 // Wait 2 seconds and see if it's a draw
                 await _delayProvider.DelayAsync(2000, ModuleCancellationToken);
 
-                // Check if all players are dead or outside the heli (could be "down" but not yet dead)
-                var allPlayersDead = round.Players.All(p => !p.IsAlive || p.Player.Vehicle is null);
-                var team1DeathPosition = round.Players.First(p => p.TeamHash == match.TeamHashes[0]).DeathPosition;
-                var team2DeathPosition = round.Players.First(p => p.TeamHash == match.TeamHashes[1]).DeathPosition;
-                var isHeliRam = allPlayersDead && team1DeathPosition.Distance(team2DeathPosition) < 10;
-                var allKilledByTv = round.Players.All(p => p.KillerWeapon?.ToLower().EndsWith("tv") ?? false);
-                var anyPlayersBailed = round.Players.Any(p => p.Player.Vehicle is null);
-
-                if (allPlayersDead && (allKilledByTv || isHeliRam || anyPlayersBailed))
+                // The round may be gone by now: a player left or switched team ("pad", a map change), or the match ended
+                if (!ReferenceEquals(GetActiveMatch(), match) || !match.Rounds.Contains(round) || round.RoundEnd != null)
                 {
-                    // Classic draw
-                    round.WinningTeamId = -1;
+                    Logger.LogInformation("Round {RoundId} was removed or ended before its completion; not ending it", round.Id);
+                    return;
                 }
-                else
+
+                try
                 {
-                    // One winner
-                    round.WinningTeamId = roundVictim.TeamId == 1 ? 2 : 1;
-                    round.WinningTeamHash = round.Players.First(p => p.TeamHash != roundVictim.TeamHash).TeamHash;
-                    round.LosingTeamHash = round.Players.First(p => p.TeamHash == roundVictim.TeamHash).TeamHash;
+                    // Check if all players are dead or outside the heli (could be "down" but not yet dead)
+                    var allPlayersDead = round.Players.All(p => !p.IsAlive || p.Player.Vehicle is null);
+                    var team1DeathPosition = round.Players.First(p => p.TeamHash == match.TeamHashes[0]).DeathPosition;
+                    var team2DeathPosition = round.Players.First(p => p.TeamHash == match.TeamHashes[1]).DeathPosition;
+                    // A player who bailed out alive has no death position
+                    var isHeliRam = allPlayersDead && team1DeathPosition != null && team2DeathPosition != null &&
+                                    team1DeathPosition.Distance(team2DeathPosition) < 10;
+                    var allKilledByTv = round.Players.All(p => p.KillerWeapon?.ToLower().EndsWith("tv") ?? false);
+                    var anyPlayersBailed = round.Players.Any(p => p.Player.Vehicle is null);
+
+                    if (allPlayersDead && (allKilledByTv || isHeliRam || anyPlayersBailed))
+                    {
+                        // Classic draw
+                        round.WinningTeamId = -1;
+                    }
+                    else
+                    {
+                        // One winner
+                        round.WinningTeamId = roundVictim.TeamId == 1 ? 2 : 1;
+                        round.WinningTeamHash = round.Players.First(p => p.TeamHash != roundVictim.TeamHash).TeamHash;
+                        round.LosingTeamHash = round.Players.First(p => p.TeamHash == roundVictim.TeamHash).TeamHash;
+                    }
+                }
+                catch
+                {
+                    // Let the next kill try again instead of leaving the round pending for good
+                    round.IsPendingCompletion = false;
+                    throw;
                 }
 
                 round.RoundEnd = _timeProvider.GetUtcNow().UtcDateTime;
@@ -547,6 +570,8 @@ public class Heli2v2Module : BaseModule,
         }
 
         _gameServer.GameWriter.SendText($"Switching in {command.Rounds} rounds");
+        // Count from now, not from the rounds already played on this map
+        _switchCounter = 0;
         _switchRounds = command.Rounds;
     }
 
@@ -1450,12 +1475,15 @@ public class Heli2v2Module : BaseModule,
 
         Logger.LogInformation("Saving new match {MatchId}", e.Match.Id);
 
-        await _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
-            await _matchRepository.InsertMatchAsync(ToMatchEntity(e.Match))
-        );
+        var match = ToMatchEntity(e.Match);
+        QueueSave($"Save new match {e.Match.Id}", () => _matchRepository.InsertMatchAsync(match));
         await SendDiscordMessageAsync("New 2v2 match started");
         _gameServer.GameWriter.SendText("New 2v2 match started");
     }
+
+    /// <summary>A database write with the long retry, after the writes queued before it (see <see cref="_saves"/>).</summary>
+    private void QueueSave(string description, Func<Task> save) =>
+        _saves.Enqueue(description, () => _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(save));
 
     public async ValueTask HandleAsync(MatchEndEvent e)
     {
@@ -1464,9 +1492,8 @@ public class Heli2v2Module : BaseModule,
 
         Logger.LogInformation("Saving match end results for {MatchId}", e.Match.Id);
 
-        await _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
-            await _matchRepository.UpdateMatchAsync(ToMatchEntity(e.Match))
-        );
+        var match = ToMatchEntity(e.Match);
+        QueueSave($"Save match end {e.Match.Id}", () => _matchRepository.UpdateMatchAsync(match));
 
         var duration = e.Match.MatchEnd!.Value - e.Match.MatchStart!.Value;
         _gameServer.GameWriter.SendText($"2v2 match ended after {duration.Humanize()}.");
@@ -1591,14 +1618,9 @@ public class Heli2v2Module : BaseModule,
             Logger.LogError(ex, "Error at end of round event");
         }
 
-        _taskRunner.RunBackgroundTask("Save match round", async () =>
-        {
-            Logger.LogInformation("Saving round {RoundId} on match {MatchId}", e.Round.Id, e.Round.MatchId);
-
-            await _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(async () =>
-                await _matchRepository.InsertRoundAsync(ToRoundEntity(e.Round))
-            );
-        }, ModuleCancellationToken);
+        Logger.LogInformation("Saving round {RoundId} on match {MatchId}", e.Round.Id, e.Round.MatchId);
+        var round = ToRoundEntity(e.Round);
+        QueueSave($"Save round {e.Round.Id} of match {e.Round.MatchId}", () => _matchRepository.InsertRoundAsync(round));
 
         // Switch command
         var shouldSwitchTeams = _switchRounds > 0 && ++_switchCounter >= _switchRounds;

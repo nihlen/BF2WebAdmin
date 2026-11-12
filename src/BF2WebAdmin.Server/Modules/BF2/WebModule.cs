@@ -1,4 +1,4 @@
-﻿using BF2WebAdmin.Common.Communication;
+﻿using BF2WebAdmin.Server.Communication;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
@@ -7,8 +7,8 @@ using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Services;
-using BF2WebAdmin.Shared.Communication.DTOs;
-using BF2WebAdmin.Shared.Communication.Events;
+using BF2WebAdmin.Server.Communication.DTOs;
+using BF2WebAdmin.Server.Communication.Events;
 using Microsoft.AspNetCore.SignalR;
 
 namespace BF2WebAdmin.Server.Modules.BF2;
@@ -60,7 +60,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(PlayerPositionEvent e)
     {
-        await ClientsGroup.PlayerPositionEvent(new Shared.Communication.Events.PlayerPositionEvent
+        await ClientsGroup.PlayerPositionEvent(new Communication.Events.PlayerPositionEvent
         {
             PlayerId = e.Player.Index,
             Position = e.Position.ToDto(),
@@ -83,7 +83,7 @@ public class WebModule : BaseModule,
     {
         await ClientsAll.ServerUpdateEvent(_gameServer.ToServerUpdate(e.TimeStamp));
 
-        await ClientsGroup.PlayerJoinEvent(new Shared.Communication.Events.PlayerJoinEvent
+        await ClientsGroup.PlayerJoinEvent(new Communication.Events.PlayerJoinEvent
         {
             Player = e.Player.ToDto(),
             TimeStamp = e.TimeStamp
@@ -94,7 +94,7 @@ public class WebModule : BaseModule,
     {
         await ClientsAll.ServerUpdateEvent(_gameServer.ToServerUpdate(e.TimeStamp));
 
-        await ClientsGroup.PlayerLeftEvent(new Shared.Communication.Events.PlayerLeftEvent
+        await ClientsGroup.PlayerLeftEvent(new Communication.Events.PlayerLeftEvent
         {
             PlayerId = e.Player.Index,
             TimeStamp = e.TimeStamp
@@ -103,7 +103,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(PlayerKillEvent e)
     {
-        await ClientsGroup.PlayerKillEvent(new Shared.Communication.Events.PlayerKillEvent
+        await ClientsGroup.PlayerKillEvent(new Communication.Events.PlayerKillEvent
         {
             AttackerId = e.Attacker.Index,
             AttackerPosition = e.AttackerPosition.ToDto(),
@@ -116,7 +116,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(PlayerDeathEvent e)
     {
-        await ClientsGroup.PlayerDeathEvent(new Shared.Communication.Events.PlayerDeathEvent
+        await ClientsGroup.PlayerDeathEvent(new Communication.Events.PlayerDeathEvent
         {
             PlayerId = e.Player.Index,
             Position = e.Position.ToDto(),
@@ -127,7 +127,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(PlayerSpawnEvent e)
     {
-        await ClientsGroup.PlayerSpawnEvent(new Shared.Communication.Events.PlayerSpawnEvent
+        await ClientsGroup.PlayerSpawnEvent(new Communication.Events.PlayerSpawnEvent
         {
             PlayerId = e.Player.Index,
             Position = e.Position.ToDto(),
@@ -138,7 +138,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(PlayerTeamEvent e)
     {
-        await ClientsGroup.PlayerTeamEvent(new Shared.Communication.Events.PlayerTeamEvent
+        await ClientsGroup.PlayerTeamEvent(new Communication.Events.PlayerTeamEvent
         {
             PlayerId = e.Player.Index,
             TeamId = e.Team.Id,
@@ -148,7 +148,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(PlayerScoreEvent e)
     {
-        await ClientsGroup.PlayerScoreEvent(new Shared.Communication.Events.PlayerScoreEvent
+        await ClientsGroup.PlayerScoreEvent(new Communication.Events.PlayerScoreEvent
         {
             PlayerId = e.Player.Index,
             TeamScore = e.TeamScore,
@@ -161,7 +161,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(PlayerVehicleEvent e)
     {
-        await ClientsGroup.PlayerVehicleEvent(new Shared.Communication.Events.PlayerVehicleEvent
+        await ClientsGroup.PlayerVehicleEvent(new Communication.Events.PlayerVehicleEvent
         {
             PlayerId = e.Player.Index,
             Vehicle = e.Vehicle.ToDto(),
@@ -183,7 +183,7 @@ public class WebModule : BaseModule,
 
     public async ValueTask HandleAsync(ProjectilePositionEvent e)
     {
-        await ClientsGroup.ProjectilePositionEvent(new Shared.Communication.Events.ProjectilePositionEvent
+        await ClientsGroup.ProjectilePositionEvent(new Communication.Events.ProjectilePositionEvent
         {
             ProjectileId = e.Projectile.Id,
             Template = e.Projectile.Template,

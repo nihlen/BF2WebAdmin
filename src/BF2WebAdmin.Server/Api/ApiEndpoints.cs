@@ -13,8 +13,8 @@ using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Modules.BF2;
 using BF2WebAdmin.Server.Services;
-using BF2WebAdmin.Shared;
-using BF2WebAdmin.Shared.Communication.DTOs;
+using BF2WebAdmin.Server.Communication;
+using BF2WebAdmin.Server.Communication.DTOs;
 using Mapster;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -217,7 +217,7 @@ public static class ApiEndpoints
     private static async Task<NoContent> RemoveServerAsync(string serverId, IGameServerRegistry registry, IHubContext<ServerHub, IServerHubClient> hub)
     {
         await registry.RemoveServerAsync(serverId);
-        await hub.Clients.All.ServerRemoveEvent(new Shared.Communication.Events.ServerRemoveEvent { ServerId = serverId });
+        await hub.Clients.All.ServerRemoveEvent(new Communication.Events.ServerRemoveEvent { ServerId = serverId });
         return TypedResults.NoContent();
     }
 

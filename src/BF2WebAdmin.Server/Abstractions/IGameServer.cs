@@ -1,7 +1,7 @@
 ﻿using System.Net;
 using BF2WebAdmin.Common.Entities.Game;
-using BF2WebAdmin.Shared;
-using BF2WebAdmin.Shared.Communication.DTOs;
+using BF2WebAdmin.Server.Communication;
+using BF2WebAdmin.Server.Communication.DTOs;
 
 namespace BF2WebAdmin.Server.Abstractions;
 

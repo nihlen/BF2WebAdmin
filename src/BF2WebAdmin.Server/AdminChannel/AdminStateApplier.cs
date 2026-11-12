@@ -2,7 +2,7 @@ using System.Net;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Entities;
-using BF2WebAdmin.Shared;
+using BF2WebAdmin.Server.Communication;
 
 namespace BF2WebAdmin.Server.AdminChannel;
 

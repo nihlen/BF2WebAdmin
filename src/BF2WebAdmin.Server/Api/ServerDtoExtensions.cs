@@ -1,14 +1,13 @@
-using BF2WebAdmin.Common.Communication;
+using BF2WebAdmin.Server.Communication;
 using BF2WebAdmin.Server.Abstractions;
-using BF2WebAdmin.Shared;
-using BF2WebAdmin.Shared.Communication.DTOs;
+using BF2WebAdmin.Server.Communication.DTOs;
 
 namespace BF2WebAdmin.Server.Api;
 
 /// <summary>The server DTOs sent by the web API and the server hub.</summary>
 public static class ServerDtoExtensions
 {
-    public static Shared.Communication.Events.ServerUpdateEvent ToServerUpdate(this IGameServer server, DateTimeOffset? timeStamp = null) => new()
+    public static Communication.Events.ServerUpdateEvent ToServerUpdate(this IGameServer server, DateTimeOffset? timeStamp = null) => new()
     {
         Id = server.Id,
         Name = server.Name,
@@ -25,7 +24,7 @@ public static class ServerDtoExtensions
     };
 
     /// <summary>A configured server that has not connected.</summary>
-    public static Shared.Communication.Events.ServerUpdateEvent ToServerUpdate(this ServerInfo serverInfo) => new()
+    public static Communication.Events.ServerUpdateEvent ToServerUpdate(this ServerInfo serverInfo) => new()
     {
         Id = serverInfo.ServerId,
         Name = serverInfo.ServerId,

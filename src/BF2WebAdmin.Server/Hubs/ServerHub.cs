@@ -1,4 +1,4 @@
-﻿using Events = BF2WebAdmin.Shared.Communication.Events;
+﻿using Events = BF2WebAdmin.Server.Communication.Events;
 using BF2WebAdmin.Server.AdminChannel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;

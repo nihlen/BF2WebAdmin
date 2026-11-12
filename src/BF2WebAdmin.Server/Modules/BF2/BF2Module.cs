@@ -10,7 +10,7 @@ using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Logging;
 using BF2WebAdmin.Server.Services;
-using BF2WebAdmin.Shared;
+using BF2WebAdmin.Server.Communication;
 
 namespace BF2WebAdmin.Server.Modules.BF2;
 

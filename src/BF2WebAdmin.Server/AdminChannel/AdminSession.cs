@@ -79,8 +79,25 @@ public sealed class AdminSession
         return id == 0 ? (uint)Interlocked.Increment(ref _nextRequestId) : id;
     }
 
+    /// <summary>Completes when <see cref="RunAsync"/> has ended: the loops have stopped and the close handler has run.</summary>
+    public Task Closed => _closed.Task;
+
+    private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     /// <summary>Runs the link until it closes. Never throws.</summary>
     public async Task RunAsync()
+    {
+        try
+        {
+            await RunLoopsAsync();
+        }
+        finally
+        {
+            _closed.TrySetResult();
+        }
+    }
+
+    private async Task RunLoopsAsync()
     {
         var token = _cts.Token;
         var writeTask = Task.Run(() => WriteLoopAsync(token), CancellationToken.None);
@@ -362,6 +379,11 @@ public sealed class AdminSession
         {
             await foreach (var queued in _inbound.Reader.ReadAllAsync(token))
             {
+                // ReadAllAsync drains what is queued without looking at the token; a closed link applies nothing more
+                // (a new link for the server may already be running)
+                if (token.IsCancellationRequested)
+                    break;
+
                 if (queued == null)
                 {
                     for (var i = 0; i < _latestStreams.Length; i++)

@@ -78,19 +78,37 @@ public class GameServer : IGameServer
         Name = serverInfo.ServerId;
         _globalServices = globalServices;
         _logger = _globalServices.GetRequiredService<ILogger<GameServer>>();
-        _cancellationToken = cancellationToken;
-        _gameWriter = new AdminGameWriter(this, _globalServices.GetRequiredService<ILogger<AdminGameWriter>>());
+        _lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _cancellationToken = _lifetime.Token;
+        _gameWriter = new AdminGameWriter(this, _globalServices.GetRequiredService<ILogger<AdminGameWriter>>(),
+            _globalServices.GetService<IConfiguration>()?["ServerSettings:ChatPrefix"] ?? AdminGameWriter.DefaultChatPrefix);
         Applier = new AdminStateApplier(this, _globalServices.GetRequiredService<ILogger<AdminStateApplier>>(), _globalServices.GetService<IJoinHistoryWriter>());
 
-        var viewers = _globalServices.GetService<ViewerRegistry>();
-        Viewer = new ViewerFeed(this, viewers, _globalServices.GetService<IHubContext<ServerHub, IServerHubClient>>(), _logger, cancellationToken,
+        _viewers = _globalServices.GetService<ViewerRegistry>();
+        Viewer = new ViewerFeed(this, _viewers, _globalServices.GetService<IHubContext<ServerHub, IServerHubClient>>(), _logger, _cancellationToken,
             _globalServices.GetService<MissileArchive>());
-        if (viewers != null)
-            viewers.ActiveChanged += (serverId, _) =>
-            {
-                if (serverId == Id)
-                    Applier.Resubscribe();
-            };
+        if (_viewers != null)
+            _viewers.ActiveChanged += OnViewersChanged;
+    }
+
+    private readonly CancellationTokenSource _lifetime;
+    private readonly ViewerRegistry? _viewers;
+
+    private void OnViewersChanged(string serverId, bool active)
+    {
+        if (serverId == Id)
+            Applier.Resubscribe();
+    }
+
+    /// <summary>
+    /// For a server the registry has dropped (its settings changed or it was removed; a reconnect makes a new one): stops
+    /// its viewer feed and its handler on the viewer registry, which otherwise kept it alive.
+    /// </summary>
+    public void Retire()
+    {
+        if (_viewers != null)
+            _viewers.ActiveChanged -= OnViewersChanged;
+        _lifetime.Cancel();
     }
 
     /// <summary>The 3D viewer's frames and the last traced missiles.</summary>

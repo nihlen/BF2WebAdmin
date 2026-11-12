@@ -189,6 +189,7 @@ public class GameServerRegistry : IGameServerRegistry
             server.Session?.Close($"server settings {type}");
             if (server.ModManager != null)
                 await server.ModManager.DisposeAsync();
+            server.Retire();
         }
     }
 }

@@ -24,7 +24,7 @@ using Polly.Registry;
 namespace BF2WebAdmin.Server;
 
 // TODO: Move commands into new module folders? (like Features/)
-public class ModManager : IModManager
+public partial class ModManager : IModManager
 {
     private static IReadOnlyPolicyRegistry<string>? PolicyRegistry;
     public static readonly string[] DefaultModuleNames = { nameof(BF2Module), nameof(LogModule), nameof(WebModule) };
@@ -39,6 +39,7 @@ public class ModManager : IModManager
 
     private IConfiguration Configuration { get; set; }
     private IServiceProvider _services;
+    private int _disposed;
     private readonly ILogger<ModManager> _logger;
 
     public ILookup<string, ServerPlayerAuth> AuthPlayers { get; private set; }
@@ -99,7 +100,7 @@ public class ModManager : IModManager
         var retryPolicyLongAsync = Policy
             .Handle<SqlException>()
             .WaitAndRetryAsync(
-                retryCount: 10, // ~17 min
+                retryCount: 10, // 2 + 4 + ... + 1024 s, ~34 min
                 sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
                 onRetry: (exception, retryAttempt, timespan) => logger.LogWarning("Failed attempt #{Attempt}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", retryAttempt, timespan, exception.Message, exception.StackTrace)
             );
@@ -183,8 +184,12 @@ public class ModManager : IModManager
         serviceCollection.AddSingleton<ICountryResolver>(c => new CountryResolver(geoipConfig["DatabasePath"]));
         serviceCollection.AddSingleton<IReadOnlyPolicyRegistry<string>>(PolicyRegistry);
         serviceCollection.AddSingleton<IMediator>(c => Mediator);
-        serviceCollection.AddSingleton<IHubContext<ServerHub, IServerHubClient>>(sp => _globalServices.GetRequiredService<IHubContext<ServerHub, IServerHubClient>>());
-        serviceCollection.AddSingleton<MassTransit.IBus>(sp => _globalServices.GetService<MassTransit.IBus>());
+        // The host's services as instances: the container disposes what its factories create, never an instance it was given
+        serviceCollection.AddSingleton(_globalServices.GetRequiredService<IHubContext<ServerHub, IServerHubClient>>());
+        if (_globalServices.GetService<MassTransit.IBus>() is { } bus)
+            serviceCollection.AddSingleton(bus);
+        else
+            serviceCollection.AddSingleton<MassTransit.IBus>(_ => null!);
         serviceCollection.AddSingleton<IGameStreamService, RabbitMqGameStreamService>();
         serviceCollection.AddSingleton<ILogger>(_ => _logger);
         serviceCollection.AddSingleton<ITaskRunner, TaskRunner>();
@@ -270,21 +275,26 @@ public class ModManager : IModManager
         AuthPlayers = authPlayers.ToLookup(p => p.PlayerHash);
     }
 
-    public async Task HandleFakeChatMessageAsync(Message message)
+    public async Task HandleFakeChatMessageAsync(Message message, TimeSpan? wait = null)
     {
-        await HandleChatMessageAsync(message);
+        var handled = RunChatCommand(message);
+        if (wait is not { } timeout)
+            return;
+
+        try
+        {
+            await handled.WaitAsync(timeout);
+        }
+        catch (TimeoutException)
+        {
+            // A long command (a freeze, a playback) goes on; the caller gets what it said so far
+        }
     }
 
     public ValueTask HandleChatMessageAsync(Message message)
     {
-        if (message.Type != MessageType.Player)
-            return ValueTask.CompletedTask;
-
-        // Cleanup *DEAD*
-        message.Text = Regex.Replace(message.Text, @"^\*[^\*]+\*", string.Empty, RegexOptions.Compiled);
-        if (IsCommandText(message.Text))
-            return HandleCommandAsync(message);
-
+        // The handlers run in the background: the admin channel's apply loop does not wait for a command
+        _ = RunChatCommand(message);
         return ValueTask.CompletedTask;
     }
 
@@ -295,72 +305,95 @@ public class ModManager : IModManager
 
     public IReadOnlyList<CommandInfo> GetCommands() => _moduleResolver.GetCommands();
 
-    public bool IsCommand(string alias) => _moduleResolver.CommandParsers.ContainsKey(alias);
+    public bool IsCommand(string alias) => LoadedParsers(alias.ToLowerInvariant()).Count > 0;
 
-    private async ValueTask HandleCommandAsync(Message message)
+    /// <summary>The parsers of an alias whose command a loaded module handles.</summary>
+    private IReadOnlyList<CommandParser> LoadedParsers(string alias) =>
+        _moduleResolver.CommandParsers.TryGetValue(alias, out var parsers)
+            ? parsers.Where(p => _moduleResolver.IsHandled(p.CommandType)).ToList()
+            : [];
+
+    /// <summary>
+    /// Runs a chat line that is a command: one command (see <see cref="ModuleResolver.ParseCommand"/>), if the player's
+    /// auth level allows it. Returns a task that completes when its handlers have; it never fails.
+    /// </summary>
+    private Task RunChatCommand(Message message)
     {
+        if (message.Type != MessageType.Player || message.Player == null)
+            return Task.CompletedTask;
+
+        // Cleanup *DEAD*
+        message.Text = DeadPrefix().Replace(message.Text, string.Empty);
+        if (!IsCommandText(message.Text))
+            return Task.CompletedTask;
+
         // TODO: rate limit low users
-        var cmd = message.Text[1..];
-        var parts = cmd.Split(' ');
-        var alias = parts[0];
-        var parameters = parts.Skip(1).ToArray();
+        var parts = message.Text[1..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return Task.CompletedTask;
 
-        // Unknown command
-        if (!_moduleResolver.CommandParsers.ContainsKey(alias))
-            return;
+        var alias = parts[0].ToLowerInvariant();
+        var parameters = parts[1..];
+        var parsers = LoadedParsers(alias);
+        if (parsers.Count == 0)
+            return Task.CompletedTask;
 
-        // Try to parse the message into different commands
-        var insufficientPermissionsCount = 0;
-        var handledCount = 0;
-        var parsers = _moduleResolver.CommandParsers[alias];
-        foreach (var parser in parsers)
+        var playerAuthLevel = AuthPlayers[message.Player.Hash].FirstOrDefault()?.AuthLevel ?? (int)Auth.All;
+        var command = ModuleResolver.ParseCommand(parsers, parameters, out var parser);
+        if (command == null || parser == null)
         {
-            try
-            {
-                var command = parser(parameters);
-                var commandType = command.GetType();
-
-                // Check if player is authorized for this command
-                var playerAuthLevel = AuthPlayers[message.Player.Hash].FirstOrDefault()?.AuthLevel ?? (int)Auth.All;
-                var requiredAuthLevel = (int)_moduleResolver.AuthLevels[commandType];
-                if (playerAuthLevel < requiredAuthLevel)
-                {
-                    insufficientPermissionsCount++;
-                    continue;
-                }
-
-                // TODO: move the below part to Mediator?
-                // Append the message if it's a BaseCommand
-                if (command is BaseCommand baseCommand)
-                    baseCommand.Message = message;
-                else
-                    _logger.LogWarning("{CommandName} is not a {BaseCommand}", commandType.Name, nameof(BaseCommand));
-
-                await Mediator.HandleAsync(command);
-            }
-            catch (CommandArgumentCountException ex)
-            {
-                _logger.LogTrace("Wrong argument count: {Message}", ex.Message);
-            }
-            catch (FormatException ex)
-            {
-                _logger.LogError(ex, "{Parser} Format exception: {ExceptionMessage}", parser, ex.Message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "{Parser} Command handle exception: {ExceptionMessage}", parser, ex.Message);
-            }
+            // Tell the player how the command goes, if it may use it
+            var usage = parsers.Where(p => playerAuthLevel >= (int)p.Attribute.AuthLevel).Select(p => p.Usage(alias)).Distinct().ToList();
+            if (usage.Count > 0)
+                _gameServer.GameWriter.SendPrivateMessage(message.Player, "Usage: " + string.Join(" or ", usage));
+            return Task.CompletedTask;
         }
 
-        if (insufficientPermissionsCount > 0 && handledCount == 0)
+        if (playerAuthLevel < (int)parser.Attribute.AuthLevel)
         {
-            _gameServer.GameWriter.SendText("Insufficient permissions");
+            _gameServer.GameWriter.SendPrivateMessage(message.Player, "Insufficient permissions");
+            return Task.CompletedTask;
+        }
+
+        if (command is BaseCommand baseCommand)
+            baseCommand.Message = message;
+        else
+            _logger.LogWarning("{CommandName} is not a {BaseCommand}", command.GetType().Name, nameof(BaseCommand));
+
+        try
+        {
+            return Mediator.HandleAsync(command);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Command {Command} failed: {ExceptionMessage}", command.GetType().Name, ex.Message);
+            return Task.CompletedTask;
         }
     }
 
-    public void Dispose()
+    [GeneratedRegex(@"^\*[^\*]+\*")]
+    private static partial Regex DeadPrefix();
+
+    /// <summary>
+    /// Cancels the modules' token and disposes the modules' service provider, so modules that hold connections, files or
+    /// background loops (Discord, the log files) release them. The services forwarded from the host are not disposed.
+    /// </summary>
+    public async ValueTask DisposeAsync()
     {
-        _cancellationTokenSource.Cancel();
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            return;
+
+        await _cancellationTokenSource.CancelAsync();
+        try
+        {
+            if (_services is IAsyncDisposable services)
+                await services.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Disposing the modules of {ServerId} failed", _gameServer.Id);
+        }
+
         _cancellationTokenSource.Dispose();
         GC.SuppressFinalize(this);
     }

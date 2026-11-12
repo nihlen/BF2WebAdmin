@@ -19,7 +19,7 @@ using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;
 namespace BF2WebAdmin.Server.Modules.BF2;
 
 // TODO: .need <players> command?
-public class DiscordModule : BaseModule,
+public class DiscordModule : BaseModule, IAsyncDisposable,
     IHandleEventAsync<SocketStateChangedEvent>,
     IHandleEventAsync<ChatMessageEvent>,
     IHandleEventAsync<MapChangedEvent>,
@@ -216,21 +216,52 @@ public class DiscordModule : BaseModule,
         if (string.IsNullOrWhiteSpace(server.ServerInfo.DiscordBot?.Token))
             return;
         
+        // Written from the apply loop, command handlers and Discord's own threads; the sender must not run on the writer's thread
         _discordMessageChannel = Channel.CreateUnbounded<(ISocketMessageChannel Channel, string? Text, Embed? Embed)>(new UnboundedChannelOptions
         {
-            AllowSynchronousContinuations = true,
+            AllowSynchronousContinuations = false,
             SingleReader = true,
-            SingleWriter = true
+            SingleWriter = false
         });
 
         if (_discordMessageChannel.Reader.CanCount)
         {
+            // The meter is static: the gauge holds the module weakly and reports nothing once it is disposed
             var tagList = new TagList { { "serverid", GameServer.Id } };
-            _ = Telemetry.Meter.CreateObservableGauge("bf2wa.discord.queue.count", () => new Measurement<int>(_discordMessageChannel.Reader.Count, tagList), description: "Length of the discord channel queue");
+            var module = new WeakReference<DiscordModule>(this);
+            _ = Telemetry.Meter.CreateObservableGauge("bf2wa.discord.queue.count",
+                () => module.TryGetTarget(out var m) && !m._disposed ? [new Measurement<int>(m._discordMessageChannel.Reader.Count, tagList)] : Array.Empty<Measurement<int>>(),
+                description: "Length of the discord channel queue");
         }
 
         // TODO: Start async in an event callback - proper?
         _taskRunner.RunBackgroundTask("Discord Bot", StartBotAsync, ModuleCancellationToken);
+    }
+
+    private volatile bool _disposed;
+
+    /// <summary>Stops and disposes the bot, so a reloaded module (or a removed server) leaves no second bot running its commands.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        _discordMessageChannel?.Writer.TryComplete();
+        if (_discord is not { } discord)
+            return;
+
+        try
+        {
+            await discord.StopAsync();
+            await discord.LogoutAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Stopping the Discord bot of {ServerId} failed", _game.Id);
+        }
+
+        discord.Dispose();
     }
 
     private async Task StartBotAsync()
@@ -241,6 +272,13 @@ public class DiscordModule : BaseModule,
 
         await _discord.LoginAsync(TokenType.Bot, Config.Token);
         await _discord.StartAsync();
+
+        if (_disposed)
+        {
+            // Disposed while logging in
+            await _discord.StopAsync();
+            return;
+        }
 
         // Send all queued Discord messages
         await foreach (var (channel, text, embed) in _discordMessageChannel.Reader.ReadAllAsync(ModuleCancellationToken))
@@ -409,6 +447,10 @@ public class DiscordModule : BaseModule,
 
     private async Task UpdateActivityNameAsync()
     {
+        // No bot without a token
+        if (_discord == null)
+            return;
+
         _taskRunner.RunBackgroundTask("Update Discord bot activity name", async () =>
         {
             if (_game.SocketState == SocketState.Disconnected)

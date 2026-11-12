@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using BF2WebAdmin.Common;
@@ -11,7 +12,7 @@ namespace BF2WebAdmin.Server;
 public class ModuleResolver : IModuleResolver
 {
     private readonly ILogger<ModuleResolver> _logger;
-    private static readonly Assembly CurrentAssembly = Assembly.GetEntryAssembly();
+    private static readonly Assembly CurrentAssembly = typeof(ModuleResolver).Assembly;
 
     private static readonly StringBuilder CommandDocumentation;
 
@@ -22,23 +23,26 @@ public class ModuleResolver : IModuleResolver
     private static IEnumerable<Type> _commandTypes;
     private static IEnumerable<Type> _eventTypes;
 
-    // Parses different command aliases and parameters to their respective ICommand(s)
-    public IDictionary<string, IList<Func<string[], ICommand>>> CommandParsers => _commandParsers;
+    // The handler interfaces of every type in the assembly: (command or event type, module type)
+    private static (Type CommandType, Type ModuleType)[] _commandModules;
+    private static (Type EventType, Type ModuleType)[] _eventModules;
 
-    private static IDictionary<string, IList<Func<string[], ICommand>>> _commandParsers =
-        new Dictionary<string, IList<Func<string[], ICommand>>>();
+    // The parsers of each alias: a chat line's alias and arguments to an ICommand
+    public IReadOnlyDictionary<string, IReadOnlyList<CommandParser>> CommandParsers => _commandParsers;
+    private static readonly Dictionary<string, IReadOnlyList<CommandParser>> _commandParsers = new();
 
     // Get auth level required for a command
     public IDictionary<Type, Auth> AuthLevels => _authLevels;
     private static IDictionary<Type, Auth> _authLevels = new Dictionary<Type, Auth>();
 
-    // Invokes the handler module instance(s) with a command of the given Type
-    public IDictionary<Type, IList<Func<ICommand, ValueTask>>> CommandHandlers => GetCommandHandlers();
-    private IDictionary<Type, IList<Func<ICommand, ValueTask>>>? _commandHandlers;
+    // Invokes the handler module instance(s) with a command of the given Type. Built on first use, after the modules are created
+    public IDictionary<Type, IList<Func<ICommand, ValueTask>>> CommandHandlers => GetHandlers().Commands;
 
     // Invokes the handler module instance(s) with an event of the given Type
-    public IDictionary<Type, IList<Func<IEvent, ValueTask>>> EventHandlers => GetEventHandlers();
-    private IDictionary<Type, IList<Func<IEvent, ValueTask>>>? _eventHandlers;
+    public IDictionary<Type, IList<Func<IEvent, ValueTask>>> EventHandlers => GetHandlers().Events;
+
+    private readonly object _handlersLock = new();
+    private (IDictionary<Type, IList<Func<ICommand, ValueTask>>> Commands, IDictionary<Type, IList<Func<IEvent, ValueTask>>> Events)? _handlers;
 
     // Module instances
     public IDictionary<Type, IModule> Modules { get; } = new Dictionary<Type, IModule>();
@@ -53,12 +57,15 @@ public class ModuleResolver : IModuleResolver
             .Select(c => (c.CommandType, c.Attribute, Modules: _commandModuleTypes[c.CommandType].Where(Modules.ContainsKey).Select(t => t.Name).ToArray()))
             .Where(c => c.Modules.Length > 0)
             .Select(c => new CommandInfo(
-                c.Attribute.Aliases.Where(a => a.Length > 0).ToArray(),
+                c.Attribute.Aliases,
                 c.Attribute.Parameters ?? [],
                 c.Attribute.AuthLevel,
                 c.Modules))
             .Where(c => c.Aliases.Count > 0)
             .ToList();
+
+    /// <summary>Whether a loaded module handles commands of this type.</summary>
+    public bool IsHandled(Type commandType) => _commandModuleTypes[commandType].Any(Modules.ContainsKey);
 
     static ModuleResolver()
     {
@@ -81,198 +88,182 @@ public class ModuleResolver : IModuleResolver
         _logger = logger;
     }
 
-    private IDictionary<Type, IList<Func<ICommand, ValueTask>>> GetCommandHandlers()
+    /// <summary>
+    /// The command that a chat line's arguments stand for among the parsers of its alias, or null when none fits. Only one
+    /// command runs per line: a parser whose parameter count matches the arguments beats one whose last parameter takes the
+    /// rest of the line, then typed parameters beat text (".sw 3" is SwitchLater, ".sw bob" is Switch), then more parameters.
+    /// </summary>
+    public static ICommand? ParseCommand(IEnumerable<CommandParser> parsers, string[] args, out CommandParser? matched)
     {
-        if (_commandHandlers == null)
+        var candidates = parsers
+            .Select(p => (Parser: p, Fit: p.Fit(args.Length)))
+            .Where(c => c.Fit > 0)
+            .OrderByDescending(c => c.Fit)
+            .ThenByDescending(c => c.Parser.TypedParameterCount)
+            .ThenByDescending(c => c.Parser.ParameterCount);
+
+        foreach (var (parser, _) in candidates)
         {
-            _commandHandlers = new Dictionary<Type, IList<Func<ICommand, ValueTask>>>();
-            CreateCommandHandlers();
-        }
-
-        return _commandHandlers;
-    }
-
-    private void CreateCommandHandlers()
-    {
-        foreach (var commandType in _commandTypes)
-        {
-            var create = CreateCommandHandler<ICommand>;
-            var method = create.GetMethodInfo().GetGenericMethodDefinition();
-            var generic = method.MakeGenericMethod(commandType);
-            generic.Invoke(this, null);
-        }
-    }
-
-    private void CreateCommandHandler<TCommand>() where TCommand : ICommand
-    {
-        // TODO: Search in IModules instead of whole assembly?
-        var assemblyCommandHandlers = GetCommandHandlers(CurrentAssembly);
-
-        var handlerCount = 0;
-        foreach (var commandHandler in assemblyCommandHandlers)
-        {
-            var commandType = commandHandler.CommandType;
-            if (!CommandHandlers.ContainsKey(commandType))
-                CommandHandlers.Add(commandType, new List<Func<ICommand, ValueTask>>());
-
-            // Has an instance of this module been created?
-            if (!Modules.ContainsKey(commandHandler.ModuleType))
+            try
             {
-                _logger.LogTrace("No instance of {ModuleType} exists", commandHandler.ModuleType);
+                var command = parser.Parse(args);
+                matched = parser;
+                return command;
+            }
+            catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException or CommandArgumentCountException)
+            {
+                // The arguments don't convert to this command's parameters; try the next one
+            }
+        }
+
+        matched = null;
+        return null;
+    }
+
+    private (IDictionary<Type, IList<Func<ICommand, ValueTask>>> Commands, IDictionary<Type, IList<Func<IEvent, ValueTask>>> Events) GetHandlers()
+    {
+        if (_handlers is { } handlers)
+            return handlers;
+
+        lock (_handlersLock)
+        {
+            if (_handlers is { } created)
+                return created;
+
+            var commands = new Dictionary<Type, IList<Func<ICommand, ValueTask>>>();
+            foreach (var commandType in _commandTypes)
+            {
+                var create = CreateCommandHandlers<ICommand>;
+                create.GetMethodInfo().GetGenericMethodDefinition().MakeGenericMethod(commandType).Invoke(this, [commands]);
+            }
+
+            var events = new Dictionary<Type, IList<Func<IEvent, ValueTask>>>();
+            foreach (var eventType in _eventTypes)
+            {
+                var create = CreateEventHandlers<IEvent>;
+                create.GetMethodInfo().GetGenericMethodDefinition().MakeGenericMethod(eventType).Invoke(this, [events]);
+            }
+
+            _handlers = (commands, events);
+            return _handlers.Value;
+        }
+    }
+
+    private void CreateCommandHandlers<TCommand>(IDictionary<Type, IList<Func<ICommand, ValueTask>>> handlers) where TCommand : ICommand
+    {
+        var commandType = typeof(TCommand);
+        var list = new List<Func<ICommand, ValueTask>>();
+        handlers[commandType] = list;
+
+        foreach (var moduleType in _commandModules.Where(h => h.CommandType == commandType).Select(h => h.ModuleType).Distinct())
+        {
+            // Has an instance of this module been created?
+            if (!Modules.TryGetValue(moduleType, out var module))
+            {
+                _logger.LogTrace("No instance of {ModuleType} exists", moduleType);
                 continue;
             }
 
-            // Check if this module is a valid synchronous handler for TCommand
-            if (Modules[commandHandler.ModuleType] is IHandleCommand<TCommand> syncHandler)
+            if (module is IHandleCommand<TCommand> syncHandler)
             {
-                CommandHandlers[commandType].Add(command =>
+                list.Add(command =>
                 {
-                    // Check command type since alias can map to different commands depending on parameters
-                    if (command is TCommand matchedCommand)
+                    var matchedCommand = (TCommand)command;
+                    // TODO: add GameServer to command context so we can add the serverid to metrics
+                    var startTime = DateTimeOffset.UtcNow;
+                    var moduleName = syncHandler.GetType().Name;
+                    using var activity = Telemetry.ActivitySource.StartActivity("SyncCommandHandler:" + moduleName);
+                    activity?.SetTag("bf2wa.command-type", commandType.Name);
+                    activity?.SetTag("bf2wa.module-type", moduleName);
+
+                    try
                     {
-                        // TODO: add GameServer to command context so we can add the serverid to metrics
-                        var startTime = DateTimeOffset.UtcNow;
-                        var moduleType = syncHandler.GetType().Name;
-                        using var activity = Telemetry.ActivitySource.StartActivity("SyncCommandHandler:" + moduleType);
-                        activity?.SetTag("bf2wa.command-type", commandType.Name);
-                        activity?.SetTag("bf2wa.module-type", moduleType);
-
-                        try
-                        {
-                            syncHandler.Handle(matchedCommand);
-                        }
-                        catch (Exception e)
-                        {
-                            _logger.LogError(e, "Command handling failed for {Message} (sync)", matchedCommand.Message.Text);
-                            activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text}");
-                        }
-
-                        AppDiagnostics.TrackCommand(commandType.Name, moduleType, startTime);
+                        syncHandler.Handle(matchedCommand);
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.LogError(e, "Command handling failed for {Message} (sync)", matchedCommand.Message.Text);
+                        activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text}");
                     }
 
+                    AppDiagnostics.TrackCommand(commandType.Name, moduleName, startTime);
                     return ValueTask.CompletedTask;
                 });
-
-                handlerCount++;
-                continue;
             }
-
-            // Ok, well maybe it's async
-            if (Modules[commandHandler.ModuleType] is IHandleCommandAsync<TCommand> asyncHandler)
+            else if (module is IHandleCommandAsync<TCommand> asyncHandler)
             {
-                CommandHandlers[commandType].Add(async command =>
+                list.Add(async command =>
                 {
-                    // Check command type since alias can map to different commands depending on parameters
-                    if (command is TCommand matchedCommand)
+                    var matchedCommand = (TCommand)command;
+                    var startTime = DateTimeOffset.UtcNow;
+                    var moduleName = asyncHandler.GetType().Name;
+                    using var activity = Telemetry.ActivitySource.StartActivity("AsyncCommandHandler:" + moduleName);
+                    activity?.SetTag("bf2wa.command-type", commandType.Name);
+                    activity?.SetTag("bf2wa.module-type", moduleName);
+
+                    try
                     {
-                        var startTime = DateTimeOffset.UtcNow;
-                        var moduleType = asyncHandler.GetType().Name;
-                        using var activity = Telemetry.ActivitySource.StartActivity("AsyncCommandHandler:" + moduleType);
-                        activity?.SetTag("bf2wa.command-type", commandType.Name);
-                        activity?.SetTag("bf2wa.module-type", moduleType);
-
-                        try
-                        {
-                            await asyncHandler.HandleAsync(matchedCommand);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Command handling failed for {Message} (async)", matchedCommand.Message.Text);
-                            activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text} {ex.Message}");
-                        }
-
-                        AppDiagnostics.TrackCommand(commandType.Name, moduleType, startTime);
+                        await asyncHandler.HandleAsync(matchedCommand);
                     }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Command handling failed for {Message} (async)", matchedCommand.Message.Text);
+                        activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text} {ex.Message}");
+                    }
+
+                    AppDiagnostics.TrackCommand(commandType.Name, moduleName, startTime);
                 });
-
-                handlerCount++;
-                continue;
             }
         }
 
-        if (handlerCount == 0)
-            _logger.LogTrace("No command handlers registered for {CommandName}", typeof(TCommand).Name);
+        if (list.Count == 0)
+            _logger.LogTrace("No command handlers registered for {CommandName}", commandType.Name);
     }
 
-    private IDictionary<Type, IList<Func<IEvent, ValueTask>>> GetEventHandlers()
+    private void CreateEventHandlers<TEvent>(IDictionary<Type, IList<Func<IEvent, ValueTask>>> handlers) where TEvent : IEvent
     {
-        if (_eventHandlers == null)
+        var eventType = typeof(TEvent);
+        var list = new List<Func<IEvent, ValueTask>>();
+        handlers[eventType] = list;
+        var traced = eventType != typeof(PlayerPositionEvent) && eventType != typeof(ProjectilePositionEvent);
+
+        foreach (var moduleType in _eventModules.Where(h => h.EventType == eventType).Select(h => h.ModuleType).Distinct())
         {
-            _eventHandlers = new Dictionary<Type, IList<Func<IEvent, ValueTask>>>();
-            CreateEventHandlers();
-        }
-
-        return _eventHandlers;
-    }
-
-    private void CreateEventHandlers()
-    {
-        foreach (var eventType in _eventTypes)
-        {
-            var create = CreateEventHandler<IEvent>;
-            var method = create.GetMethodInfo().GetGenericMethodDefinition();
-            var generic = method.MakeGenericMethod(eventType);
-            generic.Invoke(this, null);
-        }
-    }
-
-    private void CreateEventHandler<TEvent>() where TEvent : IEvent
-    {
-        // TODO: Search in IModules instead of whole assembly?
-        var assemblyEventHandlers = GetEventHandlers(CurrentAssembly);
-
-        var handlerCount = 0;
-        foreach (var eventHandler in assemblyEventHandlers)
-        {
-            var eventType = eventHandler.EventType;
-            if (!EventHandlers.ContainsKey(eventType))
-                EventHandlers.Add(eventType, new List<Func<IEvent, ValueTask>>());
-
-            // Has an instance of this module been created?
-            if (!Modules.ContainsKey(eventHandler.ModuleType))
+            // Has an instance of this module been created? Some modules are optional
+            if (!Modules.TryGetValue(moduleType, out var module))
             {
-                // Some modules are optional
-                _logger.LogTrace("No instance of {ModuleTypeName} exists for {EventTypeName}", eventHandler.ModuleType.Name, eventHandler.EventType.Name);
+                _logger.LogTrace("No instance of {ModuleTypeName} exists for {EventTypeName}", moduleType.Name, eventType.Name);
                 continue;
             }
 
-            // Ok, well maybe it's async
-            if (Modules[eventHandler.ModuleType] is IHandleEventAsync<TEvent> asyncHandler)
+            if (module is not IHandleEventAsync<TEvent> asyncHandler)
+                continue;
+
+            list.Add(async gameEvent =>
             {
-                EventHandlers[eventType].Add(async gameEvent =>
+                var matchedEvent = (TEvent)gameEvent;
+                var startTime = DateTimeOffset.UtcNow;
+                var moduleName = asyncHandler.GetType().Name;
+                using var activity = traced ? Telemetry.ActivitySource.StartActivity("AsyncEventHandler:" + moduleName) : null;
+                activity?.SetTag("bf2wa.event-type", eventType.Name);
+                activity?.SetTag("bf2wa.module-type", moduleName);
+
+                try
                 {
-                    // Check command type since alias can map to different commands depending on parameters
-                    if (gameEvent is TEvent matchedEvent)
-                    {
-                        var startTime = DateTimeOffset.UtcNow;
-                        var moduleType = asyncHandler.GetType().Name;
-                        using var activity = TraceEventType(eventType.Name) ? Telemetry.ActivitySource.StartActivity("AsyncEventHandler:" + moduleType) : null;
-                        activity?.SetTag("bf2wa.event-type", eventType.Name);
-                        activity?.SetTag("bf2wa.module-type", moduleType);
+                    await asyncHandler.HandleAsync(matchedEvent);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Event handling failed for {Event} (async)", matchedEvent);
+                    activity?.SetStatus(ActivityStatusCode.Error, $"Event failed: {eventType.Name}, {ex.Message}");
+                }
 
-                        try
-                        {
-                            await asyncHandler.HandleAsync(matchedEvent);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Event handling failed for {Event} (async)", matchedEvent);
-                            activity?.SetStatus(ActivityStatusCode.Error, $"Event failed: {eventType.Name}, {ex.Message}");
-                        }
-
-                        AppDiagnostics.TrackEvent(eventType.Name, moduleType, startTime);
-                    }
-                });
-
-                handlerCount++;
-                continue;
-            }
+                AppDiagnostics.TrackEvent(eventType.Name, moduleName, startTime);
+            });
         }
 
-        if (handlerCount == 0)
-            _logger.LogTrace("No event handlers registered for {EventName}", typeof(TEvent).Name);
-
-        static bool TraceEventType(string? eventType) => eventType != nameof(PlayerPositionEvent) && eventType != nameof(ProjectilePositionEvent);
+        if (list.Count == 0)
+            _logger.LogTrace("No event handlers registered for {EventName}", eventType.Name);
     }
 
     private static void ScanAssembly()
@@ -280,21 +271,23 @@ public class ModuleResolver : IModuleResolver
         _moduleTypes = GetModules(CurrentAssembly).ToArray();
         _commandTypes = GetCommands(CurrentAssembly).ToArray();
         _eventTypes = GetEvents(CurrentAssembly).ToArray();
-        _commandModuleTypes = GetCommandHandlers(CurrentAssembly).ToLookup(c => c.CommandType, c => c.ModuleType);
+        _commandModules = GetCommandHandlers(CurrentAssembly).ToArray();
+        _eventModules = GetEventHandlers(CurrentAssembly).ToArray();
+        _commandModuleTypes = _commandModules.ToLookup(c => c.CommandType, c => c.ModuleType);
 
+        var parsers = new Dictionary<string, List<CommandParser>>();
         foreach (var commandType in _commandTypes)
         {
             var attributes = AllAttributes<CommandAttribute>(commandType);
             foreach (var attr in attributes)
             {
                 _commandAttributes.Add((commandType, attr));
+                var parser = new CommandParser(commandType, attr, GetCommandParser(commandType, attr));
                 foreach (var alias in attr.Aliases)
                 {
-                    if (!_commandParsers.ContainsKey(alias))
-                        _commandParsers.Add(alias, new List<Func<string[], ICommand>>());
-
-                    // Add a parser function for this alias
-                    _commandParsers[alias].Add(GetCommandParser(commandType, attr));
+                    if (!parsers.TryGetValue(alias, out var list))
+                        parsers[alias] = list = new List<CommandParser>();
+                    list.Add(parser);
 
                     // Add auth level required for command
                     _authLevels[commandType] = attr.AuthLevel;
@@ -304,6 +297,9 @@ public class ModuleResolver : IModuleResolver
                 CommandDocumentation.AppendLine($"{string.Join("|", attr.Aliases ?? Array.Empty<string>())} {parameters}\t{attr.AuthLevel}\t({commandType.Name})");
             }
         }
+
+        foreach (var (alias, list) in parsers)
+            _commandParsers[alias] = list;
     }
 
     private static Func<string[], ICommand> GetCommandParser(Type commandType, CommandAttribute attr)
@@ -332,7 +328,8 @@ public class ModuleResolver : IModuleResolver
                 var shouldCombineRemainingParameters = attr.Parameters.Length == (index + 1) && attr.CombineLast;
                 var argumentValue = shouldCombineRemainingParameters ? string.Join(" ", args.Skip(index)) : args[index++];
 
-                var convertedValue = Convert.ChangeType(argumentValue, propertyInfo.PropertyType);
+                // Numbers as typed in chat ("0.5"), whatever the server's culture
+                var convertedValue = Convert.ChangeType(argumentValue, propertyInfo.PropertyType, CultureInfo.InvariantCulture);
                 propertyInfo.SetValue(command, convertedValue);
             }
 
@@ -345,32 +342,22 @@ public class ModuleResolver : IModuleResolver
         return AllTypesWithInterface<IModule>(assembly);
     }
 
-    private static IEnumerable<CommandModule> GetCommandHandlers(Assembly assembly)
+    private static IEnumerable<(Type CommandType, Type ModuleType)> GetCommandHandlers(Assembly assembly)
     {
         return
             from t in assembly.GetTypes()
             let interfaces = t.GetInterfaces().Where(IsCommandHandler)
             from i in interfaces
-            let args = i.GetGenericArguments()
-            select new CommandModule
-            {
-                CommandType = args[0],
-                ModuleType = t
-            };
+            select (i.GetGenericArguments()[0], t);
     }
 
-    private static IEnumerable<EventModule> GetEventHandlers(Assembly assembly)
+    private static IEnumerable<(Type EventType, Type ModuleType)> GetEventHandlers(Assembly assembly)
     {
         return
             from t in assembly.GetTypes()
             let interfaces = t.GetInterfaces().Where(IsEventHandler)
             from i in interfaces
-            let args = i.GetGenericArguments()
-            select new EventModule
-            {
-                EventType = args[0],
-                ModuleType = t
-            };
+            select (i.GetGenericArguments()[0], t);
     }
 
     private static bool IsCommandHandler(Type type)
@@ -409,18 +396,30 @@ public class ModuleResolver : IModuleResolver
         var typeInfo = type.GetTypeInfo();
         return typeInfo.GetCustomAttributes<TAttr>();
     }
+}
 
-    private class CommandModule
-    {
-        public Type CommandType { get; set; }
-        public Type ModuleType { get; set; }
-    }
+/// <summary>One [Command] attribute of a command type: how a chat line's arguments become that command.</summary>
+public sealed class CommandParser(Type commandType, CommandAttribute attribute, Func<string[], ICommand> parse)
+{
+    public Type CommandType { get; } = commandType;
+    public CommandAttribute Attribute { get; } = attribute;
+    public Func<string[], ICommand> Parse { get; } = parse;
 
-    private class EventModule
-    {
-        public Type EventType { get; set; }
-        public Type ModuleType { get; set; }
-    }
+    public int ParameterCount => Attribute.Parameters?.Length ?? 0;
+
+    /// <summary>The parameters that are not text, such as numbers: a value that converts says more than one that fits any text.</summary>
+    public int TypedParameterCount { get; } = (attribute.Parameters ?? [])
+        .Count(p => commandType.GetProperty(p)?.PropertyType is { } type && type != typeof(string));
+
+    /// <summary>2 when the arguments match the parameters one to one, 1 when the last parameter takes the rest of the line, 0 when they don't fit.</summary>
+    public int Fit(int argumentCount) =>
+        argumentCount == ParameterCount ? 2
+        : argumentCount > ParameterCount && ParameterCount > 0 ? 1
+        : 0;
+
+    /// <summary>".alias &lt;Param&gt; ..." for a usage message.</summary>
+    public string Usage(string alias) =>
+        ParameterCount == 0 ? "." + alias : $".{alias} <{string.Join("> <", Attribute.Parameters!)}>";
 }
 
 public class CommandArgumentCountException : Exception

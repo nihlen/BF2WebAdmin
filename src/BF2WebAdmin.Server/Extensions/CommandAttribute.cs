@@ -29,8 +29,8 @@ public class CommandAttribute : Attribute
 
     private static string[] SplitAliases(string firstPart)
     {
-        var part = firstPart.Trim().ToLower();
-        return part.Contains("|") ? part.Split('|') : new[] { part };
+        // An empty alias ("tvlog|") would make any "." or "!" followed by a space a command
+        return firstPart.Trim().ToLowerInvariant().Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     private static string[] SplitParameters(string[] parts)

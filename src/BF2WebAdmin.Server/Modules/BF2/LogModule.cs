@@ -7,7 +7,7 @@ using Serilog.Events;
 
 namespace BF2WebAdmin.Server.Modules.BF2;
 
-public class LogModule : IModule,
+public class LogModule : IModule, IDisposable,
     IHandleEventAsync<ChatMessageEvent>,
     IHandleEventAsync<SocketStateChangedEvent>,
     IHandleEventAsync<PlayerJoinEvent>,
@@ -22,6 +22,13 @@ public class LogModule : IModule,
     private readonly Serilog.Core.Logger _serverEventLogger;
 
     private static string TimeString => DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+
+    /// <summary>Closes the log files, so the module that replaces this one can write to them.</summary>
+    public void Dispose()
+    {
+        _serverChatLogger.Dispose();
+        _serverEventLogger.Dispose();
+    }
 
     public LogModule(IGameServer server, IOptions<LogConfig> options)
     {

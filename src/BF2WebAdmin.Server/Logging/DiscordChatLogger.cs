@@ -10,7 +10,7 @@ public interface IChatLogger
     Task SendAsync(string message, string serverGroup, string messageType);
 }
 
-public class DiscordChatLogger : IChatLogger
+public class DiscordChatLogger : IChatLogger, IDisposable
 {
     private readonly ILogger<DiscordChatLogger> _logger;
     private readonly IList<DiscordClientWrapper> _discordClients = new List<DiscordClientWrapper>();
@@ -48,6 +48,12 @@ public class DiscordChatLogger : IChatLogger
         }
     }
 
+    public void Dispose()
+    {
+        foreach (var client in _discordClients)
+            client.Client.Dispose();
+    }
+
     private static bool MatchesFilter(string? value, string? filter)
     {
         return value is not null && (string.IsNullOrEmpty(filter) || value.Contains(filter));
@@ -62,17 +68,11 @@ public class DiscordChatLogger : IChatLogger
 
     private class DiscordClient : IDisposable
     {
-        private ulong _webhookId;
-        private string _webhookToken;
-        private Discord.Webhook.DiscordWebhookClient _webhookClient;
-        private Discord.WebSocket.DiscordSocketClient _websocketClient;
+        private readonly Discord.Webhook.DiscordWebhookClient _webhookClient;
 
         public DiscordClient(ulong webhookId, string webhookToken)
         {
-            _webhookId = webhookId;
-            _webhookToken = webhookToken;
-            _webhookClient = new Discord.Webhook.DiscordWebhookClient(_webhookId, _webhookToken);
-            _websocketClient = new Discord.WebSocket.DiscordSocketClient();
+            _webhookClient = new Discord.Webhook.DiscordWebhookClient(webhookId, webhookToken);
         }
 
         public async Task SendMessageAsync(string text)
@@ -82,7 +82,7 @@ public class DiscordChatLogger : IChatLogger
 
         public void Dispose()
         {
-            _websocketClient?.Dispose();
+            _webhookClient.Dispose();
         }
     }
 }

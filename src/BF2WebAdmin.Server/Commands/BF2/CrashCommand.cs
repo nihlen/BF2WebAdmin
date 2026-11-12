@@ -4,7 +4,8 @@ using BF2WebAdmin.Server.Extensions;
 
 namespace BF2WebAdmin.Server.Commands.BF2;
 
-[Command("crash", Auth.Admin)]
+/// <summary>Crashes the game server (an object it cannot spawn). God only: .restartserver is the clean restart for admins.</summary>
+[Command("crash", Auth.God)]
 public class CrashCommand : BaseCommand
 {
 }

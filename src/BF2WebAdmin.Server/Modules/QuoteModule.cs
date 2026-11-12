@@ -1,6 +1,7 @@
 ﻿using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Configuration.Models;
+using BF2WebAdmin.Server.Extensions;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 
@@ -41,12 +42,13 @@ public class QuoteModule : IModule,
     {
         category = Uri.EscapeDataString(category);
 
-        var client = new HttpClient();
-        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
-        client.DefaultRequestHeaders.Add("X-Mashape-Key", _config.Key);
-
-        var content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("cat", category) });
-        var response = await client.PostAsync("https://andruxnet-random-famous-quotes.p.mashape.com/", content);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://andruxnet-random-famous-quotes.p.mashape.com/")
+        {
+            Content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("cat", category) }),
+        };
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Add("X-Mashape-Key", _config.Key);
+        using var response = await ModuleHttp.Client.SendAsync(request);
 
         var responseJson = await response.Content.ReadAsStringAsync();
         var result = JsonConvert.DeserializeObject<QuoteResult>(responseJson);

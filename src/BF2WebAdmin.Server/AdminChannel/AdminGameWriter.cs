@@ -18,12 +18,17 @@ public class AdminGameWriter : IGameWriter
     private const double DefaultTrackerInterval = 0.25;
     private readonly GameServer _server;
     private readonly ILogger<AdminGameWriter> _logger;
+    private readonly string? _chatPrefix;
 
-    public AdminGameWriter(GameServer server, ILogger<AdminGameWriter> logger)
+    /// <param name="chatPrefix">The name in brackets before WebAdmin's chat lines (setting ServerSettings:ChatPrefix); empty for none.</param>
+    public AdminGameWriter(GameServer server, ILogger<AdminGameWriter> logger, string? chatPrefix = DefaultChatPrefix)
     {
         _server = server;
         _logger = logger;
+        _chatPrefix = chatPrefix;
     }
+
+    public const string DefaultChatPrefix = "netsky";
 
     public double CurrentTrackerInterval { get; private set; } = DefaultTrackerInterval;
 
@@ -71,22 +76,23 @@ public class AdminGameWriter : IGameWriter
         return result.Lines;
     }
 
+    /// <summary>The most characters of a chat line WebAdmin sends, before the prefix.</summary>
+    public const int MaxTextLength = 180;
+
     public void SendText(string text, bool useServerName = true, bool sanitize = true)
     {
-        const int maxLength = 180;
-
         if (sanitize)
         {
             text = Regex.Replace(text, @"[\r\n\t\[\]]", "", RegexOptions.Compiled);
             text = text.Replace("\"", "'");
         }
 
-        text = text.Length > maxLength ? text[..maxLength] + "..." : text;
+        text = Truncate(text, MaxTextLength);
         GameTextCapture.Add(text);
 
-        if (useServerName)
+        if (useServerName && !string.IsNullOrEmpty(_chatPrefix))
         {
-            text = $"[§C1001netsky§C1001] {text}";
+            text = $"[§C1001{_chatPrefix}§C1001] {text}";
         }
 
         Fire(id => new CmdSay(id, CmdSay.TargetAll, 0, text));
@@ -94,11 +100,34 @@ public class AdminGameWriter : IGameWriter
 
     public void SendPrivateMessage(Player player, string message)
     {
-        // A web or Discord user is a player with index -1: the answer only reaches it through the capture
+        // A web or Discord user is a player with index -1: the answer only reaches it through the capture, whole
         GameTextCapture.Add(IsReal(player) ? $"(to {player.Name}) {message}" : message);
-        if (IsReal(player))
-            Fire(id => new CmdSay(id, CmdSay.TargetPlayer, Id(player), message));
+        if (!IsReal(player))
+            return;
+
+        // One chat line, like SendText's
+        var line = Truncate(Regex.Replace(message, @"[\r\n\t]+", " ", RegexOptions.Compiled), MaxTextLength);
+        Fire(id => new CmdSay(id, CmdSay.TargetPlayer, Id(player), line));
     }
+
+    /// <summary>
+    /// At most <paramref name="maxLength"/> characters plus "...", cut before a colour code (§C1001, six characters)
+    /// that would not fit whole.
+    /// </summary>
+    public static string Truncate(string text, int maxLength)
+    {
+        if (text.Length <= maxLength)
+            return text;
+
+        var cut = maxLength;
+        var code = text.LastIndexOf('§', cut - 1, Math.Min(cut, ColorCodeLength - 1));
+        if (code >= 0)
+            cut = code;
+
+        return text[..cut] + "...";
+    }
+
+    private const int ColorCodeLength = 6;
 
     public void SendTeleport(Player player, Position position) =>
         Teleport(player, CmdTeleport.FlagPosition, position, null);

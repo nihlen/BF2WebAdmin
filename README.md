@@ -83,6 +83,13 @@ HMAC handshake with a key per server. [docs/admin-channel.md](docs/admin-channel
    SQL Server, run the two `ALTER TABLE` lines after the `Server` table in `src/BF2WebAdmin.Data/Schema.sql`
    (`Server.AdminKey`, `Server.IsTestServer`). `Server.ServerId` is `nvarchar(20)` there, so an `adminServerId` can
    have at most 20 characters.
+7. **Logins.** `DataProtection:KeysPath`, a directory on a volume, keeps the keys that protect the login cookies, so
+   logins survive a new container. Without it everyone logs in again after a deploy.
+8. **Optional settings.** `ServerSettings:ChatPrefix` is the name in brackets before WebAdmin's chat lines (default
+   `netsky`, empty for none). `Discord:GodUserIds` lists the Discord users whose chat commands in a bot's admin channel
+   run at God level (everyone else there runs them at Admin level; unset, it is the one user that was built in before);
+   `Discord:DebugGuildName` picks the guild that gets
+   the bots' debug messages. `Authentication:ApiKey` is compared exactly, case included.
 
 ### Docker
 

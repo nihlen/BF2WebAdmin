@@ -14,6 +14,8 @@ using BF2WebAdmin.Server.Services;
 using BF2WebAdmin.Server.Communication;
 using Discord;
 using Discord.WebSocket;
+using Microsoft.Extensions.Options;
+using DiscordConfig = BF2WebAdmin.Server.Configuration.Models.DiscordConfig;
 using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;
 
 namespace BF2WebAdmin.Server.Modules.BF2;
@@ -45,6 +47,7 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
     private readonly IGameStreamService _gameStreamService;
     private readonly ITaskRunner _taskRunner;
     private readonly ServerAdmin _admin;
+    private readonly DiscordConfig _discordConfig;
     private readonly IDictionary<int, bool> _newPlayers = new Dictionary<int, bool>();
     private readonly Channel<(ISocketMessageChannel Channel, string? Text, Embed? Embed)> _discordMessageChannel;
     private IEnumerable<SocketTextChannel> _adminChannels;
@@ -205,10 +208,11 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
 
     private ServerInfo.DiscordBotConfig Config => _game.ServerInfo.DiscordBot;
 
-    public DiscordModule(IGameServer server, IGameStreamService gameStreamService, ITaskRunner taskRunner, IServerBanRepository banRepository, ILogger<DiscordModule> logger,
-        CancellationTokenSource cts) : base(server, logger, cts)
+    public DiscordModule(IGameServer server, IGameStreamService gameStreamService, ITaskRunner taskRunner, IServerBanRepository banRepository, IOptions<DiscordConfig> discordConfig,
+        ILogger<DiscordModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _game = server;
+        _discordConfig = discordConfig.Value;
         _gameStreamService = gameStreamService;
         _taskRunner = taskRunner;
         _admin = new ServerAdmin(server, banRepository);
@@ -371,7 +375,7 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
                     {
                         Index = -1,
                         Name = (message.Author as SocketGuildUser)?.Nickname ?? message.Author.Username,
-                        Hash = message.Author.Id == 135810577292328960 ? DiscordBotHashGod : DiscordBotHashAdmin
+                        Hash = _discordConfig.GodUsers.Contains(message.Author.Id) ? DiscordBotHashGod : DiscordBotHashAdmin
                     },
                     Text = message.Content
                 });
@@ -486,7 +490,7 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
             return;
         }
 
-        var channels = debug ? _adminChannels.Where(c => c.Guild.Name.ToLower().Contains("netsky")) : _adminChannels;
+        var channels = debug ? _adminChannels.Where(IsDebugChannel) : _adminChannels;
 
         foreach (var channel in channels)
         {
@@ -506,13 +510,16 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
             return;
         }
 
-        var channels = debug ? _matchResultChannels.Where(c => c.Guild.Name.ToLower().Contains("netsky")) : _matchResultChannels;
+        var channels = debug ? _matchResultChannels.Where(IsDebugChannel) : _matchResultChannels;
 
         foreach (var channel in channels)
         {
             _discordMessageChannel.Writer.TryWrite((channel, null, embed));
         }
     }
+
+    private bool IsDebugChannel(SocketTextChannel channel) =>
+        channel.Guild.Name.Contains(_discordConfig.DebugGuildName, StringComparison.OrdinalIgnoreCase);
 
     public async ValueTask HandleAsync(LeaveCommand command)
     {

@@ -239,7 +239,8 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
         }
 
         // TODO: Start async in an event callback - proper?
-        _taskRunner.RunBackgroundTask("Discord Bot", StartBotAsync, ModuleCancellationToken);
+        // On the thread pool, not the module thread: the bot and its send loop only do Discord I/O, for the module's life
+        _taskRunner.RunBackgroundTask("Discord Bot", () => Task.Run(StartBotAsync), ModuleCancellationToken);
     }
 
     private volatile bool _disposed;

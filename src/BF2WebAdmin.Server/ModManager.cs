@@ -41,6 +41,9 @@ public partial class ModManager : IModManager
 
     private IConfiguration Configuration { get; set; }
     private IServiceProvider _services;
+
+    // The modules' thread: the mediator runs every handler on it, and ITaskRunner starts the modules' background work on it
+    private readonly ModuleContext _context;
     private int _disposed;
     private readonly ILogger<ModManager> _logger;
 
@@ -57,7 +60,8 @@ public partial class ModManager : IModManager
         _logger = globalServices.GetRequiredService<ILogger<ModManager>>();
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _moduleResolver = new ModuleResolver(globalServices.GetRequiredService<ILogger<ModuleResolver>>());
-        Mediator = new Mediator(_moduleResolver, globalServices.GetRequiredService<ILogger<Mediator>>());
+        _context = new ModuleContext($"Modules {gameServer.Id}", _logger);
+        Mediator = new Mediator(_moduleResolver, globalServices.GetRequiredService<ILogger<Mediator>>(), _context);
         PolicyRegistry = CreatePolicyRegistry(globalServices.GetRequiredService<ILogger<ModManager>>());
         
         BuildConfiguration();
@@ -72,13 +76,22 @@ public partial class ModManager : IModManager
         
         activity?.AddEvent(new ("Created Modmanager"));
 
-        // One after the other: EF Core queries can't run on the same DbContext in parallel
-        await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(async () =>
+        try
         {
-            await modManager.GetServerSettingsAsync();
-            await modManager.CreateModulesAsync();
-            await modManager.GetAuthPlayersAsync();
-        });
+            // One after the other: EF Core queries can't run on the same DbContext in parallel
+            await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(async () =>
+            {
+                await modManager.GetServerSettingsAsync();
+                await modManager.CreateModulesAsync();
+                await modManager.GetAuthPlayersAsync();
+            });
+        }
+        catch
+        {
+            // Its module thread and whatever modules it made
+            await modManager.DisposeAsync();
+            throw;
+        }
 
         return modManager;
     }
@@ -210,7 +223,7 @@ public partial class ModManager : IModManager
             serviceCollection.AddSingleton<MassTransit.IBus>(_ => null!);
         serviceCollection.AddSingleton<IGameStreamService, RabbitMqGameStreamService>();
         serviceCollection.AddSingleton<ILogger>(_ => _logger);
-        serviceCollection.AddSingleton<ITaskRunner, TaskRunner>();
+        serviceCollection.AddSingleton<ITaskRunner>(_ => new ModuleTaskRunner(_context, _logger));
         serviceCollection.AddSingleton<IDelayProvider, DelayProvider>();
         serviceCollection.AddSingleton(TimeProvider.System);
             
@@ -413,6 +426,7 @@ public partial class ModManager : IModManager
             _logger.LogError(ex, "Disposing the modules of {ServerId} failed", _gameServer.Id);
         }
 
+        _context.Dispose();
         _cancellationTokenSource.Dispose();
         GC.SuppressFinalize(this);
     }

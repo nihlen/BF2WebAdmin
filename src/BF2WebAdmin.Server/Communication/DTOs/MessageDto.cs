@@ -1,7 +1,5 @@
 ﻿namespace BF2WebAdmin.Server.Communication.DTOs;
 
-//[ProtoContract(ImplicitFields = ImplicitFields.AllPublic)]
-//[MessagePackObject(keyAsPropertyName: true)]
 public class MessageDto
 {
     public Guid Id { get; set; } = Guid.NewGuid();

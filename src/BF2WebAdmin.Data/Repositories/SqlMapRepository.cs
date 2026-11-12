@@ -27,8 +27,6 @@ public class SqlMapRepository : BaseSqlRepository<MapMod>, IMapRepository
         using (var connection = NewConnection)
         {
             var map = await connection.GetAsync<MapMod>(id);
-            //var predicate = Predicates.Field<MapModObject>(f => f.MapModId, Operator.Eq, map.Id);
-            //map.Objects = conn.GetList<MapModObject>(predicate);
             map.MapModObjects = connection.Query<MapModObject>(
                 @"SELECT [Id], [MapModId], [TemplateName], [Position], [Rotation] FROM [MapModObject] WHERE [MapModId] = @MapModId",
                 new { MapModId = map.Id }
@@ -36,18 +34,6 @@ public class SqlMapRepository : BaseSqlRepository<MapMod>, IMapRepository
             return map;
         }
     }
-
-    //public MapMod Get(string name)
-    //{
-    //    using (var conn = Connection)
-    //    {
-    //        var mapPredicate = Predicates.Field<MapMod>(f => f.Name, Operator.Eq, name);
-    //        var map = conn.Get<MapMod>(mapPredicate);
-    //        var objectPredicate = Predicates.Field<MapModObject>(f => f.MapModId, Operator.Eq, map.Id);
-    //        map.Objects = conn.GetList<MapModObject>(objectPredicate);
-    //        return map;
-    //    }
-    //}
 
     public new async Task CreateAsync(MapMod map)
     {

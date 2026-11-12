@@ -59,7 +59,7 @@ public class ServerSettings
 {
     public string IpAddress { get; set; }
 
-    /// <summary>The OpenBF2 serverext admin channel listener (replaces the mm_webadmin text socket).</summary>
+    /// <summary>The OpenBF2 serverext admin channel listener.</summary>
     public AdminChannelSettings AdminChannel { get; set; } = new();
     public List<ServerInfo> GameServers { get; set; }
     public string ServerLogDirectory { get; set; }

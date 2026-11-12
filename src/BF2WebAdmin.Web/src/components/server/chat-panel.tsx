@@ -87,7 +87,7 @@ function suggest(text: string, players: Player[], commands: CommandInfo[]): Sugg
     .map((p) => ({ insert: `${prefix}${p.name} `, label: p.name, detail: `player ${p.index}` }))
 }
 
-/** One line: chat, ".command" or "!rcon". Up and down go through what was sent; Tab takes the selected suggestion. */
+/** One line: chat, ".command" or "!command" (an admin command or a console line). Up and down go through what was sent; Tab takes the selected suggestion. */
 function ChatInput({ players, commands, onSend }: { players: Player[]; commands: CommandInfo[]; onSend: (message: string) => void }) {
   const [text, setText] = useState('')
   const [history, setHistory] = useState<string[]>([])

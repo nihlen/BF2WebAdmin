@@ -41,8 +41,6 @@ public class DiscordModule : BaseModule,
     public const string DiscordBotHashSuperAdmin = "DiscordBotHashSuperAdmin";
     public const string DiscordBotHashAdmin = "DiscordBotHashAdmin";
 
-    //private static ILogger Logger { get; } = ApplicationLogging.CreateLogger<DiscordModule>();
-
     private readonly IGameServer _game;
     private readonly IGameStreamService _gameStreamService;
     private readonly ITaskRunner _taskRunner;

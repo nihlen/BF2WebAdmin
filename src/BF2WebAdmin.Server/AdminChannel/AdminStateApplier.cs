@@ -7,12 +7,12 @@ using BF2WebAdmin.Server.Communication;
 namespace BF2WebAdmin.Server.AdminChannel;
 
 /// <summary>
-/// Maps the admin channel's Welcome, Snapshot, stream frames and events onto a <see cref="GameServer"/>
-/// (the role EventHandler had for mm_webadmin's text lines). Runs on the session's apply loop, one message at a time.
+/// Maps the admin channel's Welcome, Snapshot, stream frames and events onto a <see cref="GameServer"/>.
+/// Runs on the session's apply loop, one message at a time.
 /// </summary>
 public class AdminStateApplier : IAdminSessionHandler
 {
-    /// <summary>mm_webadmin tracked these projectiles for Heli2v2's TV missile stats.</summary>
+    /// <summary>The projectiles tracked for Heli2v2's TV missile stats.</summary>
     public static readonly string[] TrackedProjectiles = ["agm114_hellfire_tv"];
 
     private readonly GameServer _server;
@@ -423,7 +423,7 @@ public class AdminStateApplier : IAdminSessionHandler
             case EvDeath ev:
                 if (FindPlayer(ev.Player) is { } dead)
                 {
-                    // Kill precedes Death for one victim. As with mm_webadmin, a death without a kill by another player is a suicide
+                    // Kill precedes Death for one victim. A death without a kill by another player is a suicide
                     var isSuicide = !_lastKillKind.TryGetValue(ev.Player, out var kind) || kind is not (KillKind.Kill or KillKind.RoadKill);
                     _lastKillKind.Remove(ev.Player);
                     await _server.SetPlayerDeathAsync(dead, ToPosition(ev.Position), isSuicide, time);
@@ -504,7 +504,7 @@ public class AdminStateApplier : IAdminSessionHandler
     }
 
     /// <summary>
-    /// A new connect (not a snapshot after a reconnect or resync) goes to dbo.JoinHistory for the BF2v2 site, for every
+    /// A new connect (not a snapshot after a reconnect or resync) goes to dbo.JoinHistory, for every
     /// server whatever its modules. Queued; the database never holds up the apply loop.
     /// </summary>
     private void RecordJoin(AdminPlayerInfo info, DateTimeOffset time)
@@ -532,7 +532,7 @@ public class AdminStateApplier : IAdminSessionHandler
 
         if (ev.Kind is KillKind.Kill or KillKind.RoadKill && ev.Attacker >= 0 && FindPlayer(ev.Attacker) is { } attacker)
         {
-            // mm_webadmin reported roadkills with the weapon "roadkill"
+            // Roadkills get the weapon "roadkill"
             var weapon = ev.Kind == KillKind.RoadKill && string.IsNullOrEmpty(ev.Weapon) ? "roadkill" : ev.Weapon;
             await _server.SetPlayerKillAsync(attacker, ToPosition(ev.AttackerPosition), victim, ToPosition(ev.VictimPosition), weapon, time);
             return;
@@ -567,7 +567,7 @@ public class AdminStateApplier : IAdminSessionHandler
         await _server.AddMessageAsync(message, time);
     }
 
-    /// <summary>The module removes the dead prefix; the HUD channel tokens are removed here, as mm_webadmin's stripmessage did.</summary>
+    /// <summary>The module removes the dead prefix; the HUD channel tokens are removed here.</summary>
     public static string StripChatPrefixes(string text) =>
         text.Replace("HUD_TEXT_CHAT_TEAM", "")
             .Replace("HUD_TEXT_CHAT_SQUAD", "")

@@ -118,7 +118,6 @@ public class ModuleResolver : IModuleResolver
             // Has an instance of this module been created?
             if (!Modules.ContainsKey(commandHandler.ModuleType))
             {
-                // throw new NullReferenceException($"No instance of {commandHandler.ModuleType} exists");
                 _logger.LogTrace("No instance of {ModuleType} exists", commandHandler.ModuleType);
                 continue;
             }
@@ -233,7 +232,6 @@ public class ModuleResolver : IModuleResolver
             if (!Modules.ContainsKey(eventHandler.ModuleType))
             {
                 // Some modules are optional
-                //throw new NullReferenceException($"No instance of {eventHandler.ModuleType} exists");
                 _logger.LogTrace("No instance of {ModuleTypeName} exists for {EventTypeName}", eventHandler.ModuleType.Name, eventHandler.EventType.Name);
                 continue;
             }

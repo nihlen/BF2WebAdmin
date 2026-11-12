@@ -27,7 +27,7 @@ jobs:
           cache: npm
           cache-dependency-path: src/BF2WebAdmin.Web/package-lock.json
 
-      # The unit tests. The other projects of the solution have no tests (test/TestClient and test/TestCore are old tools)
+      # The unit tests
       - name: Run tests
         run: dotnet test test/BF2WebAdmin.Tests/BF2WebAdmin.Tests.csproj
 

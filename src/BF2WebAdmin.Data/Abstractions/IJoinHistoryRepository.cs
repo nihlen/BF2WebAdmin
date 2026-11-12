@@ -4,7 +4,7 @@ using BF2WebAdmin.Data.Entities;
 
 namespace BF2WebAdmin.Data.Abstractions;
 
-/// <summary>The player join table (dbo.JoinHistory on SQL Server), read by the BF2v2 site.</summary>
+/// <summary>The player join table (dbo.JoinHistory on SQL Server), read by the export API.</summary>
 public interface IJoinHistoryRepository
 {
     Task InsertAsync(PlayerJoin join);

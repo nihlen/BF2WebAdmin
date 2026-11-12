@@ -37,7 +37,6 @@ public class Mediator : IMediator
         foreach (var handler in handlers)
         {
             // Errors are handled in the event handler wrapper (?)
-            //_ = Task.Run(async () => await handler(gameEvent));
             await handler(gameEvent);
         }
         
@@ -60,7 +59,6 @@ public class Mediator : IMediator
         {
             // Errors are handled in the command handler wrapper
             _ = Task.Run(async () => await handler(command));
-            //handledCount++;
         }
     }
 }

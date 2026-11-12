@@ -33,7 +33,6 @@ public class Position
 
     public override string ToString()
     {
-        //return $"{X:0.000}/{Height:0.000}/{Y:0.000}";
         return string.Format(CultureInfo.InvariantCulture, "{0:0.000}/{1:0.000}/{2:0.000}", X, Height, Y);
     }
 }

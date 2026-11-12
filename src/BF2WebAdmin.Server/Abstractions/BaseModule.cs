@@ -66,23 +66,4 @@ public abstract class BaseModule : IModule
 
         return result.Length > 1 ? result : "Empty response";
     }
-
-    // protected void RunBackgroundTask(string description, Func<Task> func)
-    // {
-    //     _ = Task.Run(async () =>
-    //     {
-    //         using var activity = Telemetry.ActivitySource.StartActivity("BackgroundTask");
-    //         activity?.SetTag("bf2wa.task-description", description);
-    //
-    //         try
-    //         {
-    //             await func();
-    //         }
-    //         catch (Exception ex)
-    //         {
-    //             Logger.LogError(ex, "Failed to complete background task: {Description}", description);
-    //             activity?.SetStatus(ActivityStatusCode.Error, $"Background task failed: {ex.Message}");
-    //         }
-    //     }, ModuleCancellationToken);
-    // }
 }

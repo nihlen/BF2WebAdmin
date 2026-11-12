@@ -69,13 +69,7 @@ public class ModManager : IModManager
         
         activity?.AddEvent(new ("Created Modmanager"));
 
-        // EF Core queries can't run on the same DBContext in parallel
-        // await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(() => Task.WhenAll(
-        //     modManager.GetServerSettingsAsync(),
-        //     modManager.CreateModulesAsync(),
-        //     modManager.GetAuthPlayersAsync()
-        // ));
-        
+        // One after the other: EF Core queries can't run on the same DbContext in parallel
         await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(async () =>
         {
             await modManager.GetServerSettingsAsync();
@@ -184,7 +178,6 @@ public class ModManager : IModManager
         serviceCollection.Configure<GeoipConfig>(geoipConfig);
 
         // Services
-        //var connectionString = Configuration.GetValue<DatabaseConfig>("Database").ConnectionStrings.BF2DB;
         serviceCollection.AddSingleton(_gameServer);
         serviceCollection.AddSingleton(_cancellationTokenSource);
         serviceCollection.AddSingleton<ICountryResolver>(c => new CountryResolver(geoipConfig["DatabasePath"]));
@@ -197,8 +190,6 @@ public class ModManager : IModManager
         serviceCollection.AddSingleton<ITaskRunner, TaskRunner>();
         serviceCollection.AddSingleton<IDelayProvider, DelayProvider>();
         serviceCollection.AddSingleton(TimeProvider.System);
-        //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RabbitMqGameStreamService>());
-        //serviceCollection.AddSingleton<IGameStreamService>(sp => _globalServices.GetRequiredService<RedisGameStreamService>());
             
         var discordSettings = Configuration.GetSection("Discord").Get<DiscordConfig>();
         if (!string.IsNullOrWhiteSpace(discordSettings?.Webhooks?.FirstOrDefault()?.WebhookId))
@@ -349,7 +340,6 @@ public class ModManager : IModManager
             }
             catch (CommandArgumentCountException ex)
             {
-                //Logger.LogError(ex, $"{parser} Wrong argument count: {ex.Message}");
                 _logger.LogTrace("Wrong argument count: {Message}", ex.Message);
             }
             catch (FormatException ex)

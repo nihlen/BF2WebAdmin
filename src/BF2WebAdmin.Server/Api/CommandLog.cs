@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace BF2WebAdmin.Server.Api;
 
-/// <summary>What a web user sent: chat, a "." command, an rcon command or a server action.</summary>
+/// <summary>What a web user sent: chat, a "." command, a "!" admin command or console line (Rcon), or a server action.</summary>
 public enum CommandKind
 {
     Chat,

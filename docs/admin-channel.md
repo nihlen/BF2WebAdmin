@@ -1,11 +1,10 @@
 # Admin channel (OpenBF2 serverext) backend
 
 BF2WebAdmin's game-server backend is the native admin channel of the OpenBF2 engine module `libserverext.so`
-(openbf2-server-ext). It replaces `mm_webadmin.py` and its tab-separated text protocol on TCP 4300, which is gone
-from this branch (decision B2: production keeps running an older WebAdmin image until the servers move to OpenBF2).
+(openbf2-server-ext): the game server dials WebAdmin over TLS 1.3, so it needs no open port of its own.
 
 The wire format is admin protocol version 1, "Wire format (admin protocol version 1)" in openbf2-server-ext
-`docs/admin-channel-draft.md` (approved 2026-10-23), with decisions B1-B6. This document covers the C# side.
+`docs/admin-channel-draft.md`, with decisions B1-B6. This document covers the C# side.
 
 ## Design
 
@@ -24,17 +23,17 @@ modules ── IGameWriter (AdminGameWriter) ── typed commands / Console, in
 | `AdminHandshake.cs` | `Hello` → `Challenge` (WebAdmin proves the key first) → `Auth`, proofs compared with `CryptographicOperations.FixedTimeEquals`; version ≠ 1 is `Error` 1, unknown id or no key `Error` 8 |
 | `AdminSession.cs` | One link: read loop (answers `Ping`, completes requests), write loop (one ordered queue), apply loop (sequence check and `RequestSnapshot` on a gap, stream frames latest-wins), keepalive (`Ping` every 15 s, close after 45 s of silence), optional recording of every received message |
 | `AdminStateApplier.cs` | Maps `Welcome`, `Snapshot` (reconciled with the existing players, so modules keep their `Player` objects across resyncs and reconnects), the streams and every event onto `GameServer`; the B6 player key; the subscriptions (at 30 Hz while a 3D viewer is open, with the modules still fed at their own rate) |
-| `ViewerFeed.cs` | The 3D viewer: `ViewerRegistry` (which hub connections watch which server), the 30 Hz stream frames to the hub group `viewer:<serverId>` (sent from its own task, so a slow browser never holds up the link), and the last 20 traced TV missiles (`ProjectileTrace` with its `ProjectileCollision`s) |
+| `ViewerFeed.cs` | The 3D viewer: `ViewerRegistry` (which hub connections watch which server), the 30 Hz stream frames to the hub group `viewer:<serverId>` (sent from its own task, so a slow browser never holds up the link), and the last 20 traced TV missiles (`ProjectileTrace` with its `ProjectileCollision`s); every trace also goes to `MissileArchive`, ten minutes of every server's missiles for the export API |
 | `AdminGameWriter.cs` | `IGameWriter` on the current session: typed commands, `Console` lines in order with them, `ListObjects`, `SpawnObject`, `SetObjectActive`, `Subscribe` |
-| `GameServerRegistry.cs` | Replaces `SocketServer`/`ISocketServer` as `IGameServerRegistry`: configured servers (DB + config), the `GameServer` per server id, key lookup |
+| `GameServerRegistry.cs` | `IGameServerRegistry`: configured servers (DB + config), the `GameServer` per server id, key lookup |
 
-The seam the inventory suggested holds: modules still see `IGameServer`, the `GameEvents.cs` records and
-`IGameWriter`. `GameServer`'s mutators left `IGameServer`; only the applier calls them.
+Modules see `IGameServer`, the `GameEvents.cs` records and `IGameWriter`. `GameServer`'s mutators are not on
+`IGameServer`; only the applier calls them.
 
 ### Identity and keys
 
-- The module's `adminServerId` is the server's `Server.ServerId` (for example `127.0.0.1:16569`). The source address
-  of the connection does not matter any more (no private-IP acceptance, no `wa connect` rcon trigger).
+- The module's `adminServerId` is the server's `Server.ServerId` (for example `1.2.3.4:16567`). The source address
+  of the connection does not matter.
 - `Server.AdminKey` holds the key as hex (32-128 digits, 16-64 bytes), the same text as `adminKey` in
   `serverext.cfg`. No key, or a malformed one: the server cannot connect. Changing it in the edit form closes the
   current link; the module redials and must match the new key.
@@ -47,7 +46,7 @@ The seam the inventory suggested holds: modules still see `IGameServer`, the `Ga
 
 - Every command, typed or `Console`, is queued on one ordered link, and the module runs them in arrival order (at
   most 64 per tick). So `SetObjectActive` followed by raw `object.*` lines, or `activeSafe` followed by a getter,
-  behave as the old single socket did.
+  run in that order.
 - Replies are matched by request id. Fire-and-forget commands log an `Error` reply; awaited ones throw
   `AdminCommandException` with the module's code.
 - Events carry sequence numbers. After a `Snapshot` (`lastSeq`), events at or below it are dropped; a jump starts one
@@ -105,12 +104,9 @@ collision meshes.
    }
    ```
 
-   `Port` must not be 16567. Set either `Certificate` or `CertificatePath`. `ServerSettings:Port`, `PrintSendLog` and
-   `PrintRecvLog` are gone.
-3. **Database.** Run the EF migration `AdminChannel` (SQLite) or the new `ALTER TABLE` lines in `Schema.sql`
-   (SQL Server): `Server.AdminKey nvarchar(128) NULL`, `Server.IsTestServer bit NOT NULL DEFAULT 0`. Then set the key
-   (and the test-server flag) in the server edit form. `dbo.JoinHistory` (player joins for the BF2v2 site) exists in
-   production; on a fresh SQL Server database `Schema.sql` creates it, on SQLite the migration `JoinHistory`.
+   `Port` must not be the game port. Set either `Certificate` or `CertificatePath`.
+3. **Servers.** Set the key (and the test-server flag) in the server edit form, or in `ServerSettings:GameServers`.
+   The columns `Server.AdminKey` and `Server.IsTestServer` come with the schema ([database.md](database.md)).
 4. **Game server** (`serverext.cfg` beside the OpenBF2 `bf2` binary, module loaded with `openbf2.addModDll serverext`):
 
    ```
@@ -122,25 +118,24 @@ collision meshes.
 
    Optional: `adminSendIdentity` (default 1 with TLS; WebAdmin needs the IPs and hashes), `adminAllowConsole` (default
    1; with 0 every raw console script of the modules is refused, see below), `adminAllowObjects` (default 1;
-   `.nofences` needs it). `mm_webadmin` must not be loaded.
+   `.nofences` needs it).
 
 ## Production configuration
 
 WebAdmin in a container, with settings from env vars and the certificate from a secret store. The game servers dial
-WebAdmin's public name and admin-channel port (`webadmin.example.com:4300` below).
+WebAdmin's public name and admin-channel port (`webadmin.example.com:4310` below).
 
 | Setting | Value |
 |---|---|
-| `ServerSettings__AdminChannel__Port` | The listener port. Reusing 4300, the old mm_webadmin port, keeps existing firewall rules and port forwards. The code default is 4310 |
+| `ServerSettings__AdminChannel__Port` | The listener port, default 4310 |
 | `ServerSettings__AdminChannel__Certificate` | The base64 PKCS#12 (or PEM) from `--admin-cert-create`, kept as a secret. With it set, a new container uses the same certificate and never writes one. Without it (and without a `CertificatePath` on a volume), every new container would create its own certificate and break every server's pin |
 | `ServerSettings__AdminChannel__CertificatePassword` | Not set: the secret store protects the value |
-| `Server.AdminKey` | One key per server, in `dbo.Server` (server edit form) |
-| `ServerSettings__Port` | Gone; an old value is ignored |
+| `Server.AdminKey` | One key per server (server edit form) |
 
 Each game server's `serverext.cfg`:
 
 ```
-adminConnect webadmin.example.com:4300
+adminConnect webadmin.example.com:4310
 adminServerId <public ip>:<game port>
 adminKey <the server's AdminKey>
 adminCertSha256 <the pin>
@@ -152,35 +147,9 @@ WebAdmin at startup with the setting's name in the error. Replacing the certific
 on every server at the same time. The game servers need restart policy `unless-stopped` (or Kubernetes' `Always`):
 `.restartserver` quits the server with exit code 0.
 
-## What changed in the modules
+## Kicks, bans and the `!` commands (`ServerAdmin`)
 
-| Where | Before | Now |
-|---|---|---|
-| `IGameWriter` | `SendRcon`, `GetRconResponseAsync` (`\b`-joined text, `response<N>` codes) | `SendConsole(lines)`, `ConsoleAsync(line)` → output lines; typed `KickAsync`, `BanAsync`, `SendKill`, `SendHealthFraction`, `SendTeleport(pos, rot)`, `SendSetObjectActive`, `ListObjectsAsync`, `SpawnObjectAsync`, `SendDeleteObject`, `SendRestartMap` |
-| Heli2v2 `.nofences` | `object.listObjectsOfTemplate` parsed with `ID ([0-9]+)`, then `object.active idN` + `object.delete` | `ListObjects` (console ids) + `DeleteObject` by console id |
-| Heli2v2 `.noclip`, leaving a noclip heli; BF2 `.freeze`; ChopperMayhem anti-NASA | `object.active id{RootVehicleId}` (a `findId` console id) | `SetObjectActive` with `Vehicle.ConsoleId`, then the same console lines. `RootVehicleId` is now the networkable id |
-| Heli2v2 TV missile getters | `activeSafe` then `GetRconResponseAsync` | `activeSafe` then `ConsoleAsync`, ordered on the link |
-| Heli2v2 team mismatch | `FixTeamMismatchAsync` re-queried GameSpy | removed: `TeamChange` covers every source |
-| `.kill`, `.killid`, switching (`SwitchPlayer`) | `damage <id> 1` (`mm_webadmin` also deleted the vehicle) | `KillPlayer` with the vehicle flag (wrecks the vehicle when nobody else is in it; nothing deleted); a switch is one `SetTeam` with its kill flag |
-| `.repair` | `damage <id> 10000` | `SetHealth` fraction 1 |
-| Teleport + rotate pairs (pad, dance, playback, portals) | two text commands | one `Teleport` with both |
-| `.clear`, `.undo` | `admin.restartmap` console line | `Map` restart |
-| `.kick <Name>`, `.ban <Name>` | (none; `!kick` goes to ModManager's `iga` over classic rcon) | new chat commands on the typed `Kick`/`Ban` (through `ServerAdmin`, below); the refusal is said in chat |
-| Kick, warn, ban and unban from the web UI and Discord, `!` commands, the ban list | ModManager's `iga` and `banlist` over classic rcon (`RconClient`); the in-game admin list synced with `iga addAdmin` on every map change | `Services/ServerAdmin.cs` over the admin channel (2026-11-09), see below; `RconClient`, the admin sync and the server form's rcon port and password are gone |
-| Kill classification | event-name split, kill/death order guessed, victim position wrong | `Kill` kind and positions; `PlayerKillEvent` for kills and roadkills (`"roadkill"` weapon as before), team kills, suicides and crashes as `PlayerDeathEvent` with `IsSuicide`, as before. ChopperMayhem's baserape check uses the correct victim position |
-| Projectile owner | nearest `ahe_` player guessed | the module's owner |
-| Text | Windows-1252 out, UTF-8 in (`§` arrived as `�`, `Message.Text` mapped it back) | UTF-8 both ways; the module converts at the engine, `§` intact; the `�` hack is gone |
-| Event recording (`.starteventrecorder`) | raw text lines | every received admin message (`GameServer.StartRecording`) |
-| Player joins for the BF2v2 site (`dbo.JoinHistory`) | BF2v2's collector scraped the PunkBuster logs through `bf2tool.php` on each game server (PunkBuster GUID in `Guid`); OpenBF2 has no PunkBuster, so no rows since the migration | WebAdmin writes them (2026-11-08), see below |
-| Removed | `SocketServer.cs`, `GameReader.cs`, `EventHandler.cs`, `GameWriter.cs`, `IGameReader.cs`, `IEventHandler.cs`, the `wa connect` loop, the mm_autobalancer team workaround | |
-
-Unchanged on purpose: `MapModule`'s object spawning keeps the console `ObjectSpawner` script
-(`RconScript.AddObject`): the typed `SpawnObject` creates server-only objects for templates without a networkable
-(the module's finding 17), and the script makes the template networkable first.
-
-### Kicks, bans and the `!` commands (`ServerAdmin`)
-
-Since 2026-11-09 WebAdmin uses no classic rcon, so the game servers need no ModManager. `Services/ServerAdmin.cs` does
+WebAdmin uses no classic rcon, so the game servers need no ModManager. `Services/ServerAdmin.cs` does it all
 for the web API (`POST /api/servers/{id}/players/{index}/warn|kick|ban`, `GET` and `DELETE /api/servers/{id}/bans`), the
 web chat box and Discord (`!` commands, `ServerAdmin.Help`) and the in-game `.kick`/`.ban`:
 
@@ -194,153 +163,47 @@ web chat box and Discord (`!` commands, `ServerAdmin.Help`) and the in-game `.ki
   not shown. **Unban** is `admin.removeKeyFromBanList` or `admin.removeAddressFromBanList` (a 32-digit hex identifier
   is a key), **clear** `admin.clearBanList`; both remove the records too.
 - **Other `!` commands** are console lines (`!sv.serverName`, `!exec <line>`), `!list` (`admin.listPlayers`) and
-  `!map <map> <mode> [size]` (the typed `Map`, maps of the rotation only; ModManager's `map` could run any map).
-  They need `adminAllowConsole 1`.
-- **Both prefixes.** With ModManager gone, `!` no longer belongs to its in-game admin, so `.` and `!` work alike
-  everywhere: in game every chat command takes either (`!k`, `.kick`, `!switch`); kick (`k`), warn (`w`), ban (`b`),
-  unban, banlist, clearbans, map (`m`) and list are chat commands too (`Commands/KickBanCommands.cs`, kick, warn, map and
-  list at Admin, ban and unban at SuperAdmin, clearbans at God), and their answers go privately to the player who asked.
+  `!map <map> <mode> [size]` (the typed `Map`, maps of the rotation only). They need `adminAllowConsole 1`.
+- **Both prefixes.** `.` and `!` work alike everywhere: in game every chat command takes either (`!k`, `.kick`,
+  `!switch`); kick (`k`), warn (`w`), ban (`b`), unban, banlist, clearbans, map (`m`) and list are chat commands too
+  (`Commands/KickBanCommands.cs`, kick, warn, map and list at Admin, ban and unban at SuperAdmin, clearbans at God), and
+  their answers go privately to the player who asked.
   In the web chat box and Discord an admin command runs directly with either prefix, a module's command with either,
   and a `!` line that is neither is a console line (web users and Discord's admin channel only, never in game).
 
-ModManager's bans were mirrored in `banlist.con` already, so they stayed in force; their names and reasons
-(`mm_bans.xml`) were copied into `server_ban` once.
+## Player joins (`JoinHistory`)
 
-### Player joins (`dbo.JoinHistory`)
-
-WebAdmin writes `dbo.JoinHistory`, the BF2v2 site's table (country flags from the newest IP per name, aliases by the
-same `Guid` or IP), which shares the `bf2` database. `AdminStateApplier` handles every `PlayerConnect` event, whatever
-modules the server group enables, and queues one row per human player for `JoinHistoryWriter`, a background service that
-inserts them one at a time through `IJoinHistoryRepository` (BF2v2's own insert; `IsLikelySpoof` takes the column
-default). The apply loop never waits for the database, and a failed insert only logs a warning.
+WebAdmin writes a row per player join to `JoinHistory` (a statistics site can use it for country flags from the
+newest IP per name and aliases by the same `Guid` or IP). `AdminStateApplier` handles every `PlayerConnect` event,
+whatever modules the server group enables, and queues one row per human player for `JoinHistoryWriter`, a background
+service that inserts them one at a time through `IJoinHistoryRepository` (`IsLikelySpoof` takes the column default).
+The apply loop never waits for the database, and a failed insert only logs a warning.
 
 | Column | Value |
 |---|---|
 | `Name` | the player name (clan tag included), trimmed, at most 100 characters |
-| `Guid` | the CD-key hash. Before OpenBF2 it was the PunkBuster GUID |
+| `Guid` | the CD-key hash |
 | `IpAddress` | the player's IP without a port (IPv4-mapped IPv6 as IPv4) |
-| `ServerIpAddress` | the server's configured `IpAddress` (`dbo.Server.IpAddress`); its resolved address if it is a host name |
+| `ServerIpAddress` | the server's configured `IpAddress` (`Server.IpAddress`); its resolved address if it is a host name |
 | `JoinDate` | the time WebAdmin received the event, UTC |
 
 No row for bots (AI or created by the bot channel), for players without an IP or with a loopback IP, and for players
 without a CD-key hash (withheld with `adminSendIdentity 0`, LAN and test servers; the `name:` keys of test servers are
 never stored). A snapshot (WebAdmin restart, reconnect, resync) is not a join: players who joined while WebAdmin was
 down get no row. On SQL Server `Schema.sql` creates the table only when it is missing; on SQLite the EF migration
-`JoinHistory` creates it. On Postgres the table is `player_join` (without `IsLikelySpoof`; [database.md](database.md)),
-and BF2v2 gets the joins from the export API ([export-api.md](export-api.md)).
+`JoinHistory` creates it. On Postgres the table is `player_join` (without `IsLikelySpoof`; [database.md](database.md)).
+Other programs read the joins through the export API ([export-api.md](export-api.md)).
 
-## Results (2026-10-23)
+## Known limitations
 
-### Unit tests
-
-`test/BF2WebAdmin.Tests`: 220 pass (5 existing, 215 new).
-
-- **Golden file.** `Fixtures/admin-v1-golden.txt` is openbf2-server-ext `tests/fixtures/admin-v1-golden.txt` at
-  `0aab582`. All 60 frames are encoded from the same sample values as `adminclient.py golden_samples()` and match
-  byte for byte; all 60 also decode and re-encode identically.
-- **Malformed input.** Every payload cut short at each byte and one byte too long is rejected. Also rejected:
-  oversize and nonzero-reserved frames, unknown types, and five invalid UTF-8 forms (truncated, a bare 0xA7, overlong,
-  surrogate, beyond U+10FFFF).
-- **Byte-at-a-time framing.** All 60 frames fed one byte at a time decode.
-- **Handshake.** The transcript layout is checked, and an HMAC proof against a Python `hmac` reference value. Over
-  loopback TCP against a fake module: the right key passes; the module refuses another key; a wrong module proof
-  gets `Error` 8; an unknown id gets `Error` 8; version 2 gets `Error` 1; key parsing is checked.
-- **TLS 1.3.** A generated certificate passes with a client that pins the SPKI exactly as the module does.
-- **Session.** A gap brings one `RequestSnapshot`; after the snapshot, events at or below `lastSeq` are dropped.
-  Replies and an `Error` reply arrive as `AdminCommandException`. `Ping` gets a `Pong`. Commands keep call order. A
-  malformed frame gets `Error` 2 and closes the link. Stream frames are latest-wins.
-- **B6 key.** A hash, a name key on a test server, and no key elsewhere.
-
-### End to end (localtest, OpenBF2 variant)
-
-**Setup**
-
-| Item | Value |
-|---|---|
-| WebAdmin | This branch, published by `setup.ps1 -Repo <worktree> -OpenBF2`, on Windows 11 (`SslStream`/SChannel TLS 1.3) |
-| Server | Container `bf2wa-localtest-openbf2`: OpenBF2 `873d1b1` and module `0aab582`, built on bullseye against OpenSSL 1.1.1w |
-| Map and content | netsky content, `dalian_2_v_2` |
-| Ports | game 16569, GameSpy 29901, rcon 4721, bot channel 127.0.0.1:16705 |
-| Admin channel | Dials `host.docker.internal:4310` |
-| Clients | Bots from openbf2-server-ext `tools/testclient/serverext_client.py` at `0aab582`; web actions through `tools\hubclient`, i.e. the hub methods of the Blazor UI of the time (the React web UI replaced it on 2026-10-27) |
-
-**Build on OpenSSL 1.1.1.** This was new ground; phase 1 only ran 3.0.2. The module built with no warnings and its
-ctest suites (including the TLS test) passed. It links `libssl.so.1.1`/`libcrypto.so.1.1`, which the base image
-already ships, so nothing was installed.
-
-| Check | Result |
-|---|---|
-| TLS 1.3 with the pin | **Pass.** `TLS_AES_256_GCM_SHA384`, "certificate pin matches". The peer pin the module printed when it was given a wrong pin equals the pin WebAdmin logs, so both sides compute the SPKI hash the same way |
-| Handshake, Welcome, Snapshot, subscriptions | **Pass.** Welcome 1029 B with 34 maps (`MapsChanged` lists all 34 with mode and size) and capabilities 7. Streams 1 and 3 at 4 Hz, 2 and 4 at 1 Hz. None of the 30 `InitServer` console lines was refused |
-| Wrong key | **Pass.** The key was changed through the edit form's hub `SetServer`. The link closed, the module refused WebAdmin's proof (`Error` 8), and WebAdmin logged "adminKey differs from the Server.AdminKey". After the key was restored, the module reconnected within its 60 s backoff |
-| Wrong pin | **Pass.** The container was recreated with a bad `adminCertSha256`. The module aborted TLS and WebAdmin logged `UnknownCA`. Restored afterwards |
-| Players, positions, scores live | **Pass.** Bots appear with name keys `name:[BOT] alpha` on the test server (B6), teams CH/US, spawns, `PlayerVehicleEvent` (`ahe_z10`, `ahe_ah1z`) and scores. `PlayerPositionEvent` reaches the hub at 4 Hz per player, with the bots' own yaw/pitch/roll. Server list and snapshot are correct over REST and the hub |
-| Kill, death, crash | **Pass.** The bot client's `damage --crash` scenario passed 18/18. In WebAdmin: `PlayerKillEvent` (A → C, `ahe_z10_S8Launcher`), then `PlayerDeathEvent` C `IsSuicide=False`. The crash is a `NoAttacker` kill, then `PlayerDeathEvent` `IsSuicide=True`; `VehicleDestroyed` and bot created/removed events also arrived |
-| Heli2v2 `.pad` | **Pass.** Both helis were teleported (position and rotation) to their team's pad with `SetHealth` 875. It also works after a reconnect, where the snapshot seated the players |
-| Heli2v2 `.noclip` on/off, `.mg 0/1` | **Pass.** No refusal (`SetObjectActive` by console id, then the console lines) |
-| Heli2v2 `.tv` (TV-missile getters) | **Pass.** All 10 values were read through ordered `activeSafe` + `ConsoleAsync` |
-| Heli2v2 `.nofences` | **Pass.** 71 fences and lamp posts listed and deleted by console id (`ListObjects` + `DeleteObject`) |
-| `.repair` | **Pass.** No refusal (`SetHealth` fraction 1) |
-| `.kick`, `.ban` on bots | **Pass (refused).** `Error` 6 "bots cannot be kicked or banned", said in chat |
-| `.load localtest-towers` | **Pass.** Three `coolingtower_01` spawned with the console `ObjectSpawner` script |
-| `.clear` | **Pass.** Typed `Map` restart: game status 1 → 3 → 1, `RoundStart`, the bots respawned |
-| `.o` from the web | Refused in chat ("needs an in-game player position"). It used to throw `NullReferenceException`. In-game `.o` needs a human |
-| Chat, WebAdmin → game | **Pass.** Web chat → `Say` → it came back as `Chat` channel 12, with `§` intact (UTF-8) |
-| Chat, game → WebAdmin | **Pass** for server chat: `exec game.sayAll ...` from the web rcon box arrived in WebAdmin's chat log. Bot player chat (bot channel `Say`) arrives as player chat since 2026-10-24; human chat is untested |
-| Map change | **Pass.** `!map daqing_2_v_2 gpm_cq 16` (web rcon box) gave EndGame, `RoundEnd`, PreGame, Playing, `RoundStart`, `MapChangedEvent 1,daqing_2_v_2`. The link stayed up through the level load, and the map was changed back afterwards |
-| WebAdmin restart | **Pass.** The module redialled with backoff (1, 2.3, 4.2 s ...). Session 2's snapshot rebuilt both bots, in their helis |
-| Game server restart | **Pass.** A new server process gave session 1; the snapshot had 0 players, so the stale bots left through `PlayerLeftEvent` |
-| Module cost | p50 10 µs, p99 30-140 µs per tick. 0 events dropped |
-
-**Not exercised: needs a human client or an internet server**
-
-- Heli2v2 rounds and matches with a human. They start on player chat (`rdy`/`go` in Global). Since 2026-10-24 bots
-  chat as players (bot channel `Say`, openbf2-server-ext module `100d53e`), and Heli2v2 started, ended and stored 11
-  rounds of bot crews on a separate instance; no human has played a round yet.
-- Human chat on channels 0/1 (Global/Team): the channel name WebAdmin gets, and the `HUD_TEXT_CHAT_*` stripping.
-- In-game `.o`, `Revive`, `ControlPoint` captures, a real kick or ban (and its `Kick`/`Ban` events and disconnect
-  reason).
-- The CD-key hash (internet server only), country lookup from a real IP, and the `iga addAdmin` sync of real hashes.
-- A sequence gap at runtime. It is covered by unit tests; the module's own phase-1 test exercised the drop path.
-- Discord: not configured locally.
-- The web UI. At the time it was Blazor, and only its data path (the hub events and methods) was exercised with
-  hubclient. The React web UI replaced it on 2026-10-27 and uses the web API for queries and commands; the hub only
-  sends live updates.
-
-## Contract points that proved wrong or need attention
-
-1. **Bot channel chat was not UTF-8 (fixed).** The bot channel's `Chat` delivered `§` (0xA7) as U+FFFD
-   (`[�C1001netsky…`) to the bot client, and the Windows console crashed printing it. The module's protocol v3 converts
-   bot channel chat from Windows-1252 to UTF-8 like the admin channel (openbf2-server-ext `docs/protocol.md`, "Chat
-   text"). It was never a WebAdmin issue.
-2. **The typed `SpawnObject` does not fit map mods.** Most map-mod templates have no networkable, so
-   `createObjectOnAllClients` creates server-only objects (phase-1 finding 17). `MapModule` keeps the console
-   `ObjectSpawner` script, which needs `adminAllowConsole 1`. With `adminAllowConsole 0`, map mods, noclip, freeze,
-   gravity, TV-missile settings and `InitServer` all stop working. The `Welcome` capability bit is logged as a warning.
-3. **Changing a key costs up to a minute.** After a failed attempt the module backs off up to 60 s, so a key fixed
+1. **The typed `SpawnObject` does not fit map mods.** Most map-mod templates have no networkable, so
+   `createObjectOnAllClients` creates server-only objects. `MapModule` keeps the console `ObjectSpawner` script
+   (`RconScript.AddObject`), which makes the template networkable first and needs `adminAllowConsole 1`. With
+   `adminAllowConsole 0`, map mods, noclip, freeze, gravity, TV-missile settings and `InitServer` all stop working. The
+   `Welcome` capability bit is logged as a warning.
+2. **Changing a key costs up to a minute.** After a failed attempt the module backs off up to 60 s, so a key fixed
    in the edit form takes effect at the next retry.
-4. **Teleport rotation.** The module applies it (it logs `position rotation`), but a hovering bot's heading hold
-   turned the heli back within seconds. Whether a human's heli keeps the pad heading is unverified.
-5. **`Server.ServerId` is `nvarchar(20)`.** It is one character short of `255.255.255.255:65535`, and it is now the
-   module's `adminServerId`. This is a latent limit, unchanged.
-6. **The key is visible to edit-form users.** `GET /api/servers/{id}/settings` (the hub's `GetServer` before the React
-   web UI) returns `AdminKey` to Administrator-role users of the edit
-   form (shown as a password field). It cannot be hashed: HMAC needs the raw key.
-7. **Kick and ban.** Since 2026-11-09 every kick and ban goes through the typed commands (`ServerAdmin`, above).
-
-## Local test environment changes (`BF2WebAdmin-localtest`, not a git repo; originals in `scratch\orig-2026-10-23\`)
-
-| File | Change |
-|---|---|
-| `setup.ps1` | `-Repo <tree>` (default `..\BF2WebAdmin`, unchanged) and `-OpenBF2` |
-| `.env` | `ADMIN_KEY` generated once (`setup.ps1`); `ADMIN_CERT_SHA256` written from `BF2WebAdmin.Server.exe --admin-pin` |
-| `appsecrets.json` | `AdminChannel` (port 4310, certificate in `secrets\admin-channel.pfx`) |
-| Containers | With `-OpenBF2`, the `bf2` container is stopped and `bf2-openbf2` recreated; without it, the reverse |
-| `docker-compose.openbf2.yml` | New: service `bf2-openbf2` (profile `openbf2`, container `bf2wa-localtest-openbf2`, image `bf2wa-localtest-openbf2`). Ports 16569/udp, 29901/udp, 127.0.0.1:4721→4711, 127.0.0.1:16705 (bot channel). `SERVEREXT_CFG_EXTRA` carries `adminConnect host.docker.internal:4310`, `adminServerId 127.0.0.1:16569`, the key, the pin, `allowTeleport 1`, `allowRoundRestart 1`. `docker-compose.yml` is unchanged |
-| `openbf2\build.sh`, `openbf2\Dockerfile` | New: `git archive` of OpenBF2 `873d1b1` and openbf2-server-ext `0aab582` into a docker volume. Builds in `debian:bullseye` with `libssl-dev`, runs ctest, then builds the image FROM `cr.nihlen.net/library/bf2-netsky:2v2-nocheck`: binaries replaced, `openbf2.addModDll serverext`, `mm_webadmin` not loaded (ModManager and its rcon kept), `sv.internet 0`, the `SERVEREXT_CFG_EXTRA` hook, and an `ldd` check (`libssl1.1` is in the base image) |
-| `init-db.sql` | `AdminKey` and `IsTestServer` columns (create, or `ALTER` on an existing database). The local server row gets `AdminKey = $(AdminKey)` and `IsTestServer = 1` |
-| `start-webadmin.ps1` | Skips the BF2 container restart when the OpenBF2 variant runs |
-| `tools\hubclient` | Modes `--watch <s>`, `--rcon "<cmd>"`, `--get-server`, `--set-admin-key <hex>`. Written for the old Blazor hub: form login `/api/login`, MessagePack, and hub methods (`UserConnect`, `SelectServer`, `SendRconCommand`, `GetServer`, `SetServer`, `SendChatMessage`) that no longer exist. Since 2026-10-27 the hub speaks JSON and only sends live updates (`Subscribe`), queries and commands go through the web API, and the login is `POST /api/auth/login` with JSON. Not ported, so it does not work against this branch (`--watch` would need `Subscribe`, JSON and the new login; the other modes the web API) |
-| `README.md` | The OpenBF2 variant |
-| `openbf2\build.sh` (2026-10-23, play session) | Module default `0d5967f` (protocol v3 + launch number); `ldd --version \| head -1` under `pipefail` could die of SIGPIPE (exit 141), now `sed -n 1p` |
-| `play-2v2.ps1`, `grant-admin.ps1`, `sidecar\` (2026-10-23) | New: a human plays 2v2 against bf2-bots' sidecar (published into `sidecar\`), `-Mode Pilot\|Gunner\|Status\|Stop`, WebAdmin in the background, logs in `logs\play\`; `grant-admin.ps1 -Name <n>` writes `name:<n>` into `ServerPlayerAuth` (B6) and restarts that WebAdmin, which reads auth only at start. README "Play session" |
+3. **`Server.ServerId` is `nvarchar(20)` on SQL Server.** It is one character short of `255.255.255.255:65535`, and it
+   is the module's `adminServerId`.
+4. **The key is visible to edit-form users.** `GET /api/servers/{id}/settings` returns `AdminKey` to Administrator-role
+   users of the edit form (shown as a password field). It cannot be hashed: HMAC needs the raw key.

@@ -36,7 +36,6 @@ public class Rotation
 
     public override string ToString()
     {
-        //return $"{Yaw:0.000}/{Pitch:0.000}/{Roll:0.000}";
         return string.Format(CultureInfo.InvariantCulture, "{0:0.000}/{1:0.000}/{2:0.000}", Yaw, Pitch, Roll);
     }
 }

@@ -7,7 +7,7 @@ namespace BF2WebAdmin.Server.Services;
 /// Ends matches that were left open: Heli2v2Module ends a match when the next one starts or the module stops, so a
 /// restart or crash in the middle of a match leaves it without an end. A match whose last round ended (or, without
 /// rounds, that started) over an hour ago gets that time as its end and the scores counted from its rounds' winners.
-/// Runs at startup and every 10 minutes. The BF2v2 site did this on WebAdmin's tables before the database split.
+/// Runs at startup and every 10 minutes.
 /// </summary>
 public sealed class StaleMatchCloser : BackgroundService
 {

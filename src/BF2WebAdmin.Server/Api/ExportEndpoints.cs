@@ -2,6 +2,7 @@ using System.Text.Json;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Entities;
+using BF2WebAdmin.Server.AdminChannel;
 
 namespace BF2WebAdmin.Server.Api;
 
@@ -62,6 +63,47 @@ public record ExportServer(string ServerId, string ServerGroup, string? IpAddres
 public record ExportJoin(long Id, string Name, string Guid, string IpAddress, string ServerIpAddress, DateTime JoinDate);
 
 /// <summary>
+/// A page of the missile feed: like <see cref="ExportPage{T}"/>, with the archive's <c>Epoch</c>. The feed is kept in
+/// memory for ten minutes; a new epoch (WebAdmin restarted) starts the sequence again at 1, so read again from 0.
+/// </summary>
+public record ExportMissilePage(Guid Epoch, IReadOnlyList<ExportMissile> Items, long Next, bool HasMore);
+
+/// <summary>
+/// A traced TV missile: per tick (30 Hz) the missile and every vehicle within 150 m of it, where it is now and where the
+/// server tested it (rewound by the shooter's lag), and what it collided with. <c>MatchId</c>, <c>RoundId</c> and
+/// <c>RoundNumber</c> are set when a 2v2 round was being played at <c>LaunchTime</c>. See docs/export-api.md.
+/// </summary>
+public record ExportMissile(
+    long Seq,
+    string ServerId,
+    string Map,
+    Guid? MatchId,
+    Guid? RoundId,
+    int RoundNumber,
+    DateTime LaunchTime,
+    string Template,
+    string ShooterHash,
+    string ShooterName,
+    int ShooterTeam,
+    string ShooterVehicle,
+    uint ShooterRoot,
+    uint FirstTick,
+    int Flags,
+    string Outcome,
+    string? HitPart,
+    string? HitRoot,
+    string? HitPlayerHash,
+    bool HitRewound,
+    int LagMs,
+    IReadOnlyList<ExportMissileTarget> Targets,
+    IReadOnlyList<MissileSampleDto> Samples,
+    IReadOnlyList<MissileCollisionDto> Collisions);
+
+/// <summary>A vehicle that came within 150 m of the missile. <c>Team</c> is its crew's (0: none known).</summary>
+public record ExportMissileTarget(uint NetId, string Template, int Team, IReadOnlyList<MissileCrewDto> Crew, float ClosestTested,
+    float ClosestCurrent, bool Moved);
+
+/// <summary>
 /// The export API (/api/export/v1): a read-only feed of the recorded matches, the player joins and the server list, for
 /// a statistics site or another consumer with its own database. Admin authentication (the X-API-KEY header). The
 /// contract is docs/export-api.md.
@@ -70,6 +112,7 @@ public static class ExportEndpoints
 {
     public const int DefaultMatchLimit = 50, MaxMatchLimit = 200;
     public const int DefaultJoinLimit = 1000, MaxJoinLimit = 5000;
+    public const int DefaultMissileLimit = 50, MaxMissileLimit = 200;
 
     public static void MapExport(this RouteGroupBuilder api)
     {
@@ -77,6 +120,47 @@ public static class ExportEndpoints
         export.MapGet("/matches", GetMatchesAsync);
         export.MapGet("/servers", GetServersAsync);
         export.MapGet("/joins", GetJoinsAsync);
+        export.MapGet("/missiles", GetMissiles);
+    }
+
+    /// <summary>The traced TV missiles of the last ten minutes after <paramref name="since"/> (0: all), in trace order.</summary>
+    private static ExportMissilePage GetMissiles(MissileArchive archive, long since = 0, int limit = DefaultMissileLimit)
+    {
+        limit = Math.Clamp(limit, 1, MaxMissileLimit);
+        var (items, hasMore) = archive.GetSince(since, limit);
+        return new ExportMissilePage(archive.Epoch, items.Select(ToExport).ToList(), items.Count > 0 ? items[^1].Seq : since, hasMore);
+    }
+
+    public static ExportMissile ToExport(ArchivedMissile missile)
+    {
+        var (summary, samples, collisions) = missile.Replay;
+        var context = missile.Context;
+        return new ExportMissile(
+            missile.Seq,
+            context.ServerId,
+            context.Map,
+            context.MatchId,
+            context.RoundId,
+            context.RoundNumber,
+            DateTime.SpecifyKind(context.LaunchTime, DateTimeKind.Utc),
+            summary.Template,
+            context.ShooterHash,
+            summary.ShooterName,
+            summary.ShooterTeam,
+            summary.ShooterVehicle,
+            context.ShooterRoot,
+            summary.FirstTick,
+            summary.Flags,
+            summary.Outcome,
+            summary.HitPart,
+            summary.HitRoot,
+            context.HitPlayerHash,
+            summary.HitRewound,
+            summary.LagMs,
+            summary.Targets.Select((t, i) => new ExportMissileTarget(t.NetId, t.Template, context.TargetTeams[i], context.TargetCrews[i],
+                t.ClosestTested, t.ClosestCurrent, t.Moved)).ToList(),
+            samples,
+            collisions);
     }
 
     /// <summary>Matches written after cursor <paramref name="since"/> (0: all), in write order.</summary>

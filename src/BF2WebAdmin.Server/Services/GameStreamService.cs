@@ -26,7 +26,6 @@ public class RabbitMqGameStreamService : IGameStreamService
             throw new Exception("No message bus found");
 
         var endpoint = await _messageBus.GetSendEndpoint(new Uri("queue:game-stream-controller"));
-        //var endpoint = await _messageBus.GetSendEndpoint(new Uri("exchange:game-stream-controller"));
 
         await endpoint.Send(
             new StartGameStream

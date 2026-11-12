@@ -3,9 +3,9 @@ using System;
 namespace BF2WebAdmin.Data.Entities;
 
 /// <summary>
-/// A row of dbo.JoinHistory, the BF2v2 site's table of player joins (country flags from the newest IP per name, aliases
-/// by the same Guid or IP). WebAdmin writes one row per human player connect; the columns are BF2v2's
-/// (BF2v2Core.Core PlayerRepository Insert, Entities/PlayerJoin.cs).
+/// A row of dbo.JoinHistory, the table of player joins (for country flags from the newest IP per name, and aliases by
+/// the same Guid or IP). WebAdmin writes one row per human player connect; other programs read it through the export
+/// API (docs/export-api.md).
 /// </summary>
 public class PlayerJoin
 {
@@ -29,6 +29,6 @@ public class PlayerJoin
     /// <summary>UTC.</summary>
     public DateTime JoinDate { get; set; }
 
-    /// <summary>Set by BF2v2's spoof check; WebAdmin leaves it to the column default (0). Not in the Postgres table player_join.</summary>
+    /// <summary>For a reader's own spoof check; WebAdmin leaves it to the column default (0). Not in the Postgres table player_join.</summary>
     public bool IsLikelySpoof { get; set; }
 }

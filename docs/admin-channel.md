@@ -30,6 +30,14 @@ modules ── IGameWriter (AdminGameWriter) ── typed commands / Console, in
 Modules see `IGameServer`, the `GameEvents.cs` records and `IGameWriter`. `GameServer`'s mutators are not on
 `IGameServer`; only the applier calls them.
 
+Each server's modules run on one thread of their own (`Extensions/ModuleContext.cs`, a `SynchronizationContext`
+that `ModManager` creates with the modules). The `Mediator` runs every event handler and chat command there, the
+modules' `ITaskRunner` starts their background work there, and every `await` in that code comes back there. So
+events, commands and delayed actions (a `Task.Delay` and what follows it) never run at the same time, and module state needs no
+locks. The apply loop waits for an event's handlers as before; a chat command is queued and the loop goes on. Code on
+the module thread must not block: CPU-heavy work (Heli2v2's playback) and long I/O loops (the Discord bot) run on the
+thread pool with their own `Task.Run`. The web API's direct calls into `WebModule` are not on it.
+
 ### Identity and keys
 
 - The module's `adminServerId` is the server's `Server.ServerId` (for example `1.2.3.4:16567`). The source address

@@ -4,9 +4,10 @@ namespace BF2WebAdmin.Server.Abstractions;
 
 /// <summary>
 /// Collects what a chat command says in game (<see cref="IGameWriter.SendText"/> and private messages) while a web user's
-/// command runs, so the web UI can show the answer. The capture follows the async flow of the command (into the handlers'
-/// <c>Task.Run</c>, which copies it); the caller waits for the handlers (<see cref="IModManager.HandleFakeChatMessageAsync"/>),
-/// and what they send after it has read <see cref="Lines"/> is not shown.
+/// command runs, so the web UI can show the answer. The capture follows the async flow of the command (onto the module
+/// thread: <c>ModuleContext.InvokeAsync</c> runs the handlers with the caller's execution context); the caller waits for the
+/// handlers (<see cref="IModManager.HandleFakeChatMessageAsync"/>), and what they send after it has read <see cref="Lines"/>
+/// is not shown.
 /// </summary>
 public sealed partial class GameTextCapture
 {

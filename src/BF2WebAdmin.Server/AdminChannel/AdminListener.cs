@@ -143,9 +143,17 @@ public class AdminListener
             session = new AdminSession(result.ServerId, remote, stream, decoder, server.Applier, _loggerFactory.CreateLogger<AdminSession>(), cancellationToken);
             var previous = server.Session;
             server.AttachSession(session);
-            previous?.Close("replaced by a new link from the server");
             AppDiagnostics.AcceptedClientsCounter.Add(1);
             _logger.LogInformation("Admin channel: {ServerId} authenticated from {Remote} ({Build})", result.ServerId, remote, result.Hello.Build);
+
+            if (previous != null)
+            {
+                // The old link's loops stop before the new one applies anything, so one apply loop at a time works on the
+                // server's state and modules. Frames from the server wait in the socket meanwhile
+                previous.Close("replaced by a new link from the server");
+                if (!await WaitForCloseAsync(previous))
+                    _logger.LogWarning("Admin channel: {ServerId}'s previous session did not stop within {Timeout} s", result.ServerId, PreviousSessionTimeout.TotalSeconds);
+            }
 
             await session.RunAsync();
         }
@@ -171,6 +179,22 @@ public class AdminListener
         finally
         {
             client.Dispose();
+        }
+    }
+
+    /// <summary>A session's own close waits up to 10 s for its loops; a little more for its close handler.</summary>
+    public static readonly TimeSpan PreviousSessionTimeout = TimeSpan.FromSeconds(15);
+
+    private static async Task<bool> WaitForCloseAsync(AdminSession previous)
+    {
+        try
+        {
+            await previous.Closed.WaitAsync(PreviousSessionTimeout);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
         }
     }
 }

@@ -50,7 +50,9 @@ Modules see `IGameServer`, the `GameEvents.cs` records and `IGameWriter`. `GameS
 - Replies are matched by request id. Fire-and-forget commands log an `Error` reply; awaited ones throw
   `AdminCommandException` with the module's code.
 - Events carry sequence numbers. After a `Snapshot` (`lastSeq`), events at or below it are dropped; a jump starts one
-  `RequestSnapshot`. A reconnect is a new session with a full snapshot. Subscriptions are made again after every
+  `RequestSnapshot`. A reconnect is a new session with a full snapshot; the old session is closed first and its loops
+  stop (up to 15 s) before the new one applies anything, and a closed session applies nothing of what it still had
+  queued. Subscriptions are made again after every
   `Welcome`: players and `agm114_hellfire_tv` projectiles at the module's tracker interval (default 0.25 s, Heli2v2's
   `.interval`), vehicles and game state at 1 Hz, and the hit/miss replay (stream 20) for `agm114_hellfire_tv`.
   While a 3D viewer is open on the server, players, vehicles, projectiles and aim (stream 5) run at 30 Hz; the

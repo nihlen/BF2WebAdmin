@@ -353,10 +353,14 @@ public class AdminChannelTests
         public readonly BlockingCollection<AdminMessage> Messages = new();
         public readonly TaskCompletionSource Closed = new();
 
-        public ValueTask OnMessageAsync(AdminSession session, AdminMessage message)
+        /// <summary>When set, the handler waits for it after recording an event with seq 1.</summary>
+        public TaskCompletionSource? Gate;
+
+        public async ValueTask OnMessageAsync(AdminSession session, AdminMessage message)
         {
             Messages.Add(message);
-            return ValueTask.CompletedTask;
+            if (Gate != null && message is AdminEvent { Seq: 1 })
+                await Gate.Task;
         }
 
         public ValueTask OnClosedAsync(AdminSession session)
@@ -408,6 +412,28 @@ public class AdminChannelTests
 
         session.Close("test");
         await run;
+    }
+
+    [Fact]
+    public async Task ClosedSessionAppliesNothingMore()
+    {
+        // A reconnect closes the old session while its apply loop is busy; what is queued behind must not be applied
+        // next to the new session's loop
+        var (session, module, handler, run) = await StartSessionAsync();
+        handler.Gate = new TaskCompletionSource();
+        await module.SendAsync(new EvRevive(1, 101, 3, -1));
+        await module.SendAsync(new EvRevive(2, 102, 3, -1));
+        await module.SendAsync(new EvRevive(3, 103, 3, -1));
+        Assert.Equal(1u, ((AdminEvent)handler.Next()).Seq);
+        await Task.Delay(200);
+
+        session.Close("replaced by a new link from the server");
+        Assert.False(session.Closed.IsCompleted);
+        handler.Gate.SetResult();
+        await run.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(session.Closed.IsCompleted);
+        Assert.Empty(handler.Messages);
     }
 
     [Fact]

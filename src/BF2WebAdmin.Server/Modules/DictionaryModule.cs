@@ -1,5 +1,6 @@
 ﻿using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands;
+using BF2WebAdmin.Server.Extensions;
 using Newtonsoft.Json;
 
 namespace BF2WebAdmin.Server.Modules;
@@ -17,8 +18,7 @@ public class DictionaryModule : IModule,
     public async ValueTask HandleAsync(DefineCommand command)
     {
         var term = Uri.EscapeDataString(command.Term);
-        var client = new HttpClient();
-        var response = await client.GetStringAsync($"https://api.urbandictionary.com/v0/define?term={term}");
+        var response = await ModuleHttp.Client.GetStringAsync($"https://api.urbandictionary.com/v0/define?term={term}");
         var result = JsonConvert.DeserializeObject<UrbanDictionaryResult>(response);
         var definition = result.List.FirstOrDefault();
         if (definition != null)

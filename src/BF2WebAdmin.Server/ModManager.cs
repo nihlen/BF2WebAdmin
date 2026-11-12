@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Data.Common;
+using System.Net;
 using System.Text.RegularExpressions;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
@@ -17,6 +18,7 @@ using BF2WebAdmin.Server.Modules.BF2;
 using BF2WebAdmin.Server.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Polly;
 using Polly.Registry;
@@ -90,19 +92,19 @@ public partial class ModManager : IModManager
         var jitterer = new Random();
 
         var retryPolicyAsync = Policy
-            .Handle<SqlException>()
+            .Handle<Exception>(IsRetryableDatabaseError)
             .WaitAndRetryAsync(
                 retryCount: 6,
                 sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
-                onRetry: (exception, timespan, context) => logger.LogWarning("Failed attempt #{Attempt}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", timespan, context, exception.Message, exception.StackTrace)
+                onRetry: (exception, timespan, retryAttempt, _) => logger.LogWarning(exception, "Failed attempt #{Attempt}. Retrying in {TimeSpan}", retryAttempt, timespan)
             );
 
         var retryPolicyLongAsync = Policy
-            .Handle<SqlException>()
+            .Handle<Exception>(IsRetryableDatabaseError)
             .WaitAndRetryAsync(
                 retryCount: 10, // 2 + 4 + ... + 1024 s, ~34 min
                 sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
-                onRetry: (exception, retryAttempt, timespan) => logger.LogWarning("Failed attempt #{Attempt}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", retryAttempt, timespan, exception.Message, exception.StackTrace)
+                onRetry: (exception, timespan, retryAttempt, _) => logger.LogWarning(exception, "Failed attempt #{Attempt}. Retrying in {TimeSpan}", retryAttempt, timespan)
             );
 
         var httpStatusCodesWorthRetrying = new[] {
@@ -122,11 +124,11 @@ public partial class ModManager : IModManager
             );
 
         var retryPolicy = Policy
-            .Handle<SqlException>()
+            .Handle<Exception>(IsRetryableDatabaseError)
             .WaitAndRetry(
                 retryCount: 6,
                 sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + TimeSpan.FromMilliseconds(jitterer.Next(0, 100)),
-                onRetry: (exception, retryAttempt, timespan) => logger.LogWarning("Failed attempt #{Attempts}. Retrying in {TimeSpan}.\n{ExceptionMessage} - {ExceptionStacktrace}", retryAttempt, timespan, exception.Message, exception.StackTrace)
+                onRetry: (exception, timespan, retryAttempt, _) => logger.LogWarning(exception, "Failed attempt #{Attempt}. Retrying in {TimeSpan}", retryAttempt, timespan)
             );
 
         return new PolicyRegistry
@@ -137,6 +139,22 @@ public partial class ModManager : IModManager
             { PolicyNames.RetryPolicyHttpAsync, retryPolicyHttpAsync }
         };
     }
+
+    /// <summary>
+    /// The database errors the retry policies retry, for all three providers. SQL Server: any error, as before. Postgres
+    /// and others: those the provider calls transient (a dropped connection, a timeout, a failover). SQLite: a busy or
+    /// locked database. EF Core wraps them in a <see cref="DbUpdateException"/>.
+    /// </summary>
+    public static bool IsRetryableDatabaseError(Exception exception) => exception switch
+    {
+        SqlException => true,
+        SqliteException sqlite => sqlite.SqliteErrorCode is 5 or 6, // SQLITE_BUSY, SQLITE_LOCKED
+        DbException db => db.IsTransient,
+        TimeoutException => true,
+        DbUpdateException { InnerException: { } inner } => IsRetryableDatabaseError(inner),
+        InvalidOperationException { InnerException: DbException inner } => IsRetryableDatabaseError(inner), // EF's "an exception has been raised that is likely due to a transient failure"
+        _ => false,
+    };
     
     public T? GetModule<T>() where T : IModule
     {
@@ -230,8 +248,9 @@ public partial class ModManager : IModManager
         {
             try
             {
+                // Not Add: the retry in CreateAsync can run this again after a later step failed
                 var moduleInstance = (IModule)_services.GetRequiredService(moduleType);
-                _moduleResolver.Modules.Add(moduleType, moduleInstance);
+                _moduleResolver.Modules[moduleType] = moduleInstance;
             }
             catch (Exception ex)
             {

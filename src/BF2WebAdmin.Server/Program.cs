@@ -1,4 +1,6 @@
 ﻿using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Serialization;
 using AspNetCore.Authentication.ApiKey;
 using BF2WebAdmin.Common.External;
@@ -14,6 +16,7 @@ using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Services;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
@@ -135,7 +138,13 @@ try
         return Task.CompletedTask;
     }));
 
-    // TODO: DataProtection to persist logins
+    // A login cookie outlives a deploy only if the keys that protect it do. DataProtection:KeysPath, a directory on a
+    // volume, keeps them; without it they are where ASP.NET Core puts them (in a container: inside it, so lost when it is
+    // replaced, and everyone has to log in again)
+    var dataProtection = builder.Services.AddDataProtection();
+    if (builder.Configuration["DataProtection:KeysPath"] is { Length: > 0 } keysPath)
+        dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+
     builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
         .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
         {
@@ -168,7 +177,8 @@ try
                         return;
                     }
 
-                    var isValid = apiKey.Equals(context.ApiKey, StringComparison.OrdinalIgnoreCase);
+                    // Exact and in fixed time, like the password (it was case-insensitive)
+                    var isValid = context.ApiKey is { } given && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(apiKey), Encoding.UTF8.GetBytes(given));
                     if (isValid)
                     {
                         var claims = new[]

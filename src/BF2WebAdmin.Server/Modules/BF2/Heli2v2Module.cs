@@ -1296,9 +1296,8 @@ public class Heli2v2Module : BaseModule,
 
                     if (shouldResumePreviousMatch)
                     {
+                        // SetCurrentMatchAsync finds it and adds the round (adding it here too counted it twice)
                         _matches.Add(previousMatch);
-                        previousMatch.Rounds.Add(_pendingRound);
-                        _pendingRound.MatchId = previousMatch.Id;
                         _gameServer.GameWriter.SendText("Previous 2v2 match has been resumed");
                     }
                 }

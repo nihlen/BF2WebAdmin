@@ -109,6 +109,21 @@ public class Heli2v2ModuleTests
         await _server.ModManager.Mediator.DidNotReceiveWithAnyArgs().PublishAsync((MatchStartEvent)default);
         await _server.ModManager.Mediator.DidNotReceiveWithAnyArgs().PublishAsync((MatchEndEvent)default);
         await _server.ModManager.Mediator.Received(1).PublishAsync(Arg.Is<RoundStartEvent>(e => e.Round.MatchId == previousMatch.Id));
+
+        // The resumed match holds its earlier round and the new one once (the new one was in it twice)
+        await _cut.HandleAsync(new PlayerKillEvent(players[1], players[1].Position, players[2], players[2].Position, "agm114_hellfire_tv", _startTime.AddSeconds(30)));
+        await _cut.HandleAsync(new PlayerKillEvent(players[1], players[1].Position, players[3], players[3].Position, "agm114_hellfire_tv", _startTime.AddSeconds(30)));
+        await _taskRunner.FinishAsync();
+        vehicles[0].Players = new List<Player>
+        {
+            players[0],
+            new() { Id = 5, Index = 5, Hash = "B2", Team = teams[0], Vehicle = vehicles[0], Name = "CH Gunner 2", SubVehicleTemplate = "ahe_z10_cogunner", Position = Data.DalianChPad, Rotation = Rotation.Neutral },
+        };
+        await _cut.HandleAsync(new ChatMessageEvent(readyMessage, _startTime.AddSeconds(35)));
+        await _cut.HandleAsync(new ChatMessageEvent(goMessage, _startTime.AddSeconds(36)));
+
+        await _server.ModManager.Mediator.Received(1).PublishAsync(Arg.Is<MatchEndEvent>(e =>
+            e.Match.Id == previousMatch.Id && e.Match.Rounds.Count == 2 && e.Match.Rounds.Distinct().Count() == 2));
     }
 
 

@@ -69,7 +69,9 @@ public class BF2Module : BaseModule,
     private readonly Random _random;
     private readonly IDictionary<int, bool> _newPlayers = new Dictionary<int, bool>();
     private const int DefaultDelay = 25; // 1000/35 fps ~ 28.5
-    private int _stopCounter;
+    // The running effects (dance, blur, freeze) end when this is cancelled: by .stop, which starts a new one, or by a
+    // module reload
+    private CancellationTokenSource _stop;
     private Timer _heartbeatTimer;
     private bool _sendHeartbeat = false;
 
@@ -84,7 +86,7 @@ public class BF2Module : BaseModule,
         _serverSettingsRepository = serverSettingsRepository;
         _chatLogger = chatLogger;
         _random = new Random();
-        _stopCounter = 0;
+        _stop = CancellationTokenSource.CreateLinkedTokenSource(ModuleCancellationToken);
 
         ServerGroupMessage += (serverId, message) =>
         {
@@ -105,10 +107,14 @@ public class BF2Module : BaseModule,
 
     public void Handle(StopCommand command)
     {
-        _stopCounter++;
+        var stopped = Interlocked.Exchange(ref _stop, CancellationTokenSource.CreateLinkedTokenSource(ModuleCancellationToken));
+        stopped.Cancel();
+        stopped.Dispose();
 
         Unfreeze(_gameServer.Players.ToArray());
     }
+
+    private CancellationToken StopToken => Volatile.Read(ref _stop).Token;
 
     public void Handle(RankCommand command)
     {
@@ -381,8 +387,8 @@ public class BF2Module : BaseModule,
     {
         var snapshots = players.Select(PlayerSnapshot.Save).ToList();
         var startTime = DateTime.UtcNow;
-        var startCount = _stopCounter;
-        while (IsActive(duration, startTime, startCount))
+        var stop = StopToken;
+        while (IsActive(duration, startTime, stop))
         {
             foreach (var playerSnapshot in snapshots)
             {
@@ -404,16 +410,23 @@ public class BF2Module : BaseModule,
         if (player == null)
             return;
 
-        await FreezeAsync(1000 * 60 * 60, player);
+        await FreezeAsync(FreezeDuration, player);
     }
 
     public async ValueTask HandleAsync(FreezeAllCommand command)
     {
-        await FreezeAsync(1000 * 60 * 60, _gameServer.Players.ToArray());
+        await FreezeAsync(FreezeDuration, _gameServer.Players.ToArray());
     }
 
-    private async Task FreezeAsync(int duration, params Player[] players)
+    private static readonly TimeSpan FreezeDuration = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// Freezes the players' vehicles until the time is up, .stop (which unfreezes everyone) or a module reload (which
+    /// unfreezes them here, so a reload leaves nobody frozen and no hour-long task holds the old module).
+    /// </summary>
+    private async Task FreezeAsync(TimeSpan duration, params Player[] players)
     {
+        var stop = StopToken;
         foreach (var player in players)
         {
             if (player.Vehicle == null)
@@ -425,9 +438,27 @@ public class BF2Module : BaseModule,
             player.Vehicle.IsDisabled = true;
         }
 
-        await Task.Delay(duration);
+        try
+        {
+            await Task.Delay(duration, stop);
+        }
+        catch (OperationCanceledException) when (!ModuleCancellationToken.IsCancellationRequested)
+        {
+            return; // .stop
+        }
+        catch (OperationCanceledException)
+        {
+            // Reload: unfreeze below
+        }
 
-        Unfreeze(players);
+        try
+        {
+            Unfreeze(players);
+        }
+        catch (Exception ex) when (ModuleCancellationToken.IsCancellationRequested)
+        {
+            Logger.LogWarning(ex, "Unfreezing on {ServerId} after a module reload failed", _gameServer.Id);
+        }
     }
 
     private void Unfreeze(params Player[] players)
@@ -457,8 +488,8 @@ public class BF2Module : BaseModule,
     private async Task BlurAsync(long duration, params Player[] players)
     {
         var startTime = DateTime.UtcNow;
-        var startCount = _stopCounter;
-        while (IsActive(duration, startTime, startCount))
+        var stop = StopToken;
+        while (IsActive(duration, startTime, stop))
         {
             foreach (var player in players)
             {
@@ -468,9 +499,9 @@ public class BF2Module : BaseModule,
         }
     }
 
-    private bool IsActive(long duration, DateTime startTime, int startCount)
+    private static bool IsActive(long duration, DateTime startTime, CancellationToken stop)
     {
-        return (DateTime.UtcNow - startTime).TotalMilliseconds < duration && startCount == _stopCounter;
+        return (DateTime.UtcNow - startTime).TotalMilliseconds < duration && !stop.IsCancellationRequested;
     }
 
     public async ValueTask HandleAsync(CrashCommand command)

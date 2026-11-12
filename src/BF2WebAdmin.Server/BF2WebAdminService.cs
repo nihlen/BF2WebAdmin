@@ -64,6 +64,9 @@ public class ServerSettings
     public List<ServerInfo> GameServers { get; set; }
     public string ServerLogDirectory { get; set; }
     public bool ForceHttps { get; set; } = true;
+
+    /// <summary>The name in brackets before WebAdmin's own chat lines; empty for none. Read by <see cref="Entities.GameServer"/>.</summary>
+    public string ChatPrefix { get; set; } = BF2WebAdmin.Server.AdminChannel.AdminGameWriter.DefaultChatPrefix;
 }
 
 public class ServerInfo

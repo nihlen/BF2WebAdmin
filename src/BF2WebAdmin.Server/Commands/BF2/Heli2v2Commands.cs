@@ -93,7 +93,7 @@ public class SetTvMissileTypeCommand : BaseCommand
     public string Type { get; set; }
 }
 
-[Command("tvlog| <Name>", Auth.SuperAdmin)]
+[Command("tvlog <Name>", Auth.SuperAdmin)]
 public class ToggleTvLogCommand : BaseCommand
 {
     public string Name { get; set; }

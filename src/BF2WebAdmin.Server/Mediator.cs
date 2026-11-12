@@ -6,7 +6,11 @@ namespace BF2WebAdmin.Server;
 public interface IMediator
 {
     ValueTask PublishAsync<TEvent>(TEvent gameEvent) where TEvent : IEvent;
-    ValueTask HandleAsync<TCommand>(TCommand command) where TCommand : ICommand;
+    /// <summary>
+    /// Starts the command's handlers on the thread pool and returns at once; the returned task completes when they all have.
+    /// A handler's errors are logged, never thrown.
+    /// </summary>
+    Task HandleAsync<TCommand>(TCommand command) where TCommand : ICommand;
 }
 
 public class Mediator : IMediator
@@ -43,22 +47,28 @@ public class Mediator : IMediator
         static bool TraceEventType(string? eventType) => eventType != nameof(PlayerPositionEvent) && eventType != nameof(ProjectilePositionEvent);
     }
 
-    public async ValueTask HandleAsync<TCommand>(TCommand command) where TCommand : ICommand
+    public Task HandleAsync<TCommand>(TCommand command) where TCommand : ICommand
     {
         var commandType = command.GetType();
         using var activity = Telemetry.ActivitySource.StartActivity("PublishCommand:" + commandType.Name);
 
-        // TODO: make an alternate version that uses Channel<ICommand> and see if it causes less delays
-        if (!_moduleResolver.CommandHandlers.TryGetValue(commandType, out var handlers))
-            throw new Exception($"No command handler registered for {commandType.Name}");
+        if (!_moduleResolver.CommandHandlers.TryGetValue(commandType, out var handlers) || handlers.Count == 0)
+        {
+            _logger.LogDebug("No loaded module handles {CommandType}", commandType.Name);
+            return Task.CompletedTask;
+        }
 
         activity?.SetTag("bf2wa.command-handler-count", handlers.Count);
 
-        // TODO: properly handle async commands - always return Func<Task> and await Task.WhenAll?
-        foreach (var handler in handlers)
+        // On the thread pool, not on the caller's thread (for a chat line the admin channel's apply loop): a command may run
+        // for seconds. Errors are handled in the command handler wrapper
+        var running = new Task[handlers.Count];
+        for (var i = 0; i < handlers.Count; i++)
         {
-            // Errors are handled in the command handler wrapper
-            _ = Task.Run(async () => await handler(command));
+            var handler = handlers[i];
+            running[i] = Task.Run(() => handler(command).AsTask());
         }
+
+        return Task.WhenAll(running);
     }
 }

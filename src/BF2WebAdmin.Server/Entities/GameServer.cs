@@ -159,7 +159,9 @@ public class GameServer : IGameServer
             {
                 if (ModManager == null || forceReinitialize)
                 {
-                    ModManager?.Dispose();
+                    // The old modules go first: a Discord bot or a log file must not run twice
+                    if (ModManager != null)
+                        await ModManager.DisposeAsync();
                     ModManager = await Server.ModManager.CreateAsync(this, _globalServices, _cancellationToken);
                     await ModManager.Mediator.PublishAsync(new SocketStateChangedEvent(SocketState, DateTimeOffset.UtcNow));
                 }
@@ -447,7 +449,7 @@ public class GameServer : IGameServer
 
     public Player? GetPlayerByName(string namePart)
     {
-        return Players.FirstOrDefault(p => p.Name.ToLower().Contains(namePart));
+        return Players.FirstOrDefault(p => p.Name?.Contains(namePart, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 
     public Player? GetPlayerByHash(string playerHash)

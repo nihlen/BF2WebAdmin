@@ -258,9 +258,12 @@ public class WebModule : BaseModule,
     /// <summary>The command name of a "." or "!" line.</summary>
     public static string Alias(string message) => message.TrimStart('.', '!').Split(' ', 2)[0];
 
+    /// <summary>How long the chat box waits for a command's handlers before it answers with what they said so far.</summary>
+    public static readonly TimeSpan CommandWait = TimeSpan.FromSeconds(5);
+
     /// <summary>
     /// Runs a "." chat command as a God-level web user and returns what it said in game while it ran
-    /// (<see cref="GameTextCapture"/>), or "Unknown command".
+    /// (<see cref="GameTextCapture"/>, up to <see cref="CommandWait"/>), or "Unknown command".
     /// </summary>
     public async ValueTask<IReadOnlyList<string>> HandleCustomCommandAsync(string userId, string message)
     {
@@ -294,7 +297,7 @@ public class WebModule : BaseModule,
                 Hash = WebAdminHashGod
             },
             Text = message
-        });
+        }, CommandWait);
     }
 
     public async ValueTask HandleAsync(StartEventRecordingCommand command)

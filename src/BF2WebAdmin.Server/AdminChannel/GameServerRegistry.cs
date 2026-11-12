@@ -187,10 +187,9 @@ public class GameServerRegistry : IGameServerRegistry
         if (_servers.TryRemove(serverId, out var server))
         {
             server.Session?.Close($"server settings {type}");
-            server.ModManager?.Dispose();
+            if (server.ModManager != null)
+                await server.ModManager.DisposeAsync();
         }
-
-        await Task.CompletedTask;
     }
 }
 

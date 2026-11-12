@@ -8,8 +8,6 @@ namespace BF2WebAdmin.Data;
 
 public class BF2Context : DbContext
 {
-    //private readonly string _connectionString;
-
     public DbSet<MapMod> MapMods { get; set; }
     public DbSet<MapModObject> MapModObjects { get; set; }
 
@@ -21,7 +19,7 @@ public class BF2Context : DbContext
     public DbSet<ServerModule> ServerModules { get; set; }
     public DbSet<ServerPlayerAuth> ServerPlayerAuths { get; set; }
 
-    /// <summary>Player joins (dbo.JoinHistory on SQL Server), exported for the BF2v2 site.</summary>
+    /// <summary>Player joins (dbo.JoinHistory on SQL Server), read by the export API.</summary>
     public DbSet<PlayerJoin> JoinHistory { get; set; }
 
     /// <summary>Who banned whom and why; the bans themselves are in each game server's own ban list.</summary>
@@ -35,13 +33,6 @@ public class BF2Context : DbContext
     protected BF2Context(DbContextOptions options) : base(options)
     {
     }
-
-    //public BF2Context(string connectionString)
-    //{
-    //    _connectionString = connectionString;
-    //}
-
-    //protected override void OnConfiguring(DbContextOptionsBuilder options) => options.UseSqlite(_connectionString);
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

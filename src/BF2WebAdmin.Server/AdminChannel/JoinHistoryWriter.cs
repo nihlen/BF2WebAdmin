@@ -14,8 +14,8 @@ public interface IJoinHistoryWriter
 }
 
 /// <summary>
-/// Writes dbo.JoinHistory, the BF2v2 site's table of player joins (country flags, aliases), which BF2v2 filled from
-/// PunkBuster logs before OpenBF2. <see cref="AdminStateApplier"/> queues a row on each admin channel PlayerConnect
+/// Writes dbo.JoinHistory, the table of player joins (country flags, aliases) that the export API serves.
+/// <see cref="AdminStateApplier"/> queues a row on each admin channel PlayerConnect
 /// of a human player; this service inserts them one at a time in the background, so the database never holds up the
 /// apply loop. A failed insert only logs a warning.
 /// </summary>

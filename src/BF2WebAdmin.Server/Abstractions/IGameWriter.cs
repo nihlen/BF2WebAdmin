@@ -40,7 +40,7 @@ public interface IGameWriter
     /// <summary>Kill the player; with <paramref name="destroyVehicle"/> its vehicle is wrecked when nobody else is in it.</summary>
     void SendKill(Player player, bool destroyVehicle = false);
 
-    /// <summary>Move the player to a team, killing it like mm_webadmin's team command did unless <paramref name="kill"/> is false.</summary>
+    /// <summary>Move the player to a team, killing it unless <paramref name="kill"/> is false.</summary>
     void SendTeam(Player player, int teamId, bool kill = true);
 
     void SendScore(Player player, int totalScore, int teamScore, int kills, int deaths);

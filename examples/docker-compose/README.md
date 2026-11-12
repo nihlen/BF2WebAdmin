@@ -7,7 +7,7 @@ If you want to display the country of the players when joining then you need a f
 
 `ServerSettings:IpAddress` public IP of the host
 
-Note: The ports, aliases and RCON passwords need to match between the game server (docker-compose file) and the appsettings/appsecrets.
+Note: The ports and server ids need to match between the game servers (docker-compose file) and `appsecrets.json`.
 
 ## Admin channel
 
@@ -27,19 +27,16 @@ Note: The ports, aliases and RCON passwords need to match between the game serve
 3. On each game server, `serverext.cfg`:
 
    ```
-   adminConnect bf2-webadmin:4300
+   adminConnect bf2-webadmin:4310
    adminServerId bf2-server-1:16567
    adminKey <the AdminKey of bf2-server-1>
    adminCertSha256 <the pin>
    ```
 
-WebAdmin listens on 4300 here (`ServerSettings__AdminChannel__Port`); the default is 4310. The game servers use
-restart policy `unless-stopped`: `.restartserver` quits the server with exit code 0.
+WebAdmin listens on the default admin-channel port 4310. The game servers use restart policy `unless-stopped`:
+`.restartserver` quits the server with exit code 0.
 
 The WebAdmin image runs as user 1654 (`app`), so the mounted `bf2/webadmin` directories must be writable by it.
-
-The files under `bf2/server-1` and `bf2/server-2` are game server volumes from the earlier mm_webadmin setup
-(`mm_webadmin` loaded in `modmanager.con`). They do not apply to an OpenBF2 image and are not mounted.
 
 ## Build container images
 

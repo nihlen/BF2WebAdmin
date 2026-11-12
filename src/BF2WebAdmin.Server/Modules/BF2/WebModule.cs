@@ -120,7 +120,7 @@ public class WebModule : BaseModule,
         {
             PlayerId = e.Player.Index,
             Position = e.Position.ToDto(),
-            //IsSuicide = isSuicide // TODO: add property
+            // TODO: IsSuicide, once the game event has it
             TimeStamp = e.TimeStamp
         });
     }

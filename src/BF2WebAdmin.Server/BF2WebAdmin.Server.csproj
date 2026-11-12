@@ -19,18 +19,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <UseAppHost>true</UseAppHost>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    
-    <!-- Complains about config files  -->
-    <!--    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>-->
-    <!-- Not prepared for trimming yet, trims too much -->
-    <!--<PublishTrimmed>true</PublishTrimmed>-->
   </PropertyGroup>
-
-  <!--<PropertyGroup>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
-    <StartupObject>BF2WebAdmin.Server.Program</StartupObject>
-  </PropertyGroup>-->
 
   <!-- The OpenAPI document of the web API, for the web UI's TypeScript types. Written by "npm run api" in
        src/BF2WebAdmin.Web, which builds with OpenApiGenerateDocuments=true; normal builds skip it. -->
@@ -95,12 +84,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Assets\ahe_icon.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Assets\dalian_2_v_2.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="Configuration\appsecrets.debug.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

@@ -89,8 +89,6 @@ public class Heli2v2Module : BaseModule,
         _policyRegistry = policyRegistry;
         ClearMatches();
         SetupRoundEvents();
-
-        //var test = MapStatsRenderer.GetMapMovementPathImage("dalian_2_v_2", null, null);
     }
 
     private void ClearMatches()
@@ -137,8 +135,6 @@ public class Heli2v2Module : BaseModule,
 
     private async Task GetMatchStatisticsAsync(Match match)
     {
-        // Dalian US pad ground: 255.100/148.400/-258.700
-        // Dalian CH pad ground: -218.000/153.900/159.000
         var dalianUsPad = Position.Parse("255.100/148.400/-258.700");
         var dalianChPad = Position.Parse("-218.000/153.900/159.000");
 
@@ -261,7 +257,6 @@ public class Heli2v2Module : BaseModule,
         builder.Url = $"https://bf2.nihlen.net/matches/{match.Id.ToString().ToLower()}";
 
         builder.WithDescription($"2v2 ended after {((match.MatchEnd ?? _timeProvider.GetUtcNow()) - match.MatchStart.Value).Humanize(2, minUnit: TimeUnit.Minute)} on {match.ServerName}\n\u200B");
-        //builder.WithDescription($"2v2 ended after {((match.MatchEnd ?? _timeProvider.GetUtcNow()) - match.MatchStart.Value).Humanize(2, minUnit: TimeUnit.Minute)} on {match.ServerName}\n```md\n# Test #\n```\n");
 
         if (teamStats.Values.First().Wins == teamStats.Values.Last().Wins)
         {
@@ -280,9 +275,6 @@ public class Heli2v2Module : BaseModule,
             sb.AppendLine($"Score: {teamStats.Values.Last().Wins} - {teamStats.Values.First().Wins} for <{playerNames}>\n");
         }
 
-        //var hasDivider = false;
-        //var teamLines = new List<(string, string)>();
-
         var maxWins = teamStats.Max(s => s.Value.Wins);
 
         foreach (var (_, stats) in teamStats.OrderByDescending(s => s.Value.Wins))
@@ -296,23 +288,8 @@ public class Heli2v2Module : BaseModule,
             var playerNamesEmbed = string.Join("  +  ", players.Select(p => $":flag_{p.Player.Country?.Code?.ToLower() ?? "md"}: {Sanitize(p.Player.ShortName)}"));
             builder.AddField(
                 $"`{stats.Wins,3} ` \u200B \u200B \u200B {playerNamesEmbed} {(stats.Wins == maxWins ? "\u200B :trophy:" : string.Empty)}",
-                //$"\u200B \u200B \u200B \u200B \u200B \u200B TV: \u200B {playerTeamStats.Sum(p => p.TvWinCount)} \u200B • \u200B Hydra: \u200B {playerTeamStats.Sum(p => p.HydraWinCount)} \u200B • \u200B MG: \u200B {playerTeamStats.Sum(p => p.MgWinCount)} \u200B • \u200B Enemy crashes: \u200B {firstPlayer.EnemyCrashWinCount}"
                 "\u200B"
             );
-
-            //var playerNamesEmbed = string.Join("   ", players.Select(p => $":flag_{p.Player.Country?.Code?.ToLower() ?? "md"}: {Sanitize(p.Player.ShortName)}"));
-            //builder.AddField($"{playerNamesEmbed}:", "\u200B", true);
-            //builder.AddField($"{stats.Wins}", "\u200B", true);
-            //builder.AddField("\u200B", "\u200B", true);
-
-            //teamLines.Add(($"**{playerNamesEmbed}:**", $"**{stats.Wins}**"));
-
-            //if (!hasDivider)
-            //{
-            //    builder.AddField("\u200B", "\u200B");
-            //    //builder.AddField("vs", "-", true);
-            //    hasDivider = true;
-            //}
 
             var pilot = playerTeamStats.OrderByDescending(p => p.PilotCount).First();
             var pilotPlayer = players.First(p => p.Player.Hash == pilot.PlayerHash);
@@ -336,9 +313,6 @@ public class Heli2v2Module : BaseModule,
             sb.AppendLine($"Altitude: avg. per round {firstPlayer.TotalAverageAltitude / numRounds:##} m");
             sb.AppendLine($"Speed: avg. per round {firstPlayer.TotalAverageSpeed / numRounds:##} km/h\n");
         }
-
-        //builder.AddField(teamLines[0].Item1, teamLines[1].Item1, true);
-        //builder.AddField(teamLines[0].Item2, teamLines[1].Item2, true);
 
         builder.AddField("Map", match.Map);
 
@@ -364,7 +338,6 @@ public class Heli2v2Module : BaseModule,
         sb.AppendLine($"Draw rounds: {draws}");
         sb.Append("```");
 
-        //await SendDiscordMessageAsync($"2v2 match ended after {duration.Humanize()}.");
         await SendDiscordMessageAsync(sb.ToString());
 
         if (duration > TimeSpan.FromMinutes(10) && match.Rounds.Count > 10)
@@ -389,6 +362,49 @@ public class Heli2v2Module : BaseModule,
         return _matches.FirstOrDefault(m => m.IsActive);
     }
 
+    // The started rounds of the last hour, for ViewerFeed to place a traced TV missile in its round. Read from the admin
+    // channel's apply loop, so a copy under its own lock instead of _matches
+    private readonly object _liveRoundsLock = new();
+    private readonly List<LiveRound> _liveRounds = new();
+
+    /// <summary>The round of this server that was being played at <paramref name="utc"/> (start to end), or null.</summary>
+    public LiveRound? FindRound(DateTime utc)
+    {
+        lock (_liveRoundsLock)
+            return _liveRounds.LastOrDefault(r => r.Start <= utc && (r.End is null || utc <= r.End));
+    }
+
+    private void AddLiveRound(Round round)
+    {
+        var match = _matches.FirstOrDefault(m => m.Id == round.MatchId);
+        if (match == null || round.RoundStart is not { } start)
+            return;
+
+        // BF2v2 numbers a match's rounds in start order, as WebAdmin adds them
+        var number = match.Rounds.IndexOf(round) + 1;
+        lock (_liveRoundsLock)
+        {
+            _liveRounds.RemoveAll(r => r.Start < start.AddHours(-1));
+            _liveRounds.Add(new LiveRound(match.Id, round.Id, number, start));
+        }
+    }
+
+    private void EndLiveRound(Round round)
+    {
+        lock (_liveRoundsLock)
+        {
+            var live = _liveRounds.FirstOrDefault(r => r.RoundId == round.Id);
+            if (live != null)
+                live.End = round.RoundEnd;
+        }
+    }
+
+    private void RemoveLiveRound(Guid roundId)
+    {
+        lock (_liveRoundsLock)
+            _liveRounds.RemoveAll(r => r.RoundId == roundId);
+    }
+
     private Round? GetActiveRound()
     {
         return GetActiveMatch()?.Rounds.FirstOrDefault(r => r.IsActive);
@@ -410,6 +426,8 @@ public class Heli2v2Module : BaseModule,
         var match = GetActiveMatch();
         if (match != null)
         {
+            foreach (var removed in match.Rounds.Where(r => r.IsActive && r.Players.Any(p => p.Player.Hash == playerHash)))
+                RemoveLiveRound(removed.Id);
             match.Rounds = match.Rounds.Where(r => !(r.IsActive && r.Players.Any(p => p.Player.Hash == playerHash))).ToList();
         }
     }
@@ -424,11 +442,6 @@ public class Heli2v2Module : BaseModule,
         if (killTvPath == null || !killTvPath.Any())
             return (killTvDistance, killTvAngle);
 
-        if (debug)
-        {
-            //_gameServer.GameWriter.SendText($"Path samples: [{killTvPath.Count}]");
-        }
-
         var firstSample = killTvPath.First();
         var previousPosition = firstSample.Position;
         var previousRotation = firstSample.Rotation;
@@ -437,12 +450,6 @@ public class Heli2v2Module : BaseModule,
             killTvDistance += previousPosition.Distance(sample.Position);
             var angle = previousRotation.Angle(sample.Rotation);
             killTvAngle += angle;
-
-            if (debug)
-            {
-                //_gameServer.GameWriter.SendText($"Angle: [{angle}]");
-            }
-
             previousPosition = sample.Position;
             previousRotation = sample.Rotation;
         }
@@ -455,7 +462,6 @@ public class Heli2v2Module : BaseModule,
     private ValueTask HandleRoundKillAsync(Player attacker, Position attackerPosition, Player victim, Position victimPosition, string weapon)
     {
         // TODO: detect draws - wait 1 s before declaring winner - or detect patterns - check vehicle status/id?
-        //var round = _rounds.FirstOrDefault(r => r.IsActive);
         var match = GetActiveMatch();
         var round = GetActiveRound();
         if (round == null)
@@ -471,11 +477,6 @@ public class Heli2v2Module : BaseModule,
         roundVictim.KillerWeapon = weapon ?? roundVictim.KillerWeapon;
         roundVictim.KillerPosition = attackerPosition ?? roundVictim.KillerPosition;
         roundVictim.KillerHash = round.Players.FirstOrDefault(p => p.Player.Hash == attacker?.Hash)?.Player.Hash ?? roundVictim.KillerHash;
-
-        // Killed by player not in the 2v2?
-        //var roundAttacker = round?.Players.FirstOrDefault(p => p.Player.Id == attacker?.Id);
-        //if (attacker != null && roundAttacker == null)
-        //    return Task.CompletedTask;
 
         foreach (var roundPlayer in round.Players.Where(p => p.TeamHash == roundVictim.TeamHash))
         {
@@ -514,14 +515,13 @@ public class Heli2v2Module : BaseModule,
                 {
                     // One winner
                     round.WinningTeamId = roundVictim.TeamId == 1 ? 2 : 1;
-                    //round.LosingTeamId = roundVictim.TeamId;
                     round.WinningTeamHash = round.Players.First(p => p.TeamHash != roundVictim.TeamHash).TeamHash;
                     round.LosingTeamHash = round.Players.First(p => p.TeamHash == roundVictim.TeamHash).TeamHash;
                 }
 
                 round.RoundEnd = _timeProvider.GetUtcNow().UtcDateTime;
+                EndLiveRound(round);
 
-                //await _roundEndEvent.InvokeAsync(new RoundEndEvent { Round = round });
                 await Mediator.PublishAsync(new RoundEndEvent(round, _timeProvider.GetUtcNow()));
             }, ModuleCancellationToken);
         }
@@ -645,23 +645,6 @@ public class Heli2v2Module : BaseModule,
                 _gameServer.GameWriter.SendTeleport(player, usPadPos, usPadRot);
             }
         }
-
-        //await Task.Delay(100);
-
-        //foreach (var player in players)
-        //{
-        //    if (player.SubVehicle == null)
-        //        continue;
-
-        //    // TODO: to script file
-        //    // Not very stable if I remember correctly
-        //    var objectId = player.SubVehicle.RootVehicleId;
-        //    _gameServer.GameWriter.SendConsole(
-        //        $"object.active id{objectId}",
-        //        $"object.setIsDisabledRecursive 1",
-        //        $"object.setIsDisabledRecursive 0"
-        //    );
-        //}
 
         return Task.CompletedTask;
     }
@@ -838,20 +821,17 @@ public class Heli2v2Module : BaseModule,
     private void StartPlayback()
     {
         // TODO: get new timestamps from events
-        //var previousTime = 0L;
         var sw = Stopwatch.StartNew();
         foreach (var snapshot in _playerRecordingPositions)
         {
             if (ModuleCancellationToken.IsCancellationRequested)
                 return;
 
-            //await MultimediaTimer.Delay((int)(snapshot.Item1 - previousTime));
             SpinWait.SpinUntil(() => sw.ElapsedMilliseconds > snapshot.Item1, 1000);
             Logger.LogError("Variance: {VarianceMs}", sw.ElapsedMilliseconds - snapshot.Item1);
             _gameServer.GameWriter.SendTeleport(_playerRecordingTarget, snapshot.Item2, snapshot.Item3);
             if (_playbackCancellation.IsCancellationRequested)
                 break;
-            //previousTime = snapshot.Item1;
         }
     }
 
@@ -865,7 +845,7 @@ public class Heli2v2Module : BaseModule,
         new TvMissileSetting { Name = "minDist", Template = "ObjectTemplate.follow.minDist {0}", DefaultValue = "10" },
         new TvMissileSetting { Name = "drag", Template = "ObjectTemplate.drag {0}", DefaultValue = "0.1" },
         new TvMissileSetting { Name = "mass", Template = "ObjectTemplate.mass {0}", DefaultValue = "500" },
-        //new TvMissileSetting { Name = "followStiffness", Template = "ObjectTemplate.followStiffness {0}", DefaultValue = "6" }, // exists on Camera and doesn't work server side
+        // No followStiffness: it exists on Camera and doesn't work server side
         new TvMissileSetting { Name = "timeToLive", Template = "ObjectTemplate.timeToLive CRD_NONE/{0}/0/0", DefaultValue = "3.5" },
         new TvMissileSetting { Name = "maxSpeed", Template = "ObjectTemplate.maxSpeed {0}", DefaultValue = "125" },
     };
@@ -1181,6 +1161,8 @@ public class Heli2v2Module : BaseModule,
                 await SetCurrentMatchAsync();
             }
 
+            AddLiveRound(_pendingRound);
+
             await Mediator.PublishAsync(new RoundStartEvent(_pendingRound, _timeProvider.GetUtcNow()));
 
             _pendingRound = null;
@@ -1436,7 +1418,6 @@ public class Heli2v2Module : BaseModule,
             }
 
             path.Path.Add(roundPosition);
-            //_gameServer.GameWriter.SendText($"P:{position} R:{rotation}");
         }
 
         if (roundPlayer != null)
@@ -1444,11 +1425,9 @@ public class Heli2v2Module : BaseModule,
             if (roundPlayer.LastProjectileId != e.Projectile.Id)
             {
                 roundPlayer.ProjectilePaths.Add(new List<RoundPosition>());
-                //roundPlayer.LastProjectilePath.Clear();
                 roundPlayer.LastProjectileId = e.Projectile.Id;
             }
 
-            //roundPlayer.LastProjectilePath.Add((position, rotation));
             roundPlayer.ProjectilePaths.Last().Add(roundPosition);
         }
 
@@ -1702,6 +1681,16 @@ public class Match
     }
 }
 
+/// <summary>A started 2v2 round, for placing a traced missile: <see cref="Number"/> counts the match's rounds from 1 in start order.</summary>
+public sealed class LiveRound(Guid matchId, Guid roundId, int number, DateTime start)
+{
+    public Guid MatchId { get; } = matchId;
+    public Guid RoundId { get; } = roundId;
+    public int Number { get; } = number;
+    public DateTime Start { get; } = start;
+    public DateTime? End { get; set; }
+}
+
 public class Round
 {
     public IList<RoundPlayer> Players { get; set; } = new List<RoundPlayer>();
@@ -1720,8 +1709,6 @@ public class Round
 
     public double PositionTrackerInterval { get; set; }
 
-    //public int LosingTeamId { get; set; }
-    //public bool IsDraw { get; set; }
     public DateTime? RoundStart { get; set; }
     public DateTime? RoundEnd { get; set; }
 }

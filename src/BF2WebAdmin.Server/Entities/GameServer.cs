@@ -83,7 +83,8 @@ public class GameServer : IGameServer
         Applier = new AdminStateApplier(this, _globalServices.GetRequiredService<ILogger<AdminStateApplier>>(), _globalServices.GetService<IJoinHistoryWriter>());
 
         var viewers = _globalServices.GetService<ViewerRegistry>();
-        Viewer = new ViewerFeed(this, viewers, _globalServices.GetService<IHubContext<ServerHub, IServerHubClient>>(), _logger, cancellationToken);
+        Viewer = new ViewerFeed(this, viewers, _globalServices.GetService<IHubContext<ServerHub, IServerHubClient>>(), _logger, cancellationToken,
+            _globalServices.GetService<MissileArchive>());
         if (viewers != null)
             viewers.ActiveChanged += (serverId, _) =>
             {

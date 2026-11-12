@@ -17,8 +17,6 @@ public class JailModule : BaseModule,
 
     // TODO: datetime when they were jailed, only keep for 1 hour
     private readonly ConcurrentDictionary<string, DateTime> _jailedPlayers = new();
-    // private readonly Position _jailPosition = new(777.500, 164.000, -5.000); // dalian carrier south
-    // private readonly Position _jailPosition = new(776.600, 164.000, 181.200); // dalian carrier north
     private readonly Position _jailPosition = new(784.300, 174.000, 65.400); // dalian carrier center
 
     public JailModule(IGameServer server, ITaskRunner taskRunner, ILogger<JailModule> logger, CancellationTokenSource cts) : base(server, logger, cts)

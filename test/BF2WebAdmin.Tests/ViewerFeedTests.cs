@@ -4,6 +4,7 @@ using System.Net;
 using System.Threading;
 using BF2WebAdmin.Server.AdminChannel;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
 namespace BF2WebAdmin.Tests;
@@ -13,13 +14,15 @@ public class ViewerFeedTests
 {
     private const string ServerId = "127.0.0.1:16569";
 
-    private static (BF2WebAdmin.Server.Entities.GameServer Server, ViewerRegistry Viewers) Server()
+    private static (BF2WebAdmin.Server.Entities.GameServer Server, ViewerRegistry Viewers) Server(MissileArchive? archive = null)
     {
         var viewers = new ViewerRegistry();
-        var services = new ServiceCollection()
+        var collection = new ServiceCollection()
             .AddLogging()
-            .AddSingleton(viewers)
-            .BuildServiceProvider();
+            .AddSingleton(viewers);
+        if (archive != null)
+            collection.AddSingleton(archive);
+        var services = collection.BuildServiceProvider();
         var info = new BF2WebAdmin.Server.ServerInfo { ServerId = ServerId };
         return (new BF2WebAdmin.Server.Entities.GameServer(info, IPAddress.Loopback, services, CancellationToken.None), viewers);
     }
@@ -127,6 +130,55 @@ public class ViewerFeedTests
         Assert.Equal(6, missiles[^1].Key);
         Assert.Null(server.Viewer.GetMissile(5));
         Assert.NotNull(server.Viewer.GetMissile(6));
+    }
+
+    [Fact]
+    public void ArchiveKeepsTenMinutesInTraceOrder()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 12, 20, 0, 0, TimeSpan.Zero));
+        var archive = new MissileArchive(clock);
+        var (server, _) = Server(archive);
+
+        server.Viewer.OnTrace(Trace(1851, 1000), clock.GetUtcNow());
+        clock.Advance(TimeSpan.FromMinutes(6));
+        server.Viewer.OnTrace(Trace(1852, 2000), clock.GetUtcNow());
+        server.Viewer.OnTrace(Trace(1851, 3000), clock.GetUtcNow());
+
+        var (all, hasMore) = archive.GetSince(0, 10);
+        Assert.Equal([1L, 2L, 3L], all.Select(m => m.Seq));
+        Assert.False(hasMore);
+
+        var (page, more) = archive.GetSince(1, 1);
+        Assert.Equal(2, page.Single().Seq);
+        Assert.True(more);
+
+        // The first is older than ten minutes now
+        clock.Advance(TimeSpan.FromMinutes(5));
+        Assert.Equal([2L, 3L], archive.GetSince(0, 10).Items.Select(m => m.Seq));
+    }
+
+    [Fact]
+    public void ExportedMissileHasItsLaunchTimeAndTargets()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 12, 20, 0, 0, TimeSpan.Zero));
+        var archive = new MissileArchive(clock);
+        var (server, _) = Server(archive);
+        server.Viewer.OnTrace(Trace(1852, 5000, samples: 30), clock.GetUtcNow());
+
+        var missile = BF2WebAdmin.Server.Api.ExportEndpoints.ToExport(archive.GetSince(0, 1).Items.Single());
+        Assert.Equal(1, missile.Seq);
+        Assert.Equal(ServerId, missile.ServerId);
+        // 30 samples at 30 ticks a second: launched a second before the trace arrived
+        Assert.Equal(new DateTime(2026, 11, 12, 19, 59, 59, DateTimeKind.Utc), missile.LaunchTime);
+        Assert.Equal(DateTimeKind.Utc, missile.LaunchTime.Kind);
+        // No 2v2 module: no round
+        Assert.Null(missile.MatchId);
+        Assert.Equal(0, missile.RoundNumber);
+        Assert.Equal("miss", missile.Outcome);
+        var target = missile.Targets.Single();
+        Assert.Equal(1799u, target.NetId);
+        Assert.Empty(target.Crew);
+        Assert.Equal(30, missile.Samples.Count);
     }
 
     [Fact]

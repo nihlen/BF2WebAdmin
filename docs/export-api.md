@@ -2,7 +2,8 @@
 
 A read-only feed of what WebAdmin records, for a statistics site, a Discord bot or anything else that keeps its own
 copy: the matches (with rounds, players and movement paths), the player joins and the server list. The consumer polls
-with a cursor, so it can be down for a while and catch up, and WebAdmin keeps no state about it.
+with a cursor, so it can be down for a while and catch up, and WebAdmin keeps no state about it. The TV missile
+traces of the last ten minutes are a fourth, live-only feed.
 
 Version 1, under `/api/export/v1`. A change that breaks a consumer gets a new version in the path.
 
@@ -35,10 +36,8 @@ page returns `next` equal to `since`.
   **Each item is the whole match**, so replace your copy of it (match, rounds, players) by `id`; reading a match twice
   is harmless.
 - The numbers are given and committed in order, so a reader never skips a match that commits late.
-- `changeSeq` values are only comparable within one WebAdmin database. The move from SQL Server to Postgres with
-  `--db-copy-from` ([database.md](database.md)) keeps every match's `changeSeq` and every join id and continues above
-  them, so a consumer keeps its cursors and does not need to start again from 0. After any other move (or a rollback
-  to the old database) they may start over; read again from `since=0` then.
+- `changeSeq` values are only comparable within one WebAdmin database. After WebAdmin moves to another database they
+  may start over; read again from `since=0` then.
 
 ### Match
 
@@ -99,6 +98,63 @@ Player joins (a human player connecting to a server) with an id above `since`, i
 | `ipAddress` | string | The player's IP, without the port |
 | `serverIpAddress` | string | The server's configured IP |
 | `joinDate` | UTC time | |
+
+## `GET /api/export/v1/missiles?since={seq}&limit={n}`
+
+The traced TV missiles (`agm114_hellfire_tv`) of every server from the **last ten minutes**, in the order their traces
+arrived. `limit`: 1 to 200, default 50. Unlike the other feeds this one is only kept in memory, for live views:
+nothing is stored, a reader that is away for more than ten minutes misses missiles, and a WebAdmin restart starts it
+again.
+
+```json
+{ "epoch": "…", "items": [ { "seq": 17, "...": "…" } ], "next": 17, "hasMore": false }
+```
+
+- `seq` numbers the missiles from 1 within one `epoch`. A new `epoch` means WebAdmin restarted: read again from
+  `since=0`.
+- A missile comes once, when its flight ends (it hit something or its time to live ran out, 3.5 s on the 2v2
+  servers).
+
+### Missile
+
+| Field | Type | Notes |
+|---|---|---|
+| `seq` | integer | The cursor value |
+| `serverId`, `map` | string | |
+| `matchId`, `roundId` | uuid or null | The 2v2 match and round being played at `launchTime` (the export's match and round ids); null outside a round |
+| `roundNumber` | integer | The round's number in its match, from 1 in start order; 0 outside a round |
+| `launchTime` | UTC time | When it was fired (the trace's end minus its ticks) |
+| `template` | string | `agm114_hellfire_tv` |
+| `shooterHash`, `shooterName` | string | The gunner's CD-key hash and name |
+| `shooterTeam` | integer | `1` or `2` |
+| `shooterVehicle` | string | The gunner's vehicle template |
+| `shooterRoot` | integer | The gunner's vehicle's networkable id: the target with this `netId` is his own helicopter |
+| `firstTick` | integer | The server tick of the first sample |
+| `flags` | integer | `1` the trace was cut short, `2` it collided |
+| `outcome` | string | `hit` (an object or vehicle), `terrain`, `miss` or `cut` |
+| `hitPart`, `hitRoot` | string or null | For a hit: the part's and its vehicle's template (the same for the hull) |
+| `hitPlayerHash` | string or null | A soldier hit directly |
+| `hitRewound` | boolean | The hit part was tested at the rewound pose (the hull, or a soldier) |
+| `lagMs` | integer | The shooter's lag compensation at launch |
+| `targets` | array | Every vehicle that came within 150 m of the missile |
+| `samples` | array | One per tick (30 a second) |
+| `collisions` | array | What it touched, in order; the first one stopped it |
+
+Vectors are `[x, y, z]` in BF2 coordinates (y up), rotations `[yaw, pitch, roll]` in degrees.
+
+A **target** is `{ netId, template, team, crew: [{ hash, name, team }], closestTested, closestCurrent, moved }`:
+`team` is its crew's (0: none known), `closestTested` and `closestCurrent` the closest the missile's path came to the
+target's origin at its tested and at its current pose (metres, -1 without samples), `moved` false for a vehicle that
+stood still (parked and empty).
+
+A **sample** is `{ p, v, lag, t }`: the missile's position and velocity at the end of tick `firstTick + k`, the
+shooter's lag in seconds, and per target (in `targets` order) 12 numbers: position and rotation now (what the gunner's
+client draws), then position and rotation as this tick's sweep tests it (the hull rewound by the lag). The sweep from
+sample k to k + 1 meets each target at sample k's tested pose.
+
+A **collision** is `{ tick, kind, flags, root, rootTemplate, partTemplate, partPlayer, p, n, speed, material, latency,
+partP, partR, rootP, rootR }`: `kind` 0 terrain, 1 an object; `flags` 1 the vehicle's root part (hull), 2 a soldier, 4
+tested at the rewound pose; `p` the contact point and `n` the surface normal; `partP`/`partR` the part's pose as tested.
 
 ## `GET /api/export/v1/servers`
 

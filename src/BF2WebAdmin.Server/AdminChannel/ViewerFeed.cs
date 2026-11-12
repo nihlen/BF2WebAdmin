@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Hubs;
+using BF2WebAdmin.Server.Modules.BF2;
 using Microsoft.AspNetCore.SignalR;
 
 namespace BF2WebAdmin.Server.AdminChannel;
@@ -114,8 +115,12 @@ public class ViewerFeed
     private const int MaxPendingCollisions = 64;
     private const int KeyframeTicks = 30;
 
+    /// <summary>The game's tick rate: a trace's samples are one tick apart</summary>
+    private const float TickRate = 30;
+
     private readonly GameServer _server;
     private readonly ViewerRegistry? _registry;
+    private readonly MissileArchive? _archive;
     private readonly IHubContext<ServerHub, IServerHubClient>? _hub;
     private readonly ILogger _logger;
     private readonly Channel<object> _outbox = Channel.CreateBounded<object>(new BoundedChannelOptions(256)
@@ -137,14 +142,15 @@ public class ViewerFeed
     private readonly Queue<(uint Id, List<EvProjectileCollision> List)> _pendingOrder = new();
     // The crew of a vehicle when a projectile hit it: a trace ends when the missile's time to live runs out, by when a
     // crew it killed is gone
-    private readonly Dictionary<uint, string[]> _crewAtHit = new();
+    private readonly Dictionary<uint, MissileCrewDto[]> _crewAtHit = new();
     private int _nextKey = 1;
 
     public ViewerFeed(GameServer server, ViewerRegistry? registry, IHubContext<ServerHub, IServerHubClient>? hub, ILogger logger,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, MissileArchive? archive = null)
     {
         _server = server;
         _registry = registry;
+        _archive = archive;
         _hub = hub;
         _logger = logger;
         if (_hub != null)
@@ -267,7 +273,7 @@ public class ViewerFeed
             key = _nextKey++;
         }
 
-        var replay = BuildReplay(key, e, collisions, time);
+        var (replay, context) = BuildReplay(key, e, collisions, time);
         lock (_missileLock)
         {
             _missiles.Add(replay);
@@ -275,6 +281,7 @@ public class ViewerFeed
                 _missiles.RemoveRange(0, _missiles.Count - MaxMissiles);
         }
 
+        _archive?.Add(replay, context);
         Post(replay.Summary);
     }
 
@@ -305,10 +312,13 @@ public class ViewerFeed
         }
     }
 
-    private MissileReplayDto BuildReplay(int key, EvProjectileTrace e, List<EvProjectileCollision> collisions, DateTimeOffset time)
+    private (MissileReplayDto Replay, MissileContext Context) BuildReplay(int key, EvProjectileTrace e, List<EvProjectileCollision> collisions,
+        DateTimeOffset time)
     {
         var shooter = e.Shooter >= 0 ? _server.FindPlayer(e.Shooter) : null;
         var targets = new MissileTargetDto[e.Targets.Count];
+        var crews = new MissileCrewDto[e.Targets.Count][];
+        var teams = new int[e.Targets.Count];
         for (var t = 0; t < targets.Length; t++)
         {
             var target = e.Targets[t];
@@ -316,7 +326,9 @@ public class ViewerFeed
             if (crew.Length == 0 && collisions.Any(c => c.RootNetId == target.NetId))
                 lock (_missileLock)
                     crew = _crewAtHit.GetValueOrDefault(target.NetId, []);
-            targets[t] = new MissileTargetDto(target.NetId, target.Template, crew,
+            crews[t] = crew;
+            teams[t] = crew.FirstOrDefault()?.Team ?? _server.Vehicles.FirstOrDefault(v => v.RootVehicleId == (int)target.NetId)?.Team ?? 0;
+            targets[t] = new MissileTargetDto(target.NetId, target.Template, crew.Select(c => c.Name).ToArray(),
                 Round(Closest(e.Samples, t, tested: true)), Round(Closest(e.Samples, t, tested: false)), Moved(e.Samples, t));
         }
 
@@ -341,7 +353,14 @@ public class ViewerFeed
             c.PartPlayer, Pos(c.Position), Pos(c.Normal), Pos(c.Speed), c.Material, MathF.Round(c.Latency, 4), Pos(c.PartPosition),
             Rot(c.PartRotation), Pos(c.RootPosition), Rot(c.RootRotation))).ToArray();
 
-        return new MissileReplayDto(summary, samples, collisionDtos);
+        // The trace comes when the flight ends: the launch was its sample count of ticks earlier
+        var launch = (time - TimeSpan.FromSeconds(Math.Max(0, (long)e.Tick - e.FirstTick) / TickRate)).UtcDateTime;
+        var round = _server.ModManager?.GetModule<Heli2v2Module>()?.FindRound(launch);
+        var hitPlayer = hit is { PartPlayer: >= 0 } ? _server.FindPlayer(hit.PartPlayer) : null;
+        var context = new MissileContext(_server.Id, _server.Map?.Name ?? "", round?.MatchId, round?.RoundId, round?.Number ?? 0, launch,
+            shooter?.Hash ?? "", (uint)Math.Max(shooter?.Vehicle?.RootVehicleId ?? 0, 0), hitPlayer?.Hash, crews, teams);
+
+        return (new MissileReplayDto(summary, samples, collisionDtos), context);
     }
 
     /// <summary>
@@ -379,8 +398,9 @@ public class ViewerFeed
 
     private static float Distance(Vec3 a, Vec3 b) => MathF.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y) + (a.Z - b.Z) * (a.Z - b.Z));
 
-    private string[] CrewOf(uint rootNetId) =>
-        _server.Players.Where(p => p.Vehicle?.RootVehicleId == (int)rootNetId).Select(p => p.Name).ToArray();
+    private MissileCrewDto[] CrewOf(uint rootNetId) =>
+        _server.Players.Where(p => p.Vehicle?.RootVehicleId == (int)rootNetId)
+            .Select(p => new MissileCrewDto(p.Hash ?? "", p.Name, p.Team?.Id ?? 0)).ToArray();
 
     private static float SegmentDistance(Vec3 a, Vec3 b, Vec3 p)
     {

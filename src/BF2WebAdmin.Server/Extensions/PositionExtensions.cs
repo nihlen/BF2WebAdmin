@@ -48,8 +48,6 @@ public static class RotationExtensions
         return r.Yaw * r.Yaw + r.Pitch * r.Pitch + r.Roll * r.Roll;
     }
 
-    //private double SqrMagnitude => Yaw * Yaw + Pitch * Pitch + Roll * Roll;
-
     // *Undocumented*
     private const float KEpsilonNormalSqrt = 1e-15F;
 
@@ -61,20 +59,6 @@ public static class RotationExtensions
 
     public static double AngleUnity(this Rotation from, Rotation to)
     {
-        //var fromAdjusted = new Rotation
-        //(
-        //    from.Yaw < 0 ? from.Yaw + 360 : from.Yaw,
-        //    from.Pitch < 0 ? from.Pitch + 360 : from.Pitch,
-        //    from.Roll < 0 ? from.Roll + 360 : from.Roll
-        //);
-
-        //var toAdjusted = new Rotation
-        //(
-        //    to.Yaw < 0 ? to.Yaw + 360 : to.Yaw,
-        //    to.Pitch < 0 ? to.Pitch + 360 : to.Pitch,
-        //    to.Roll < 0 ? to.Roll + 360 : to.Roll
-        //);
-
         // https://github.com/Unity-Technologies/UnityCsReference/blob/master/Runtime/Export/Math/Vector3.cs
         // sqrt(a) * sqrt(b) = sqrt(a * b) -- valid for real numbers
         var denominator = (float)Math.Sqrt(from.SqrMagnitude() * to.SqrMagnitude());

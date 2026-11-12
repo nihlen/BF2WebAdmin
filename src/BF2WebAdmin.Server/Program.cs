@@ -18,10 +18,6 @@ using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 
-// Log.Logger = new LoggerConfiguration()
-//     .WriteTo.Console()
-//     .CreateBootstrapLogger();
-
 try
 {
     var builder = WebApplication.CreateBuilder(args);
@@ -32,36 +28,15 @@ try
     // The certificate commands print and exit; they also work without appsecrets.json (docker run --rm <image> ...)
     var certificateCommand = args.Contains("--admin-pin") || args.Contains("--admin-cert-create");
 
-    // The one-off database copy SQL Server -> Postgres (docs/database.md); the target can come from the environment
-    var copyCommand = args.Contains(DatabaseCopyCommand.Flag);
-
     builder.Configuration
         .SetBasePath(configPath)
         .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
         .AddJsonFile($"appsettings.{profile}.json", optional: true, reloadOnChange: false)
-        .AddJsonFile("appsecrets.json", optional: certificateCommand || copyCommand, reloadOnChange: false)
+        .AddJsonFile("appsecrets.json", optional: certificateCommand, reloadOnChange: false)
         .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false)
         .AddEnvironmentVariables();
 
     builder.Services.AddCustomTelemetry("bf2-webadmin", otlpEndpoint: builder.Configuration["Telemetry:OtlpEndpoint"]);
-
-    // builder.Host.UseSerilog((context, services, configuration) =>
-    // {
-    //     configuration
-    //         .MinimumLevel.Debug()
-    //         .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-    //         .Enrich.FromLogContext()
-    //         .WriteTo.Console()
-    //         .WriteTo.File(@"Logs/server-.log", LogEventLevel.Verbose, "{Timestamp:HH:mm:ss} [{Level}] [{SourceContext}] {Message}{NewLine}{Exception}", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 31);
-    //
-    //     var seqSettings = services.GetService<IOptions<SeqSettings>>()?.Value;
-    //     if (!string.IsNullOrWhiteSpace(seqSettings?.ServerUrl))
-    //     {
-    //         configuration.WriteTo.Seq(seqSettings.ServerUrl, apiKey: seqSettings.ApiKey, controlLevelSwitch: new LoggingLevelSwitch());
-    //     }
-    // });
-
-    // Add services to the container.
 
     if (certificateCommand)
     {
@@ -90,12 +65,6 @@ try
         return;
     }
 
-    if (copyCommand)
-    {
-        Environment.ExitCode = await DatabaseCopyCommand.RunAsync(args, builder.Configuration);
-        return;
-    }
-
     var authSettings = builder.Configuration.GetSection("Authentication").Get<AuthSettings>();
     ArgumentNullException.ThrowIfNull(authSettings);
 
@@ -110,8 +79,6 @@ try
     {
         builder.Services.AddMassTransit(x =>
         {
-            //x.AddConsumersFromNamespaceContaining<GameStreamConsumer>();
-
             x.SetKebabCaseEndpointNameFormatter();
 
             x.UsingRabbitMq((context, cfg) =>
@@ -122,11 +89,8 @@ try
                     host.Password(mqSettings.Password);
                 });
 
-                //cfg.ConfigureEndpoints(context);
-
                 cfg.ReceiveEndpoint("game-stream-server", e =>
                 {
-                    //e.Consumer<GameStreamConsumer>();
                     e.Consumer(() => context.GetRequiredService<GameStreamConsumer>());
                 });
             });
@@ -137,13 +101,14 @@ try
     }
 
     builder.Services.AddSingleton<ViewerRegistry>();
+    builder.Services.AddSingleton(services => new MissileArchive(services.GetService<TimeProvider>() ?? TimeProvider.System));
     builder.Services.AddSingleton<BF2WebAdmin.Server.Api.CommandLog>();
     builder.Services.AddSingleton(services => new GameServerRegistry(serverSettings.GameServers, services));
     builder.Services.AddSingleton<IGameServerRegistry>(services => services.GetRequiredService<GameServerRegistry>());
     builder.Services.AddSingleton(services => new AdminListener(serverSettings.AdminChannel, services.GetRequiredService<GameServerRegistry>(),
         services.GetRequiredService<ILoggerFactory>()));
 
-    // Player joins for the BF2v2 site's dbo.JoinHistory, written in the background
+    // A row per human player join (JoinHistory, player_join on Postgres), written in the background
     builder.Services.AddSingleton<JoinHistoryWriter>();
     builder.Services.AddSingleton<IJoinHistoryWriter>(services => services.GetRequiredService<JoinHistoryWriter>());
     builder.Services.AddHostedService(services => services.GetRequiredService<JoinHistoryWriter>());
@@ -231,15 +196,6 @@ try
 
     builder.Services.AddResponseCompression(opts => { opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[] { "application/octet-stream" }); });
 
-    // Normal MediatR doesn't work with the singleton SocketServer, but we can setup it up differently 
-    // This is not very nice though...
-    // var serviceConfig = new MediatRServiceConfiguration();
-    // ServiceRegistrar.AddRequiredServices(builder.Services, serviceConfig);
-    // builder.Services.AddMediatR(config => config.AsSingleton(), Assembly.GetExecutingAssembly());
-    // builder.Services.AddMediatR(Assembly.GetExecutingAssembly());
-    // builder.Services.AddSingleton<MediatR.IMediator>(serviceProvider => new MediatR.Mediator(serviceProvider.GetRequiredService));
-    // builder.Services.AddSingleton<INotificationHandler<ServerUpdated>>(c => c.GetRequiredService<ISocketServer>());
-
     // SQLite, SQL Server or Postgres (Database:Provider, else from the connection string; docs/database.md)
     var database = DatabaseSetup.FromConfiguration(builder.Configuration);
     database.AddRepositories(builder.Services, maps: false, joins: true);
@@ -310,11 +266,4 @@ catch (Exception ex)
 {
     Console.WriteLine("An unhandled exception occurred during bootstrapping: " + ex);
     throw;
-
-    // Log.Fatal(ex, "An unhandled exception occurred during bootstrapping");
 }
-
-// finally
-// {
-//     Log.CloseAndFlush();
-// }

@@ -8,7 +8,7 @@ using Microsoft.Data.SqlClient;
 
 namespace BF2WebAdmin.Data.Repositories;
 
-/// <summary>dbo.JoinHistory on SQL Server, with the BF2v2 site's insert (IsLikelySpoof takes the column default).</summary>
+/// <summary>dbo.JoinHistory on SQL Server (IsLikelySpoof takes the column default).</summary>
 public class SqlJoinHistoryRepository : IJoinHistoryRepository
 {
     public const string InsertSql =

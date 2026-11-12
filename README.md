@@ -25,15 +25,14 @@ The game servers run OpenBF2 with its server extension, which dials WebAdmin's a
   * Log module to log chat and game events to file
 * Other random ingame commands 
 
-Modifying settings in `serversettings.con`, `modnanager.con` or `maplist.con` is not currently supported since these values are built into our container images and do not need to change. However, there is some work started to enable this. See `bf2tool.php` in the [bf2-docker](https://github.com/nihlen/bf2-docker) repository.
+Modifying settings in `serversettings.con` or `maplist.con` is not supported: these values belong to the game server image.
 
 ## Prerequisites
 
 * A host running Linux or Windows. The Docker setup is tested on Linux containers
 * A Battlefield 2 server running OpenBF2 with the server extension module `libserverext.so` (openbf2-server-ext),
   loaded with `openbf2.addModDll serverext`. WebAdmin needs nothing else on the server: kicks, bans and console
-  commands go over that admin channel, so neither ModManager's rcon nor `mm_webadmin.py` is used (the latter must not be
-  loaded)
+  commands go over that admin channel
 
 ## Usage
 
@@ -64,8 +63,7 @@ HMAC handshake with a key per server. [docs/admin-channel.md](docs/admin-channel
    --admin-pin`) prints the pin of the configured certificate. WebAdmin also logs it at startup, and stops at startup
    if the certificate setting is unusable.
 2. **Port.** The listener defaults to port 4310 (`ServerSettings:AdminChannel:Port`, env
-   `ServerSettings__AdminChannel__Port`). Production uses 4300, the old mm_webadmin port, so existing firewall rules
-   keep working. Never use 16567.
+   `ServerSettings__AdminChannel__Port`). It must not be a game server's port.
 3. **Servers.** Every game server needs a `ServerId` and an `AdminKey`, set in the web UI's server form or in
    `ServerSettings:GameServers`. `ServerId` is the game server's `adminServerId`, for example `1.2.3.4:16567`.
    `AdminKey` is 32 to 128 hex digits (16 to 64 bytes), for example from `openssl rand -hex 32`. A server in the
@@ -73,7 +71,7 @@ HMAC handshake with a key per server. [docs/admin-channel.md](docs/admin-channel
 4. **Game server.** `serverext.cfg` beside the OpenBF2 `bf2` binary:
 
    ```
-   adminConnect bf2wa.example.org:4300
+   adminConnect bf2wa.example.org:4310
    adminServerId 1.2.3.4:16567
    adminKey <the same hex as the server's AdminKey>
    adminCertSha256 <the pin>
@@ -84,7 +82,7 @@ HMAC handshake with a key per server. [docs/admin-channel.md](docs/admin-channel
    `postgres`, `sqlserver`), see [docs/database.md](docs/database.md). SQLite and Postgres are migrated at startup. For
    SQL Server, run the two `ALTER TABLE` lines after the `Server` table in `src/BF2WebAdmin.Data/Schema.sql`
    (`Server.AdminKey`, `Server.IsTestServer`). `Server.ServerId` is `nvarchar(20)` there, so an `adminServerId` can
-   have at most 20 characters. `--db-copy-from` copies a SQL Server database into a new Postgres database.
+   have at most 20 characters.
 
 ### Docker
 

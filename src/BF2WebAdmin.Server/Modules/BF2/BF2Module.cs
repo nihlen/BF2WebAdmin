@@ -595,7 +595,7 @@ public class BF2Module : BaseModule,
         if (!_newPlayers.ContainsKey(e.Player.Index))
             return ValueTask.CompletedTask;
 
-        // TODO: send join message to all servers in group ([netsky] krische joined NeTskY [DE] 2v2?)
+        // TODO: send join message to all servers in group?
         _newPlayers.Remove(e.Player.Index);
 
         // No new messages when the server is reconnecting
@@ -682,26 +682,3 @@ public class PlayerSnapshot
         return new PlayerSnapshot(player);
     }
 }
-
-// public class Profiler : IDisposable
-// {
-//     private readonly string _name;
-//     private readonly Stopwatch _stopwatch;
-//
-//     private Profiler(string name)
-//     {
-//         _name = name;
-//         _stopwatch = Stopwatch.StartNew();
-//     }
-//
-//     public static Profiler Start(string name)
-//     {
-//         return new Profiler(name);
-//     }
-//
-//     public void Dispose()
-//     {
-//         Logger.LogInformation("{Name} took {ElapsedMs} ms", _name, _stopwatch.ElapsedMilliseconds);
-//         _stopwatch.Stop();
-//     }
-// }

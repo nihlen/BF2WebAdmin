@@ -1,6 +1,6 @@
 ﻿using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Configuration.Models;
-using BF2WebAdmin.Shared;
+using BF2WebAdmin.Server.Extensions;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Events;

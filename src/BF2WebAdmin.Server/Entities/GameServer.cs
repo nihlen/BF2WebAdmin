@@ -1,14 +1,13 @@
 ﻿using System.Net;
 using BF2WebAdmin.Common;
-using BF2WebAdmin.Common.Communication;
+using BF2WebAdmin.Server.Communication;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Hubs;
-using BF2WebAdmin.Shared;
-using BF2WebAdmin.Shared.Communication.DTOs;
+using BF2WebAdmin.Server.Communication.DTOs;
 using Microsoft.AspNetCore.SignalR;
 
 namespace BF2WebAdmin.Server.Entities;

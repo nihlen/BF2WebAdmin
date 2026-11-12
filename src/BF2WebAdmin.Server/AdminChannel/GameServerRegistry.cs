@@ -5,7 +5,7 @@ using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Extensions;
-using BF2WebAdmin.Shared;
+using BF2WebAdmin.Server.Communication;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace BF2WebAdmin.Server.AdminChannel;

@@ -11,7 +11,7 @@ using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Services;
-using BF2WebAdmin.Shared;
+using BF2WebAdmin.Server.Communication;
 using Discord;
 using Discord.WebSocket;
 using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;

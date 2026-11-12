@@ -1,8 +1,8 @@
 ﻿using AspNetCore.Authentication.ApiKey;
 using BF2WebAdmin.Server.AdminChannel;
-using BF2WebAdmin.Common.Communication;
-using BF2WebAdmin.Shared.Communication.DTOs;
-using BF2WebAdmin.Shared.Communication.Events;
+using BF2WebAdmin.Server.Communication;
+using BF2WebAdmin.Server.Communication.DTOs;
+using BF2WebAdmin.Server.Communication.Events;
 using Mapster;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -24,7 +24,7 @@ public class ServerController : Controller
     [HttpGet]
     public async Task<IActionResult> GetServers()
     {
-        var servers = _registry.GetGameServers().Select(s => new Shared.Communication.Events.ServerUpdateEvent
+        var servers = _registry.GetGameServers().Select(s => new Communication.Events.ServerUpdateEvent
         {
             Id = s.Id,
             Name = s.Name,

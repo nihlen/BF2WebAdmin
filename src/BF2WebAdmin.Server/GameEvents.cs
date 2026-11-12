@@ -1,6 +1,6 @@
 ﻿using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
-using BF2WebAdmin.Shared;
+using BF2WebAdmin.Server.Communication;
 
 namespace BF2WebAdmin.Server;
 

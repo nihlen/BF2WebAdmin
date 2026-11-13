@@ -7,6 +7,38 @@ namespace BF2WebAdmin.Server.Api;
 /// <summary>The server DTOs sent by the web API and the server hub.</summary>
 public static class ServerDtoExtensions
 {
+    /// <summary>A server's settings for the edit form.</summary>
+    public static ServerDataDto ToDto(this Data.Entities.Server server) => new()
+    {
+        ServerId = server.ServerId,
+        ServerGroup = server.ServerGroup,
+        IpAddress = server.IpAddress,
+        GamePort = server.GamePort,
+        QueryPort = server.QueryPort,
+        DiscordBotToken = server.DiscordBotToken,
+        DiscordAdminChannel = server.DiscordAdminChannel,
+        DiscordNotificationChannel = server.DiscordNotificationChannel,
+        DiscordMatchResultChannel = server.DiscordMatchResultChannel,
+        AdminKey = server.AdminKey,
+        IsTestServer = server.IsTestServer,
+    };
+
+    /// <summary>The settings from the edit form as a row (the unused rcon columns empty).</summary>
+    public static Data.Entities.Server ToEntity(this ServerDataDto server) => new()
+    {
+        ServerId = server.ServerId,
+        ServerGroup = server.ServerGroup,
+        IpAddress = server.IpAddress,
+        GamePort = server.GamePort,
+        QueryPort = server.QueryPort,
+        DiscordBotToken = server.DiscordBotToken,
+        DiscordAdminChannel = server.DiscordAdminChannel,
+        DiscordNotificationChannel = server.DiscordNotificationChannel,
+        DiscordMatchResultChannel = server.DiscordMatchResultChannel,
+        AdminKey = server.AdminKey,
+        IsTestServer = server.IsTestServer,
+    };
+
     public static Communication.Events.ServerUpdateEvent ToServerUpdate(this IGameServer server, DateTimeOffset? timeStamp = null) => new()
     {
         Id = server.Id,

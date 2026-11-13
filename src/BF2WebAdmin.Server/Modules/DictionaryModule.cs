@@ -1,7 +1,8 @@
 ﻿using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Extensions;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace BF2WebAdmin.Server.Modules;
 
@@ -19,7 +20,7 @@ public class DictionaryModule : IModule,
     {
         var term = Uri.EscapeDataString(command.Term);
         var response = await ModuleHttp.Client.GetStringAsync($"https://api.urbandictionary.com/v0/define?term={term}");
-        var result = JsonConvert.DeserializeObject<UrbanDictionaryResult>(response);
+        var result = JsonSerializer.Deserialize<UrbanDictionaryResult>(response);
         var definition = result.List.FirstOrDefault();
         if (definition != null)
             _gameServer.GameWriter.SendText($"§C1001{definition.Word}: §C1001{definition.Definition}");
@@ -29,34 +30,34 @@ public class DictionaryModule : IModule,
 
     public class UrbanDictionaryResult
     {
-        [JsonProperty("result_type")]
+        [JsonPropertyName("result_type")]
         public string ResultType { get; set; }
 
-        [JsonProperty("list")]
+        [JsonPropertyName("list")]
         public IEnumerable<UrbanDictionaryDefinition> List { get; set; }
     }
 
     public class UrbanDictionaryDefinition
     {
-        [JsonProperty("defid")]
+        [JsonPropertyName("defid")]
         public int Defid { get; set; }
 
-        [JsonProperty("word")]
+        [JsonPropertyName("word")]
         public string Word { get; set; }
 
-        [JsonProperty("author")]
+        [JsonPropertyName("author")]
         public string Author { get; set; }
 
-        [JsonProperty("definition")]
+        [JsonPropertyName("definition")]
         public string Definition { get; set; }
 
-        [JsonProperty("example")]
+        [JsonPropertyName("example")]
         public string Example { get; set; }
 
-        [JsonProperty("thumbs_up")]
+        [JsonPropertyName("thumbs_up")]
         public int ThumbsUp { get; set; }
 
-        [JsonProperty("thumbs_down")]
+        [JsonPropertyName("thumbs_down")]
         public int ThumbsDown { get; set; }
     }
 }

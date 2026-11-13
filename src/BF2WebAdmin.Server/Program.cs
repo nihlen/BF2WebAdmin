@@ -99,7 +99,7 @@ try
             });
         });
 
-        builder.Services.AddMassTransitHostedService(true);
+        builder.Services.AddOptions<MassTransitHostOptions>().Configure(o => o.WaitUntilStarted = true);
         builder.Services.AddSingleton<GameStreamConsumer>();
     }
 

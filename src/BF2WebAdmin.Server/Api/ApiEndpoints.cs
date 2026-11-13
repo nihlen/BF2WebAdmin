@@ -15,7 +15,6 @@ using BF2WebAdmin.Server.Modules;
 using BF2WebAdmin.Server.Services;
 using BF2WebAdmin.Server.Communication;
 using BF2WebAdmin.Server.Communication.DTOs;
-using Mapster;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -172,7 +171,7 @@ public static class ApiEndpoints
     {
         var server = await repository.GetServerAsync(serverId);
         if (server is not null)
-            return server.Adapt<ServerDataDto>();
+            return server.ToDto();
 
         // A server from ServerSettings:GameServers (such as the AppHost's openbf2) has no row. Saving the form adds one,
         // which then wins over the configured entry
@@ -198,7 +197,7 @@ public static class ApiEndpoints
 
     private static async Task<NoContent> CreateServerAsync(ServerDataDto server, IGameServerRegistry registry, IHubContext<ServerHub, IServerHubClient> hub)
     {
-        await registry.AddOrUpdateServerAsync(server.Adapt<Data.Entities.Server>());
+        await registry.AddOrUpdateServerAsync(server.ToEntity());
         await BroadcastServerAsync(server.ServerId, registry, hub);
         return TypedResults.NoContent();
     }
@@ -209,7 +208,7 @@ public static class ApiEndpoints
         if (server.ServerId != serverId)
             return TypedResults.BadRequest("The server id in the path and the body differ");
 
-        await registry.AddOrUpdateServerAsync(server.Adapt<Data.Entities.Server>());
+        await registry.AddOrUpdateServerAsync(server.ToEntity());
         await BroadcastServerAsync(serverId, registry, hub);
         return TypedResults.NoContent();
     }

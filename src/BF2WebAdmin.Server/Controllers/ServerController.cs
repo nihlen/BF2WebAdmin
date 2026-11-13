@@ -3,7 +3,6 @@ using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Communication;
 using BF2WebAdmin.Server.Communication.DTOs;
 using BF2WebAdmin.Server.Communication.Events;
-using Mapster;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -88,8 +87,7 @@ public class ServerController : Controller
     [HttpPost]
     public async Task<IActionResult> CreateServer([FromBody] Data.Entities.Server server)
     {
-        var serverEntity = server.Adapt<Data.Entities.Server>();
-        await _registry.AddOrUpdateServerAsync(serverEntity);
+        await _registry.AddOrUpdateServerAsync(server);
         return Ok();
     }
 
@@ -99,8 +97,7 @@ public class ServerController : Controller
         if (serverId != server.ServerId)
             return BadRequest();
 
-        var serverEntity = server.Adapt<Data.Entities.Server>();
-        await _registry.AddOrUpdateServerAsync(serverEntity);
+        await _registry.AddOrUpdateServerAsync(server);
         return Ok();
     }
 

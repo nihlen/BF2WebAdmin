@@ -4,7 +4,7 @@ using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Entities;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
-using Newtonsoft.Json;
+using System.Text.Json;
 using Polly;
 using Polly.Registry;
 
@@ -120,8 +120,8 @@ public sealed class MatchStore(IMatchRepository repository, IReadOnlyPolicyRegis
                 KillerHash = p.KillerHash,
                 KillerWeapon = p.KillerWeapon,
                 KillerPosition = p.KillerPosition,
-                MovementPathJson = Compression.CompressText(JsonConvert.SerializeObject(p.MovementPath.Select(p => p.ToString()))),
-                ProjectilePathsJson = Compression.CompressText(JsonConvert.SerializeObject(p.ProjectilePaths.Select(p => p.Select(pp => pp.ToString())))),
+                MovementPathJson = Compression.CompressText(JsonSerializer.Serialize(p.MovementPath.Select(p => p.ToString()))),
+                ProjectilePathsJson = Compression.CompressText(JsonSerializer.Serialize(p.ProjectilePaths.Select(p => p.Select(pp => pp.ToString())))),
             }).ToList();
         }
 

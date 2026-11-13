@@ -3,7 +3,6 @@ using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Extensions;
 using Discord;
 using Humanizer;
-using Humanizer.Localisation;
 using BF2WebAdmin.Server.Modules.DiscordBot;
 
 namespace BF2WebAdmin.Server.Modules.Heli2v2;

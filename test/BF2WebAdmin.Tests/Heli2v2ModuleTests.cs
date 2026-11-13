@@ -16,7 +16,8 @@ using NSubstitute;
 using Polly.Registry;
 using Xunit;
 using Xunit.Abstractions;
-using Match = BF2WebAdmin.Server.Modules.Match;
+using BF2WebAdmin.Server.Modules.Heli2v2;
+using Match = BF2WebAdmin.Server.Modules.Heli2v2.Match;
 
 namespace BF2WebAdmin.Tests;
 

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using BF2WebAdmin.Common;
@@ -68,5 +70,16 @@ public class ModuleServicesTests
         var error = Assert.Throws<InvalidOperationException>(() => scope.ServiceProvider.GetRequiredService<JailModule>());
         Assert.Contains("server's scope", error.Message);
         Assert.Throws<InvalidOperationException>(() => host.GetRequiredService<JailModule>());
+    }
+
+    [Fact]
+    public void TheBaseModulesCommands_LoadOnEveryServer()
+    {
+        var modules = ModManager.ModuleTypesFor([]);
+
+        Assert.Equal(
+            new[] { typeof(BF2Module), typeof(AdminModule), typeof(ServerControlModule), typeof(FunModule) }.OrderBy(t => t.Name),
+            modules.Where(t => t == typeof(BF2Module) || t.GetCustomAttribute<LoadedWithAttribute>()?.Module == typeof(BF2Module)).OrderBy(t => t.Name));
+        Assert.DoesNotContain("FunModule", ModuleResolver.AllModuleNames);
     }
 }

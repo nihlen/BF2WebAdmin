@@ -14,7 +14,7 @@ using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Logging;
-using BF2WebAdmin.Server.Modules.BF2;
+using BF2WebAdmin.Server.Modules;
 using BF2WebAdmin.Server.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.SqlClient;

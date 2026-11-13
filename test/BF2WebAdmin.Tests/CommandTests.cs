@@ -12,7 +12,6 @@ using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Configuration.Models;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Modules;
-using BF2WebAdmin.Server.Modules.BF2;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;

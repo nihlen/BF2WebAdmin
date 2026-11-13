@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Events;
 
-namespace BF2WebAdmin.Server.Modules.BF2;
+namespace BF2WebAdmin.Server.Modules;
 
 public class LogModule : IModule, IDisposable,
     IHandleEventAsync<ChatMessageEvent>,

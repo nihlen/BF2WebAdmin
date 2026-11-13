@@ -20,7 +20,7 @@ using Polly.Registry;
 using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;
 
 // TODO: split match and command handling
-namespace BF2WebAdmin.Server.Modules.BF2;
+namespace BF2WebAdmin.Server.Modules;
 
 public class Heli2v2Module : BaseModule,
     IHandleEventAsync<MapChangedEvent>,

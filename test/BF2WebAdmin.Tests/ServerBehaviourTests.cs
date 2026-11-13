@@ -8,7 +8,7 @@ using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Commands.BF2;
-using BF2WebAdmin.Server.Modules.BF2;
+using BF2WebAdmin.Server.Modules;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;

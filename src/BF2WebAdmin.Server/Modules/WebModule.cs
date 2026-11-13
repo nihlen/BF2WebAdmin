@@ -11,7 +11,7 @@ using BF2WebAdmin.Server.Communication.DTOs;
 using BF2WebAdmin.Server.Communication.Events;
 using Microsoft.AspNetCore.SignalR;
 
-namespace BF2WebAdmin.Server.Modules.BF2;
+namespace BF2WebAdmin.Server.Modules;
 
 public class WebModule : BaseModule,
     IHandleEventAsync<ServerUpdateEvent>,

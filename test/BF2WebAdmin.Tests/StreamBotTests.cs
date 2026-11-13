@@ -1,7 +1,9 @@
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
+using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.AdminChannel;
@@ -34,7 +36,7 @@ public class StreamBotTests
     {
         await using var host = await TestHost.StartAsync(BotKey);
         var service = host.Services.GetRequiredService<StreamBotService>();
-        Assert.False(await service.StartGameStreamAsync(ServerId, "198.51.100.20", 16567, 29900, null));
+        Assert.False(await service.StartGameStreamAsync(host.GameServer, null));
 
         var started = new TaskCompletionSource<StartStreamRequest>();
         var stopped = new TaskCompletionSource<StopStreamRequest>();
@@ -45,14 +47,23 @@ public class StreamBotTests
         await WaitUntil(() => service.IsBotConnected);
 
         var matchId = Guid.NewGuid();
-        Assert.True(await service.StartGameStreamAsync(ServerId, "198.51.100.20", 16567, 29900, matchId));
-        Assert.Equal(new StartStreamRequest(ServerId, "198.51.100.20", 16567, 29900, matchId), await started.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.True(await service.StartGameStreamAsync(host.GameServer, matchId));
+        var request = await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal((ServerId, "198.51.100.20", 16567, 29900, matchId), (request.ServerId, request.GameServerIp, request.GameServerPort, request.GameQueryPort, request.MatchId));
+        // The server as WebAdmin sees it, for the bot's checks: no bots among the players
+        Assert.Equal(("dalian_2_v_2", 16), (request.State.Map, request.State.MaxPlayers));
+        Assert.Equal(new[] { "A1", "B1" }, request.State.HumanPlayers);
+
+        // What the bot asks while it streams
+        var state = await bot.InvokeAsync<StreamServerState?>("GetServerState", ServerId);
+        Assert.Equal(new[] { "A1", "B1" }, state!.HumanPlayers);
+        Assert.Null(await bot.InvokeAsync<StreamServerState?>("GetServerState", "203.0.113.1:16567"));
 
         await bot.InvokeAsync("StreamStarted", new StreamStartedReport(ServerId, matchId, "netskyTV", "https://twitch.tv/netsky"));
         await host.Mediator.Received(1).PublishAsync(Arg.Is<GameStreamStartedEvent>(e =>
             e.MatchId == matchId && e.BotName == "netskyTV" && e.StreamUrl == "https://twitch.tv/netsky"));
 
-        Assert.True(await service.StopGameStreamAsync(ServerId, "198.51.100.20", 16567, matchId));
+        Assert.True(await service.StopGameStreamAsync(host.GameServer, matchId));
         Assert.Equal(ServerId, (await stopped.Task.WaitAsync(TimeSpan.FromSeconds(10))).ServerId);
         await bot.InvokeAsync("StreamStopped", new StreamStoppedReport(ServerId, matchId));
         await host.Mediator.Received(1).PublishAsync(Arg.Is<GameStreamStoppedEvent>(e => e.MatchId == matchId));
@@ -63,7 +74,7 @@ public class StreamBotTests
 
         await bot.StopAsync();
         await WaitUntil(() => !service.IsBotConnected);
-        Assert.False(await service.StopGameStreamAsync(ServerId, "198.51.100.20", 16567, null));
+        Assert.False(await service.StopGameStreamAsync(host.GameServer, null));
     }
 
     [Fact]
@@ -102,11 +113,14 @@ public class StreamBotTests
     {
         private readonly WebApplication _app;
 
-        private TestHost(WebApplication app, IMediator mediator)
+        private TestHost(WebApplication app, IMediator mediator, IGameServer gameServer)
         {
             _app = app;
             Mediator = mediator;
+            GameServer = gameServer;
         }
+
+        public IGameServer GameServer { get; }
 
         public IServiceProvider Services => _app.Services;
         public IMediator Mediator { get; }
@@ -117,7 +131,15 @@ public class StreamBotTests
             var mediator = Substitute.For<IMediator>();
             var gameServer = Substitute.For<IGameServer>();
             gameServer.ModManager.Mediator.Returns(mediator);
+            gameServer.Id.Returns(ServerId);
+            gameServer.IpAddress.Returns(IPAddress.Parse("198.51.100.20"));
+            gameServer.GamePort.Returns(16567);
+            gameServer.QueryPort.Returns(29900);
+            gameServer.Map.Returns(new Map { Name = "dalian_2_v_2" });
+            gameServer.MaxPlayers.Returns(16);
+            gameServer.Players.Returns(new[] { new Player { Name = "A1" }, new Player { Name = "bot", IsBot = true }, new Player { Name = "B1" } });
             var registry = Substitute.For<IGameServerRegistry>();
+            registry.GetGameServer(Arg.Any<string>()).Returns((IGameServer?)null);
             registry.GetGameServer(ServerId).Returns(gameServer);
 
             var builder = WebApplication.CreateSlimBuilder();
@@ -141,7 +163,7 @@ public class StreamBotTests
             app.MapGet("/admin", () => "ok").RequireAuthorization(ApiEndpoints.AdminPolicy);
             app.MapHub<StreamBotHub>(StreamBotHub.Path);
             await app.StartAsync();
-            return new TestHost(app, mediator);
+            return new TestHost(app, mediator, gameServer);
         }
 
         public HubConnection Connect(string key) => new HubConnectionBuilder()

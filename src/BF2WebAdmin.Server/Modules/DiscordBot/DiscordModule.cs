@@ -232,8 +232,8 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
     public async ValueTask HandleAsync(MatchEndEvent e) => await StopStreamAsync(e.Match.Id);
 
     private Task<bool> StartStreamAsync(Guid? matchId) =>
-        _gameStreamService.StartGameStreamAsync(GameServer.Id, GameServer.IpAddress.ToString(), GameServer.GamePort, GameServer.QueryPort, matchId);
+        _gameStreamService.StartGameStreamAsync(GameServer, matchId);
 
     private Task<bool> StopStreamAsync(Guid? matchId) =>
-        _gameStreamService.StopGameStreamAsync(GameServer.Id, GameServer.IpAddress.ToString(), GameServer.GamePort, matchId);
+        _gameStreamService.StopGameStreamAsync(GameServer, matchId);
 }

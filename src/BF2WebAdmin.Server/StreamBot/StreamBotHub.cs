@@ -27,6 +27,10 @@ public class StreamBotHub(StreamBotService service, IGameServerRegistry registry
         return Task.CompletedTask;
     }
 
+    /// <summary>The server's state now, or null when it is not connected (the bot then stops its stream).</summary>
+    public StreamServerState? GetServerState(string serverId) =>
+        registry.GetGameServer(serverId) is { } server ? StreamServerState.Of(server) : null;
+
     public async Task StreamStarted(StreamStartedReport report)
     {
         logger.LogInformation("Stream bot {BotName} streams {ServerId} at {StreamUrl}", report.BotName, report.ServerId, report.StreamUrl);

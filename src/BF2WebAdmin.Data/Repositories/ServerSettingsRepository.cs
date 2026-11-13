@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BF2WebAdmin.Data.Repositories;
 
-/// <summary>Servers, modules and player auth levels on EF Core (SQLite, Postgres), one short context per call.</summary>
+/// <summary>Servers, modules and player auth levels on EF Core (SQLite, SQL Server, Postgres), one short context per call.</summary>
 public class ServerSettingsRepository : IServerSettingsRepository
 {
     private readonly IDbContextFactory<BF2Context> _contextFactory;

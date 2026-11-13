@@ -37,13 +37,6 @@ public static class TelemetryExtensions
                 })
                 .AddAspNetCoreInstrumentation(o => { o.RecordException = true; })
                 .AddHttpClientInstrumentation(o => { o.RecordException = true; })
-                .AddSqlClientInstrumentation(o =>
-                {
-                    o.SetDbStatementForText = true;
-                    o.SetDbStatementForStoredProcedure = true;
-                    o.EnableConnectionLevelAttributes = true;
-                    o.RecordException = true;
-                })
                 .AddEntityFrameworkCoreInstrumentation(o =>
                 {
                     o.SetDbStatementForText = true;

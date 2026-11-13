@@ -9,7 +9,7 @@ public enum DatabaseProvider
     /// <summary>EF Core with the SQLite migrations (<see cref="BF2Context"/>), for small installs.</summary>
     Sqlite,
 
-    /// <summary>Dapper on Schema.sql plus <see cref="SqlServerSchemaUpdates"/>.</summary>
+    /// <summary>EF Core with the SQL Server migrations (<see cref="SqlServerBF2Context"/>).</summary>
     SqlServer,
 
     /// <summary>EF Core with the Postgres migrations (<see cref="PostgresBF2Context"/>).</summary>
@@ -62,13 +62,16 @@ public static class DatabaseProviders
 
     public static DbContextOptions<PostgresBF2Context> PostgresOptions(string connectionString) =>
         new DbContextOptionsBuilder<PostgresBF2Context>().UseNpgsql(connectionString).Options;
+
+    public static DbContextOptions<SqlServerBF2Context> SqlServerOptions(string connectionString) =>
+        new DbContextOptionsBuilder<SqlServerBF2Context>().UseSqlServer(connectionString).Options;
 }
 
 /// <summary>
 /// An <see cref="IDbContextFactory{BF2Context}"/> from a delegate. The EF repositories take a factory and use one short
 /// context per call, so the module managers (which resolve them once, from their own service provider) neither share a
-/// context between threads nor read stale tracked rows. Also lets <see cref="PostgresBF2Context"/> stand in for
-/// <see cref="BF2Context"/>.
+/// context between threads nor read stale tracked rows. Also lets <see cref="PostgresBF2Context"/> and
+/// <see cref="SqlServerBF2Context"/> stand in for <see cref="BF2Context"/>.
 /// </summary>
 public sealed class DelegateContextFactory : IDbContextFactory<BF2Context>
 {

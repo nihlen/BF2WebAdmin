@@ -152,7 +152,7 @@ public partial class ModManager : IModManager
     }
 
     /// <summary>
-    /// The database errors the retry policies retry, for all three providers. SQL Server: any error, as before. Postgres
+    /// The database errors the retry policies retry, for all three providers. SQL Server: any error. Postgres
     /// and others: those the provider calls transient (a dropped connection, a timeout, a failover). SQLite: a busy or
     /// locked database. EF Core wraps them in a <see cref="DbUpdateException"/>.
     /// </summary>

@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
@@ -12,8 +10,6 @@ using BF2WebAdmin.Data.Entities;
 using BF2WebAdmin.Data.Repositories;
 using BF2WebAdmin.Server.Api;
 using BF2WebAdmin.Server.Services;
-using Dapper;
-using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -134,65 +130,6 @@ public class ExportTests
             await context.Database.MigrateAsync();
             var seqs = await context.Matches.OrderBy(m => m.MatchStart).Select(m => m.ChangeSeq).ToListAsync();
             Assert.Equal(new long?[] { 1, 2, 3 }, seqs);
-        }
-    }
-
-    // ---------------------------------------------------------------- SQL Server (Dapper)
-
-    /// <summary>
-    /// Against a real SQL Server (BF2WA_TEST_SQLSERVER, see JoinHistoryTests): Schema.sql on a scratch database, two
-    /// matches from before the cursor that the startup update numbers, then the same cursor behaviour as on SQLite.
-    /// </summary>
-    [SqlServerFact]
-    public async Task SqlServerWritesGiveIncreasingChangeSeqs()
-    {
-        var master = new SqlConnectionStringBuilder(Environment.GetEnvironmentVariable(SqlServerFactAttribute.Variable));
-        var database = "bf2wa_export_" + Guid.NewGuid().ToString("N")[..12];
-        await using (var connection = new SqlConnection(master.ConnectionString))
-            await connection.ExecuteAsync($"CREATE DATABASE [{database}]");
-
-        try
-        {
-            var scratch = new SqlConnectionStringBuilder(master.ConnectionString) { InitialCatalog = database }.ConnectionString;
-            await using (var connection = new SqlConnection(scratch))
-            {
-                var schema = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Schema.sql"));
-                foreach (var batch in Regex.Split(schema, @"^\s*GO\s*$", RegexOptions.Multiline).Where(b => !string.IsNullOrWhiteSpace(b)))
-                    await connection.ExecuteAsync(batch);
-
-                // Matches written by an older WebAdmin, without a ChangeSeq
-                foreach (var (id, start) in new[] { (Guid.NewGuid(), Start.AddDays(-1)), (Guid.NewGuid(), Start.AddDays(-2)) })
-                {
-                    await connection.ExecuteAsync(
-                        @"INSERT INTO [dbo].[Match] ([Id], [ServerId], [ServerName], [Map], [Type], [TeamAHash], [TeamAName], [TeamAScore],
-                            [TeamBHash], [TeamBName], [TeamBScore], [MatchStart], [MatchEnd])
-                          VALUES (@Id, '1.2.3.4:16567', 'old', 'dalian_plant', 'HELI_2V2', 'a', 'A', 0, 'b', 'B', 0, @Start, @Start)",
-                        new { Id = id, Start = start });
-                }
-            }
-
-            await SqlServerSchemaUpdates.ApplyAsync(scratch);
-            await SqlServerSchemaUpdates.ApplyAsync(scratch);
-            await using (var connection = new SqlConnection(scratch))
-            {
-                var old = (await connection.QueryAsync<(DateTime, long)>("SELECT [MatchStart], [ChangeSeq] FROM [dbo].[Match] ORDER BY [MatchStart]")).ToList();
-                Assert.Equal(new long[] { 1, 2 }, old.Select(o => o.Item2));
-            }
-
-            var repository = new SqlMatchRepository(scratch);
-            await AssertCursorBehaviourAsync(() => repository, existingMatches: 2);
-
-            var joins = new SqlJoinHistoryRepository(scratch);
-            for (var i = 0; i < 3; i++)
-                await joins.InsertAsync(new PlayerJoin { Name = $"p{i}", Guid = HashA1, IpAddress = "203.0.113.7", ServerIpAddress = "198.51.100.20", JoinDate = Start });
-            var after = await joins.GetJoinsSinceAsync(1, 10);
-            Assert.Equal(new[] { "p1", "p2" }, after.Select(j => j.Name));
-        }
-        finally
-        {
-            SqlConnection.ClearAllPools();
-            await using var connection = new SqlConnection(master.ConnectionString);
-            await connection.ExecuteAsync($"ALTER DATABASE [{database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{database}]");
         }
     }
 

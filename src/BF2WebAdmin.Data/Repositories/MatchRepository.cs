@@ -9,10 +9,11 @@ using Microsoft.EntityFrameworkCore;
 namespace BF2WebAdmin.Data.Repositories;
 
 /// <summary>
-/// Matches on EF Core: SQLite (<see cref="BF2Context"/>) and Postgres (<see cref="PostgresBF2Context"/>). The export
-/// cursor is taken under <see cref="MatchChangeLock"/>: on SQLite the highest <see cref="Match.ChangeSeq"/> plus one, on
-/// Postgres the next value of sequence match_change_seq. On Postgres the paths live in match_round_player_path and are
-/// read only where a whole match is asked for; players have no MatchId column there, so it is filled from the round.
+/// Matches on EF Core: SQLite (<see cref="BF2Context"/>), SQL Server (<see cref="SqlServerBF2Context"/>) and Postgres
+/// (<see cref="PostgresBF2Context"/>). The export cursor is taken under <see cref="MatchChangeLock"/>: on SQLite the
+/// highest <see cref="Match.ChangeSeq"/> plus one, on SQL Server and Postgres the next value of the provider's sequence.
+/// On Postgres the paths live in match_round_player_path and are read only where a whole match is asked for; players
+/// have no MatchId column there, so it is filled from the round.
 /// </summary>
 public class MatchRepository : IMatchRepository
 {
@@ -158,12 +159,15 @@ public class MatchRepository : IMatchRepository
 
     private static async Task<long> NextChangeSeqAsync(BF2Context context)
     {
-        if (context is PostgresBF2Context)
+        var sql = context switch
         {
-            return await context.Database
-                .SqlQueryRaw<long>($"SELECT nextval('{PostgresBF2Context.ChangeSeqSequence}') AS \"Value\"")
-                .SingleAsync();
-        }
+            PostgresBF2Context => $"SELECT nextval('{PostgresBF2Context.ChangeSeqSequence}') AS \"Value\"",
+            SqlServerBF2Context => $"SELECT NEXT VALUE FOR [dbo].[{SqlServerBF2Context.ChangeSeqSequence}] AS [Value]",
+            _ => null,
+        };
+        // Not composed (SQL Server allows NEXT VALUE FOR in no subquery)
+        if (sql != null)
+            return (await context.Database.SqlQueryRaw<long>(sql).ToListAsync()).Single();
 
         return (await context.Matches.MaxAsync(m => m.ChangeSeq) ?? 0) + 1;
     }

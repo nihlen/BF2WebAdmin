@@ -205,8 +205,8 @@ The apply loop never waits for the database, and a failed insert only logs a war
 No row for bots (AI or created by the bot channel), for players without an IP or with a loopback IP, and for players
 without a CD-key hash (withheld with `adminSendIdentity 0`, LAN and test servers; the `name:` keys of test servers are
 never stored). A snapshot (WebAdmin restart, reconnect, resync) is not a join: players who joined while WebAdmin was
-down get no row. On SQL Server `Schema.sql` creates the table only when it is missing; on SQLite the EF migration
-`JoinHistory` creates it. On Postgres the table is `player_join` (without `IsLikelySpoof`; [database.md](database.md)).
+down get no row. On SQL Server the first migration creates the table only when it is missing; on SQLite the EF
+migration `JoinHistory` creates it. On Postgres the table is `player_join` (without `IsLikelySpoof`; [database.md](database.md)).
 Other programs read the joins through the export API ([export-api.md](export-api.md)).
 
 ## Known limitations

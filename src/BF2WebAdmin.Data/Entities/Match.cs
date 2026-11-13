@@ -1,13 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using BF2WebAdmin.Common.Entities.Game;
-using Dapper.Contrib.Extensions;
 
 namespace BF2WebAdmin.Data.Entities;
 
 public class Match
 {
-    [ExplicitKey] public Guid Id { get; set; }
+    public Guid Id { get; set; }
     public string ServerId { get; set; }
     public string ServerName { get; set; }
     public string Map { get; set; }
@@ -27,26 +26,26 @@ public class Match
     /// </summary>
     public long? ChangeSeq { get; set; }
 
-    [Computed] public List<MatchRound> MatchRounds { get; set; } = new();
+    public List<MatchRound> MatchRounds { get; set; } = new();
 }
 
 public class MatchRound
 {
-    [ExplicitKey] public Guid Id { get; set; }
+    public Guid Id { get; set; }
     public int WinningTeamId { get; set; }
     public double PositionTrackerInterval { get; set; }
     public DateTime? RoundStart { get; set; }
     public DateTime? RoundEnd { get; set; }
 
-    [Computed] public List<MatchRoundPlayer> MatchRoundPlayers { get; set; } = new();
+    public List<MatchRoundPlayer> MatchRoundPlayers { get; set; } = new();
     public Guid? MatchId { get; set; }
-    [Computed] public Match Match { get; set; }
+    public Match Match { get; set; }
 }
 
 public class MatchRoundPlayer
 {
-    [ExplicitKey] public Guid RoundId { get; set; }
-    [ExplicitKey] public string PlayerHash { get; set; }
+    public Guid RoundId { get; set; }
+    public string PlayerHash { get; set; }
     public string PlayerName { get; set; }
     public int TeamId { get; set; }
     public string SubVehicle { get; set; }
@@ -61,7 +60,7 @@ public class MatchRoundPlayer
     public string ProjectilePathsJson { get; set; }
 
     public Guid MatchId { get; set; }
-    [Computed] public Match Match { get; set; }
-    [Computed] public MatchRound Round { get; set; }
+    public Match Match { get; set; }
+    public MatchRound Round { get; set; }
 
 }

@@ -13,6 +13,7 @@ using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Modules;
+using BF2WebAdmin.Server.Modules.DiscordBot;
 using BF2WebAdmin.Server.Services;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;

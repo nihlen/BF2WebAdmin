@@ -55,7 +55,8 @@ public abstract class BaseModule : IModule
         GameServer.GameWriter.SendTeam(player, player.Team.Id == 1 ? 2 : 1, kill: true);
     }
 
-    protected static string GetObfuscatedResponse(string text)
+    /// <summary>An answer with the IP addresses removed, for chat and Discord.</summary>
+    public static string GetObfuscatedResponse(string text)
     {
         var result = Regex.Replace(
             text,

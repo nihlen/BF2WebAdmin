@@ -35,7 +35,7 @@ that `ModManager` creates with the modules). The `Mediator` runs every event han
 modules' `ITaskRunner` starts their background work there, and every `await` in that code comes back there. So
 events, commands and delayed actions (a `Task.Delay` and what follows it) never run at the same time, and module state needs no
 locks. The apply loop waits for an event's handlers as before; a chat command is queued and the loop goes on. Code on
-the module thread must not block: CPU-heavy work (Heli2v2's playback) and long I/O loops (the Discord bot) run on the
+the module thread must not block: CPU-heavy work (the playback of `RecordingModule`) and long I/O loops (the Discord bot) run on the
 thread pool with their own `Task.Run`. The web API's direct calls into `WebModule` are not on it.
 
 The modules' services are registered once in the host (`ModuleServices.cs`, from `Program.cs`), with the host's

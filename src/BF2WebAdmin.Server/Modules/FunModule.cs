@@ -195,10 +195,7 @@ public class FunModule : BaseModule,
             if (player.Vehicle == null)
                 continue;
 
-            // TODO: to script file
-            GameServer.GameWriter.SendSetObjectActive(player.Vehicle.ConsoleId);
-            GameServer.GameWriter.SendConsole("object.setIsDisabledRecursive 1");
-            player.Vehicle.IsDisabled = true;
+            GameServer.GameWriter.SetVehicleDisabled(player.Vehicle, true);
         }
 
         try
@@ -232,10 +229,7 @@ public class FunModule : BaseModule,
             if (vehicle == null)
                 continue;
 
-            // TODO: to script file
-            GameServer.GameWriter.SendSetObjectActive(vehicle.ConsoleId);
-            GameServer.GameWriter.SendConsole("object.setIsDisabledRecursive 0");
-            vehicle.IsDisabled = false;
+            GameServer.GameWriter.SetVehicleDisabled(vehicle, false);
         }
     }
 

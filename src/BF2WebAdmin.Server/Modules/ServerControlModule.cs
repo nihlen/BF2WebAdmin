@@ -1,3 +1,4 @@
+using System.Globalization;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Commands;
@@ -71,16 +72,14 @@ public class ServerControlModule : BaseModule,
 
     public void Handle(GravityDefaultCommand command)
     {
-        // TODO: to script file
-        GameServer.GameWriter.SendConsole("physics.gravity -14.73");
-        GameServer.GameWriter.SendText("Gravity: -14.73 (Default)");
+        GameServer.GameWriter.SetGravity(IGameWriter.DefaultGravity);
+        GameServer.GameWriter.SendText($"Gravity: {IGameWriter.DefaultGravity.ToString(CultureInfo.InvariantCulture)} (Default)");
     }
 
     public void Handle(GravityCommand command)
     {
-        // TODO: to script file
-        GameServer.GameWriter.SendConsole($"physics.gravity {command.Value}");
-        GameServer.GameWriter.SendText($"Gravity: {command.Value}");
+        GameServer.GameWriter.SetGravity(command.Value);
+        GameServer.GameWriter.SendText($"Gravity: {command.Value.ToString(CultureInfo.InvariantCulture)}");
     }
 
     public void Handle(TimerIntervalCommand command)

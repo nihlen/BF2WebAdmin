@@ -19,22 +19,32 @@ public class TvMissileModule : BaseModule,
     IHandleCommandAsync<SetTvMissileValueCommand>,
     IHandleCommandAsync<SetTvMissileTypeCommand>
 {
-    private const string ActivateTvMissile = "ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv";
+    private const string TvMissileType = "GenericProjectile";
+    private const string TvMissileTemplate = "agm114_hellfire_tv";
 
     public static readonly IReadOnlyList<TvMissileSetting> DefaultSettings =
     [
-        new() { Name = "trackingDelay", Template = "ObjectTemplate.seek.trackingDelay {0}", DefaultValue = "0.2" },
-        new() { Name = "maxYaw", Template = "ObjectTemplate.follow.maxYaw {0}", DefaultValue = "1.5" },
-        new() { Name = "maxPitch", Template = "ObjectTemplate.follow.maxPitch {0}", DefaultValue = "1.5" },
-        new() { Name = "changePitch", Template = "ObjectTemplate.follow.changePitch {0}", DefaultValue = "0.2" },
-        new() { Name = "changeYaw", Template = "ObjectTemplate.follow.changeYaw {0}", DefaultValue = "0.2" },
-        new() { Name = "minDist", Template = "ObjectTemplate.follow.minDist {0}", DefaultValue = "10" },
-        new() { Name = "drag", Template = "ObjectTemplate.drag {0}", DefaultValue = "0.1" },
-        new() { Name = "mass", Template = "ObjectTemplate.mass {0}", DefaultValue = "500" },
+        new("trackingDelay", "seek.trackingDelay", "0.2"),
+        new("maxYaw", "follow.maxYaw", "1.5"),
+        new("maxPitch", "follow.maxPitch", "1.5"),
+        new("changePitch", "follow.changePitch", "0.2"),
+        new("changeYaw", "follow.changeYaw", "0.2"),
+        new("minDist", "follow.minDist", "10"),
+        new("drag", "drag", "0.1"),
+        new("mass", "mass", "500"),
         // No followStiffness: it exists on Camera and doesn't work server side
-        new() { Name = "timeToLive", Template = "ObjectTemplate.timeToLive CRD_NONE/{0}/0/0", DefaultValue = "3.5" },
-        new() { Name = "maxSpeed", Template = "ObjectTemplate.maxSpeed {0}", DefaultValue = "125" },
+        new("timeToLive", "timeToLive", "3.5", "CRD_NONE/{0}/0/0"),
+        new("maxSpeed", "maxSpeed", "125"),
     ];
+
+    /// <summary>The "test" missile: no drag or mass and fast turns.</summary>
+    private static readonly IReadOnlyDictionary<string, string> TestValues = new Dictionary<string, string>
+    {
+        ["changePitch"] = "100",
+        ["changeYaw"] = "100",
+        ["drag"] = "0",
+        ["mass"] = "0",
+    };
 
     private readonly IDelayProvider _delayProvider;
     private readonly ITaskRunner _taskRunner;
@@ -61,10 +71,8 @@ public class TvMissileModule : BaseModule,
         var result = new List<(string, string, string)>();
         foreach (var defaultSetting in DefaultSettings)
         {
-            // Commands run in order, so the getter reads the template made active just before it
-            GameServer.GameWriter.SendConsole(ActivateTvMissile);
-            var lines = await GameServer.GameWriter.ConsoleAsync(defaultSetting.Template.Split(' ').First());
-            result.Add((defaultSetting.Name, string.Join(" ", lines).Trim(), defaultSetting.DefaultValue));
+            var value = await GameServer.GameWriter.GetTemplateValueAsync(TvMissileType, TvMissileTemplate, defaultSetting.Property);
+            result.Add((defaultSetting.Name, value, defaultSetting.DefaultValue));
         }
 
         GameServer.GameWriter.SendText($"TV missile settings: {string.Join(", ", result.Take(6).Select(r => $"{r.Item1}: {r.Item2} ({r.Item3})"))}");
@@ -85,7 +93,7 @@ public class TvMissileModule : BaseModule,
             return ValueTask.CompletedTask;
         }
 
-        GameServer.GameWriter.SendConsole(ActivateTvMissile, string.Format(matchingSetting.Template, command.Value));
+        GameServer.GameWriter.SetTemplate(TvMissileType, TvMissileTemplate, matchingSetting.ToValue(command.Value));
         GameServer.GameWriter.SendText($"TV Missile {matchingSetting.Name} set to {command.Value}");
 
         return ValueTask.CompletedTask;
@@ -104,19 +112,7 @@ public class TvMissileModule : BaseModule,
         }
         else if (command.Type == "test")
         {
-            GameServer.GameWriter.SendConsole(
-                ActivateTvMissile,
-                "ObjectTemplate.seek.trackingDelay 0.2", // 0.2
-                "ObjectTemplate.follow.maxYaw 1.5", // 1.5
-                "ObjectTemplate.follow.maxPitch 1.5", // 1.5
-                "ObjectTemplate.follow.changePitch 100", // 0.2
-                "ObjectTemplate.follow.changeYaw 100", // 0.2
-                "ObjectTemplate.follow.minDist 10", // 10
-                "ObjectTemplate.drag 0", // 0.1
-                "ObjectTemplate.mass 0", // 500
-                "ObjectTemplate.timeToLive CRD_NONE/3.5/0/0", // 3.5
-                "ObjectTemplate.maxSpeed 125" // 125
-            );
+            SetTvMissile(name => TestValues.GetValueOrDefault(name));
         }
         else
         {
@@ -128,21 +124,13 @@ public class TvMissileModule : BaseModule,
         return ValueTask.CompletedTask;
     }
 
-    private void SetDefaultTvMissile()
+    private void SetDefaultTvMissile() => SetTvMissile(_ => null);
+
+    /// <summary>Every TV missile setting: the value <paramref name="valueOf"/> gives, else the default.</summary>
+    private void SetTvMissile(Func<string, string?> valueOf)
     {
-        GameServer.GameWriter.SendConsole(
-            ActivateTvMissile,
-            "ObjectTemplate.seek.trackingDelay 0.2",
-            "ObjectTemplate.follow.maxYaw 1.5",
-            "ObjectTemplate.follow.maxPitch 1.5",
-            "ObjectTemplate.follow.changePitch 0.2",
-            "ObjectTemplate.follow.changeYaw 0.2",
-            "ObjectTemplate.follow.minDist 10",
-            "ObjectTemplate.drag 0.1",
-            "ObjectTemplate.mass 500",
-            "ObjectTemplate.timeToLive CRD_NONE/3.5/0/0",
-            "ObjectTemplate.maxSpeed 125"
-        );
+        GameServer.GameWriter.SetTemplate(TvMissileType, TvMissileTemplate,
+            DefaultSettings.Select(setting => setting.ToValue(valueOf(setting.Name) ?? setting.DefaultValue)).ToArray());
     }
 
     public void Handle(ToggleTvLogCommand command)
@@ -210,9 +198,8 @@ public class ProjectilePath
     public IList<RoundPosition> Path { get; set; } = new List<RoundPosition>();
 }
 
-public class TvMissileSetting
+/// <summary>A TV missile setting: its name in .tv, the template property, the default and how a value is written.</summary>
+public sealed record TvMissileSetting(string Name, string Property, string DefaultValue, string ValueFormat = "{0}")
 {
-    public string Name { get; set; }
-    public string Template { get; set; }
-    public string DefaultValue { get; set; }
+    public (string Property, string Value) ToValue(string value) => (Property, string.Format(ValueFormat, value));
 }

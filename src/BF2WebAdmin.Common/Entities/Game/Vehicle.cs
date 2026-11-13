@@ -20,13 +20,8 @@ public class Vehicle : Entity
 
     public bool IsDestroyed { get; set; }
 
-    public bool HasCollision { get; set; }
-    public bool IsDisabled { get; set; }
-        
     public Vehicle()
     {
         Players = new List<Player>();
-        HasCollision = true;
-        IsDisabled = false;
     }
 }

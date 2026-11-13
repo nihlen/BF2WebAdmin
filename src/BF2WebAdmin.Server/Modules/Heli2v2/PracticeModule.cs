@@ -40,6 +40,8 @@ public class PracticeModule : BaseModule,
     private Player? _stalked;
 
     private readonly ConcurrentDictionary<string, bool> _autopadPlayerHashes = new();
+    // The vehicles .noclip took collision from (this module's state, not the game's)
+    private readonly HashSet<Vehicle> _noclipVehicles = new();
 
     public PracticeModule(IGameServer server, IDelayProvider delayProvider, ITaskRunner taskRunner, ILogger<PracticeModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
@@ -51,6 +53,9 @@ public class PracticeModule : BaseModule,
 
     public ValueTask HandleAsync(MapChangedEvent e)
     {
+        // A new round has new vehicles
+        _noclipVehicles.Clear();
+
         // The altitude limit goes with the map (it went with the match, which a new map ends)
         if (_mapName != e.Map.Name)
         {
@@ -92,12 +97,11 @@ public class PracticeModule : BaseModule,
 
         // TODO: check if player is the last in the vehicle
         var player = e.Player;
-        if (e.Vehicle is not null || player?.PreviousVehicle is null || player.PreviousVehicle.HasCollision && player.PreviousVehicle.Players.Any())
+        if (e.Vehicle is not null || player?.PreviousVehicle is not { } left || !_noclipVehicles.Contains(left) && left.Players.Any())
             return ValueTask.CompletedTask;
 
-        player.PreviousVehicle.HasCollision = true;
-        GameServer.GameWriter.SendSetObjectActive(player.PreviousVehicle.ConsoleId);
-        GameServer.GameWriter.SendConsole(RconScript.NoclipOff);
+        _noclipVehicles.Remove(left);
+        GameServer.GameWriter.SetVehicleCollision(left, true);
 
         return ValueTask.CompletedTask;
     }
@@ -145,12 +149,13 @@ public class PracticeModule : BaseModule,
         if (player.Vehicle == null)
             return;
 
-        var hasCollision = command.Value == 1 ? 0 : 1;
-        player.Vehicle.HasCollision = hasCollision == 1;
+        var hasCollision = command.Value != 1;
+        if (hasCollision)
+            _noclipVehicles.Remove(player.Vehicle);
+        else
+            _noclipVehicles.Add(player.Vehicle);
 
-        // The console's object commands act on the active object, selected by its console (grid) id
-        GameServer.GameWriter.SendSetObjectActive(player.Vehicle.ConsoleId);
-        GameServer.GameWriter.SendConsole(player.Vehicle.HasCollision ? RconScript.NoclipOff : RconScript.NoclipOn);
+        GameServer.GameWriter.SetVehicleCollision(player.Vehicle, hasCollision);
     }
 
     public void Handle(StalkCommand command)

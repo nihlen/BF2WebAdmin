@@ -38,6 +38,7 @@ public class ServerAdminTests
         _server.GameWriter.Returns(_writer);
         _server.Players.Returns(new[] { _netsky, _other });
         _writer.ConsoleAsync(Arg.Any<string>()).Returns(Array.Empty<string>());
+        _writer.ListBansAsync(Arg.Any<bool>()).Returns(Array.Empty<string>());
         _bans.GetBansAsync(ServerId).Returns(Array.Empty<ServerBan>());
         _admin = new ServerAdmin(_server, _bans);
     }
@@ -165,11 +166,11 @@ public class ServerAdminTests
     [Fact]
     public async Task UnbanRemovesTheKeyAndTheRecord()
     {
-        _writer.ConsoleAsync("admin.listBannedKeys").Returns(new[] { $"Key: {HashA} Perm" });
+        _writer.ListBansAsync(true).Returns(new[] { $"Key: {HashA} Perm" });
 
         Assert.Equal($"Unbanned {HashA}", await _admin.RunAsync($"!unban {HashA}", "alex"));
 
-        await _writer.Received(1).ConsoleAsync($"admin.removeKeyFromBanList {HashA}");
+        await _writer.Received(1).RemoveBanAsync(true, HashA);
         await _bans.Received(1).RemoveBanAsync(ServerId, HashA);
     }
 
@@ -177,14 +178,14 @@ public class ServerAdminTests
     public async Task UnbanOfAnAddress()
     {
         Assert.Equal("203.0.113.9 was not banned", await _admin.UnbanAsync("203.0.113.9"));
-        await _writer.Received(1).ConsoleAsync("admin.removeAddressFromBanList 203.0.113.9");
+        await _writer.Received(1).RemoveBanAsync(false, "203.0.113.9");
     }
 
     [Fact]
     public async Task TheBanListIsTheEnginesWithTheRecords()
     {
-        _writer.ConsoleAsync("admin.listBannedKeys").Returns(new[] { $"Key: {HashA} Perm", $"Key: {HashB} Time Left: 60" });
-        _writer.ConsoleAsync("admin.listBannedAddresses").Returns(new[] { "IP: 203.0.113.9 Round" });
+        _writer.ListBansAsync(true).Returns(new[] { $"Key: {HashA} Perm", $"Key: {HashB} Time Left: 60" });
+        _writer.ListBansAsync(false).Returns(new[] { "IP: 203.0.113.9 Round" });
         _bans.GetBansAsync(ServerId).Returns(new[]
         {
             new ServerBan { ServerId = ServerId, Identifier = HashB, ByCdKey = true, Name = "b", BannedBy = "alex", Reason = "r", BannedAt = new DateTime(2026, 11, 9, 0, 0, 0, DateTimeKind.Utc) },

@@ -7,8 +7,8 @@ namespace BF2WebAdmin.Server;
 
 /// <summary>
 /// The database from the configuration: ConnectionStrings:BF2DB and Database:Provider (sqlite, sqlserver or postgres;
-/// without it the connection string decides, see <see cref="DatabaseProviders.Resolve"/>). Used by Program.cs and by
-/// every module manager, which builds its own service provider. docs/database.md describes the setup.
+/// without it the connection string decides, see <see cref="DatabaseProviders.Resolve"/>). Used by Program.cs, for the
+/// web API and the game modules alike. docs/database.md describes the setup.
 /// </summary>
 public sealed record DatabaseSetup(DatabaseProvider Provider, string ConnectionString)
 {

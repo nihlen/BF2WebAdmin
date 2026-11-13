@@ -17,6 +17,7 @@ public class ModuleResolver : IModuleResolver
     private static readonly StringBuilder CommandDocumentation;
 
     public static IEnumerable<string> AllModuleNames => _moduleTypes.Select(t => t.Name);
+    public static IEnumerable<Type> AllModuleTypes => _moduleTypes;
     public IEnumerable<Type> ModuleTypes => _moduleTypes;
     private static IEnumerable<Type> _moduleTypes;
 

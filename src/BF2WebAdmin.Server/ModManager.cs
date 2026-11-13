@@ -9,14 +9,10 @@ using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Entities;
 using BF2WebAdmin.Data.Repositories;
 using BF2WebAdmin.Server.Abstractions;
-using BF2WebAdmin.Server.Configuration.Models;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
-using BF2WebAdmin.Server.Hubs;
-using BF2WebAdmin.Server.Logging;
 using BF2WebAdmin.Server.Modules;
 using BF2WebAdmin.Server.Services;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +24,6 @@ namespace BF2WebAdmin.Server;
 // TODO: Move commands into new module folders? (like Features/)
 public partial class ModManager : IModManager
 {
-    private static IReadOnlyPolicyRegistry<string>? PolicyRegistry;
     public static readonly string[] DefaultModuleNames = { nameof(BF2Module), nameof(LogModule), nameof(WebModule) };
 
     /// <summary>Chat commands start with "." or "!" ("!" was ModManager's in-game admin prefix, which the servers no longer run).</summary>
@@ -39,8 +34,10 @@ public partial class ModManager : IModManager
     private readonly IServiceProvider _globalServices;
     private readonly CancellationTokenSource _cancellationTokenSource;
 
-    private IConfiguration Configuration { get; set; }
-    private IServiceProvider _services;
+    // The server's scope of the host's provider (ModuleServices): its modules and its own services
+    private readonly AsyncServiceScope _scope;
+    private readonly IServiceProvider _services;
+    private readonly IReadOnlyPolicyRegistry<string> _policyRegistry;
 
     // The modules' thread: the mediator runs every handler on it, and ITaskRunner starts the modules' background work on it
     private readonly ModuleContext _context;
@@ -62,10 +59,11 @@ public partial class ModManager : IModManager
         _moduleResolver = new ModuleResolver(globalServices.GetRequiredService<ILogger<ModuleResolver>>());
         _context = new ModuleContext($"Modules {gameServer.Id}", _logger);
         Mediator = new Mediator(_moduleResolver, globalServices.GetRequiredService<ILogger<Mediator>>(), _context);
-        PolicyRegistry = CreatePolicyRegistry(globalServices.GetRequiredService<ILogger<ModManager>>());
-        
-        BuildConfiguration();
-        ConfigureDependencies();
+        _policyRegistry = globalServices.GetRequiredService<IReadOnlyPolicyRegistry<string>>();
+
+        _scope = globalServices.CreateAsyncScope();
+        _services = _scope.ServiceProvider;
+        _services.GetRequiredService<ModuleScope>().Initialize(gameServer, Mediator, new ModuleTaskRunner(_context, _logger), _cancellationTokenSource);
     }
 
     public static async Task<ModManager> CreateAsync(IGameServer gameServer, IServiceProvider globalServices, CancellationToken cancellationToken)
@@ -79,7 +77,7 @@ public partial class ModManager : IModManager
         try
         {
             // One after the other: EF Core queries can't run on the same DbContext in parallel
-            await PolicyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(async () =>
+            await modManager._policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyAsync).ExecuteAsync(async () =>
             {
                 await modManager.GetServerSettingsAsync();
                 await modManager.CreateModulesAsync();
@@ -96,11 +94,9 @@ public partial class ModManager : IModManager
         return modManager;
     }
 
-    private static IReadOnlyPolicyRegistry<string> CreatePolicyRegistry(ILogger<ModManager> logger)
+    /// <summary>The retry policies, a host singleton (<see cref="ModuleServices"/>).</summary>
+    public static IReadOnlyPolicyRegistry<string> CreatePolicyRegistry(ILogger<ModManager> logger)
     {
-        if (PolicyRegistry is not null)
-            return PolicyRegistry;
-        
         // Exponential back-off plus some jitter
         var jitterer = new Random();
 
@@ -177,77 +173,6 @@ public partial class ModManager : IModManager
     public T GetGlobalService<T>() where T : notnull
     {
         return _globalServices.GetRequiredService<T>();
-    }
-
-    private void BuildConfiguration()
-    {
-        var profile = ProjectContext.GetEnvironmentName();
-        var configPath = Path.Combine(ProjectContext.GetDirectory(), "Configuration");
-        var builder = new ConfigurationBuilder()
-            .SetBasePath(configPath)
-            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
-            .AddJsonFile($"appsettings.{profile}.json", optional: true, reloadOnChange: false)
-            .AddJsonFile("appsecrets.json", optional: false, reloadOnChange: false)
-            .AddJsonFile($"appsecrets.{profile}.json", optional: true, reloadOnChange: false)
-            .AddEnvironmentVariables();
-
-        Configuration = builder.Build();
-    }
-
-    private void ConfigureDependencies()
-    {
-        var serviceCollection = new ServiceCollection();
-
-        serviceCollection.AddLogging(builder => builder.AddProvider(_globalServices.GetRequiredService<ILoggerProvider>()));
-
-        // Options
-        var geoipConfig = Configuration.GetSection("Geoip");
-        serviceCollection.AddOptions();
-        serviceCollection.Configure<TwitterConfig>(Configuration.GetSection("Twitter"));
-        serviceCollection.Configure<MashapeConfig>(Configuration.GetSection("Mashape"));
-        serviceCollection.Configure<DiscordConfig>(Configuration.GetSection("Discord"));
-        serviceCollection.Configure<LogConfig>(Configuration.GetSection("ServerSettings"));
-        serviceCollection.Configure<GeoipConfig>(geoipConfig);
-
-        // Services
-        serviceCollection.AddSingleton(_gameServer);
-        serviceCollection.AddSingleton(_cancellationTokenSource);
-        serviceCollection.AddSingleton<ICountryResolver>(c => new CountryResolver(geoipConfig["DatabasePath"]));
-        serviceCollection.AddSingleton<IReadOnlyPolicyRegistry<string>>(PolicyRegistry);
-        serviceCollection.AddSingleton<IMediator>(c => Mediator);
-        // The host's services as instances: the container disposes what its factories create, never an instance it was given
-        serviceCollection.AddSingleton(_globalServices.GetRequiredService<IHubContext<ServerHub, IServerHubClient>>());
-        if (_globalServices.GetService<MassTransit.IBus>() is { } bus)
-            serviceCollection.AddSingleton(bus);
-        else
-            serviceCollection.AddSingleton<MassTransit.IBus>(_ => null!);
-        serviceCollection.AddSingleton<IGameStreamService, RabbitMqGameStreamService>();
-        serviceCollection.AddSingleton<ILogger>(_ => _logger);
-        serviceCollection.AddSingleton<ITaskRunner>(_ => new ModuleTaskRunner(_context, _logger));
-        serviceCollection.AddSingleton<IDelayProvider, DelayProvider>();
-        serviceCollection.AddSingleton(TimeProvider.System);
-            
-        var discordSettings = Configuration.GetSection("Discord").Get<DiscordConfig>();
-        if (!string.IsNullOrWhiteSpace(discordSettings?.Webhooks?.FirstOrDefault()?.WebhookId))
-        {
-            serviceCollection.AddSingleton<IChatLogger, DiscordChatLogger>();
-        }
-        else
-        {
-            serviceCollection.AddSingleton<IChatLogger, FakeChatLogger>();
-        }
-
-        // The same database as Program.cs. The modules resolve the repositories once from this root provider; the EF ones
-        // use a short context per call, so that is safe
-        DatabaseSetup.FromConfiguration(Configuration).AddRepositories(serviceCollection, maps: true, joins: false);
-
-        // Modules
-        foreach (var moduleType in _moduleResolver.ModuleTypes)
-        {
-            serviceCollection.AddSingleton(moduleType);
-        }
-
-        _services = serviceCollection.BuildServiceProvider();
     }
 
     private async Task CreateModulesAsync()
@@ -407,8 +332,8 @@ public partial class ModManager : IModManager
     private static partial Regex DeadPrefix();
 
     /// <summary>
-    /// Cancels the modules' token and disposes the modules' service provider, so modules that hold connections, files or
-    /// background loops (Discord, the log files) release them. The services forwarded from the host are not disposed.
+    /// Cancels the modules' token and disposes the server's scope, so modules that hold connections, files or
+    /// background loops (Discord, the log files) release them. The shared services are the host's and stay.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
@@ -418,8 +343,7 @@ public partial class ModManager : IModManager
         await _cancellationTokenSource.CancelAsync();
         try
         {
-            if (_services is IAsyncDisposable services)
-                await services.DisposeAsync();
+            await _scope.DisposeAsync();
         }
         catch (Exception ex)
         {

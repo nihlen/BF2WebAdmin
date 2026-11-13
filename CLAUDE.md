@@ -44,7 +44,7 @@ The web UI needs Node 24, pinned in its `package.json` for Volta (the machine de
 
 ```powershell
 dotnet build src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj
-dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 420 tests on 2026-11-13, some skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
+dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 421 tests on 2026-11-13, some skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
 dotnet publish src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj -c Release -o <dir>
 BF2WebAdmin.Server.exe --admin-pin                                    # prints the admin-channel certificate pin
 BF2WebAdmin.Server.exe --admin-cert-create [--pem]                     # prints a new certificate for the Certificate secret, and its pin

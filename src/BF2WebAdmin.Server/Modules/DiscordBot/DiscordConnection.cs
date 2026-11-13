@@ -69,7 +69,9 @@ public sealed class DiscordConnection : IAsyncDisposable
 
     private async Task RunAsync()
     {
-        _discord = new DiscordSocketClient();
+        // The servers and their channels, and the messages with their text (MessageContent is a privileged intent: enabled
+        // for the bot in the Discord developer portal, or Discord refuses the connection) for the admin channel's commands
+        _discord = new DiscordSocketClient(new DiscordSocketConfig { GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.MessageContent });
         _discord.Log += LogAsync;
         _discord.Ready += OnReadyAsync;
         _discord.MessageReceived += message => message.Author.IsBot || message.Channel.Name != Config.AdminChannel ? Task.CompletedTask : _onMessage(message);

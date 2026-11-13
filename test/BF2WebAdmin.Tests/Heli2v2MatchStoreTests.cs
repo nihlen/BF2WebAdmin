@@ -38,6 +38,23 @@ public class Heli2v2MatchStoreTests
     }
 
     [Fact]
+    public void Paths_AreStoredAsTheSameJsonAsBefore()
+    {
+        // The text Newtonsoft.Json wrote: the export API and older rows have it
+        var match = Heli2v2StatisticsTests.TwoRoundMatch(out var tvWin, out _);
+        var player = tvWin.Players[0];
+        player.MovementPath = new List<RoundPosition>
+        {
+            new() { Timestamp = 12, Position = new Common.Entities.Game.Position(1, -2.5, 3), Rotation = new Common.Entities.Game.Rotation(90, 0, -1), Ping = 30 },
+        };
+        player.ProjectilePaths = new List<IList<RoundPosition>> { new List<RoundPosition> { new() { Timestamp = 13, Position = new Common.Entities.Game.Position(4, 5, 6), Rotation = new Common.Entities.Game.Rotation(0, 0, 0) } }, new List<RoundPosition>() };
+
+        var stored = MatchStore.ToEntity(tvWin).MatchRoundPlayers.Single(p => p.PlayerHash == player.Player.Hash);
+        Assert.Equal(@"[""12|1.000/-2.500/3.000|90.000/0.000/-1.000|30""]", Common.Compression.DecompressText(stored.MovementPathJson));
+        Assert.Equal(@"[[""13|4.000/5.000/6.000|0.000/0.000/0.000|0""],[]]", Common.Compression.DecompressText(stored.ProjectilePathsJson));
+    }
+
+    [Fact]
     public async Task Writes_RunInTheOrderTheyWereQueued()
     {
         var match = Heli2v2StatisticsTests.TwoRoundMatch(out var tvWin, out var draw);

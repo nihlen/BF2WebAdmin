@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Data;
@@ -13,8 +11,6 @@ using BF2WebAdmin.Data.Repositories;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Services;
-using Dapper;
-using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
@@ -317,41 +313,5 @@ public class ServerAdminTests
             await context.Database.MigrateAsync();
 
         await RepositoryRoundTripsAsync(new ServerBanRepository(new DelegateContextFactory(() => new BF2Context(options))));
-    }
-
-    [SqlServerFact]
-    public async Task SqlServerRepositoryRoundTrips()
-    {
-        var master = new SqlConnectionStringBuilder(Environment.GetEnvironmentVariable(SqlServerFactAttribute.Variable));
-        var database = "bf2wa_bans_" + Guid.NewGuid().ToString("N")[..12];
-        await using (var connection = new SqlConnection(master.ConnectionString))
-            await connection.ExecuteAsync($"CREATE DATABASE [{database}]");
-
-        try
-        {
-            var scratch = new SqlConnectionStringBuilder(master.ConnectionString) { InitialCatalog = database }.ConnectionString;
-            var schema = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Schema.sql"));
-            await using (var connection = new SqlConnection(scratch))
-            {
-                foreach (var batch in Regex.Split(schema, @"^\s*GO\s*$", RegexOptions.Multiline).Where(b => !string.IsNullOrWhiteSpace(b)))
-                    await connection.ExecuteAsync(batch);
-            }
-
-            // The startup updates run on a database that already has the table
-            await SqlServerSchemaUpdates.ApplyAsync(scratch);
-            await RepositoryRoundTripsAsync(new SqlServerBanRepository(scratch));
-
-            // ... and create it on one that has not
-            await using (var connection = new SqlConnection(scratch))
-                await connection.ExecuteAsync("DROP TABLE [dbo].[ServerBan]");
-            await SqlServerSchemaUpdates.ApplyAsync(scratch);
-            await RepositoryRoundTripsAsync(new SqlServerBanRepository(scratch));
-        }
-        finally
-        {
-            SqlConnection.ClearAllPools();
-            await using var connection = new SqlConnection(master.ConnectionString);
-            await connection.ExecuteAsync($"ALTER DATABASE [{database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{database}]");
-        }
     }
 }

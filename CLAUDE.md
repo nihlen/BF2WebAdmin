@@ -30,8 +30,8 @@ deploy or test against a game server.
 | `src/BF2WebAdmin.Web` | The web UI: Vite, React, TypeScript, TanStack Query and Router, shadcn/ui on Base UI, Tailwind CSS. Talks to the web API (types generated from its OpenAPI document into `src/api/`) and to the hub (event types in `src/api/events.ts`, by hand). See its README |
 | `src/BF2WebAdmin.AppHost` | Aspire AppHost: runs the server, the Vite dev server and an optional OpenBF2 game server (`OpenBF2.cs`, started from the dashboard); publishes one server image with the web UI in `wwwroot` |
 | `src/BF2WebAdmin.Common` | Game entities (`Entities/Game`) and helpers (country lookup, telemetry, caching) |
-| `src/BF2WebAdmin.Data` | Data access for three providers, chosen by `Database:Provider` (`sqlite`, `sqlserver`, `postgres`; without it the connection string decides) in `DatabaseProvider.cs`, wired by the server's `DatabaseSetup.cs`; see [docs/database.md](docs/database.md). SQLite: `BF2Context` with the EF migrations in `Migrations/`. Postgres (database `bf2webadmin`): `PostgresBF2Context` (snake_case tables, paths in `match_round_player_path`, sequence `match_change_seq`) with its own migrations in `Migrations/Postgres/`; the EF repositories serve both, one short context per call. SQL Server: Dapper on `Schema.sql`, schema changes at startup (`SqlServerSchemaUpdates.cs`, also in `Schema.sql`). Player joins: `dbo.JoinHistory` (`player_join` on Postgres), a row per human player connect (`AdminChannel/JoinHistoryWriter.cs`; see docs/admin-channel.md). Ban records: `ServerBan` (`server_ban`), keyed by server and banned hash or address |
-| `test/BF2WebAdmin.Tests` | Unit tests (admin codec against the golden file `Fixtures/admin-v1-golden.txt`, handshake, TLS, session, Heli2v2, JoinHistory). `BF2WA_TEST_SQLSERVER` (a connection string, e.g. `Server=(localdb)\MSSQLLocalDB;Integrated Security=true;TrustServerCertificate=true`) runs the SQL Server tests, which create and drop scratch databases. `BF2WA_TEST_POSTGRES` (a connection string of a server where it may create databases, e.g. `Host=127.0.0.1;Port=5432;Username=postgres;Password=dev`) runs the Postgres tests (`PostgresTests.cs`: migrations and repositories) |
+| `src/BF2WebAdmin.Data` | Data access for three providers, chosen by `Database:Provider` (`sqlite`, `sqlserver`, `postgres`; without it the connection string decides) in `DatabaseProvider.cs`, wired by the server's `DatabaseSetup.cs`; see [docs/database.md](docs/database.md). SQLite: `BF2Context` with the EF migrations in `Migrations/`. Postgres (database `bf2webadmin`): `PostgresBF2Context` (snake_case tables, paths in `match_round_player_path`, sequence `match_change_seq`) with its own migrations in `Migrations/Postgres/`. SQL Server: `SqlServerBF2Context` (the dbo tables of the old Dapper `Schema.sql`, sequence `MatchChangeSeq`) with its migrations in `Migrations/SqlServer/`; the first one is idempotent and takes over a database from before EF Core. The EF repositories serve all three, one short context per call. Player joins: `dbo.JoinHistory` (`player_join` on Postgres), a row per human player connect (`AdminChannel/JoinHistoryWriter.cs`; see docs/admin-channel.md). Ban records: `ServerBan` (`server_ban`), keyed by server and banned hash or address |
+| `test/BF2WebAdmin.Tests` | Unit tests (admin codec against the golden file `Fixtures/admin-v1-golden.txt`, handshake, TLS, session, Heli2v2, JoinHistory). `BF2WA_TEST_SQLSERVER` (a connection string, e.g. `Server=(localdb)\MSSQLLocalDB;Integrated Security=true;TrustServerCertificate=true`) runs the SQL Server tests (`SqlServerTests.cs`: migrations, taking over a database from the old `Schema.sql` in `Fixtures/`, repositories), which create and drop scratch databases. `BF2WA_TEST_POSTGRES` (a connection string of a server where it may create databases, e.g. `Host=127.0.0.1;Port=5432;Username=postgres;Password=dev`) runs the Postgres tests (`PostgresTests.cs`: migrations and repositories) |
 
 ## Build and test
 
@@ -44,7 +44,7 @@ The web UI needs Node 24, pinned in its `package.json` for Volta (the machine de
 
 ```powershell
 dotnet build src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj
-dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 417 tests on 2026-11-13, some skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
+dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 420 tests on 2026-11-13, some skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
 dotnet publish src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj -c Release -o <dir>
 BF2WebAdmin.Server.exe --admin-pin                                    # prints the admin-channel certificate pin
 BF2WebAdmin.Server.exe --admin-cert-create [--pem]                     # prints a new certificate for the Certificate secret, and its pin
@@ -52,6 +52,7 @@ BF2WebAdmin.Server.exe --admin-cert-create [--pem]                     # prints 
 cd src\BF2WebAdmin.Data                    # after a model change, a migration per EF provider
 dotnet ef migrations add <Name> --context BF2Context --output-dir Migrations
 dotnet ef migrations add <Name> --context PostgresBF2Context --output-dir Migrations/Postgres
+dotnet ef migrations add <Name> --context SqlServerBF2Context --output-dir Migrations/SqlServer
 
 aspire run                                 # server + Vite dev server (aspire.config.json points at the AppHost)
 cd src\BF2WebAdmin.Web

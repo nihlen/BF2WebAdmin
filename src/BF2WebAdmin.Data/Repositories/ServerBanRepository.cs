@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BF2WebAdmin.Data.Repositories;
 
-/// <summary>The ban descriptions on EF Core: table ServerBan on SQLite, server_ban on Postgres.</summary>
+/// <summary>The ban descriptions on EF Core: table ServerBan on SQLite and SQL Server, server_ban on Postgres.</summary>
 public class ServerBanRepository : IServerBanRepository
 {
     private readonly IDbContextFactory<BF2Context> _contextFactory;

@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using BF2WebAdmin.Data;
@@ -12,8 +10,6 @@ using BF2WebAdmin.Data.Repositories;
 using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Entities;
-using Dapper;
-using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -205,68 +201,5 @@ public class JoinHistoryTests
             Assert.Equal("203.0.113.7", row.IpAddress);
             Assert.Equal(new DateTime(2026, 11, 8, 13, 30, 15), row.JoinDate);
         }
-    }
-
-    /// <summary>
-    /// Against a real SQL Server: a scratch database gets Schema.sql, a row goes in through the repository, and the
-    /// database is dropped. Runs only when BF2WA_TEST_SQLSERVER holds a connection string (to master) of a server it may
-    /// create databases on, e.g. "Server=(localdb)\MSSQLLocalDB;Integrated Security=true;TrustServerCertificate=true".
-    /// </summary>
-    [SqlServerFact]
-    public async Task SqlServerInsertMatchesTheSchema()
-    {
-        var master = new SqlConnectionStringBuilder(Environment.GetEnvironmentVariable(SqlServerFactAttribute.Variable));
-        var database = "bf2wa_joinhistory_" + Guid.NewGuid().ToString("N")[..12];
-        await using (var connection = new SqlConnection(master.ConnectionString))
-            await connection.ExecuteAsync($"CREATE DATABASE [{database}]");
-
-        try
-        {
-            var scratch = new SqlConnectionStringBuilder(master.ConnectionString) { InitialCatalog = database }.ConnectionString;
-            await using (var connection = new SqlConnection(scratch))
-            {
-                var schema = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Schema.sql"));
-                foreach (var batch in Regex.Split(schema, @"^\s*GO\s*$", RegexOptions.Multiline).Where(b => !string.IsNullOrWhiteSpace(b)))
-                    await connection.ExecuteAsync(batch);
-                // Schema.sql is idempotent
-                foreach (var batch in Regex.Split(schema, @"^\s*GO\s*$", RegexOptions.Multiline).Where(b => !string.IsNullOrWhiteSpace(b)))
-                    await connection.ExecuteAsync(batch);
-            }
-
-            var repository = new SqlJoinHistoryRepository(scratch);
-            await repository.InsertAsync(Join(Info(name: new string('x', 150)))!);
-            await repository.InsertAsync(Join(Info(ip: "203.0.113.8:16567"))!);
-
-            await using (var connection = new SqlConnection(scratch))
-            {
-                var rows = (await connection.QueryAsync<PlayerJoin>(
-                    "SELECT [Id], [Name], [Guid], [IpAddress], [ServerIpAddress], [JoinDate], [IsLikelySpoof] FROM [dbo].[JoinHistory] ORDER BY [Id]")).ToList();
-                Assert.Equal(2, rows.Count);
-                Assert.Equal(new string('x', 100), rows[0].Name);
-                Assert.Equal(Hash, rows[0].Guid);
-                Assert.Equal("203.0.113.8", rows[1].IpAddress);
-                Assert.Equal("198.51.100.20", rows[1].ServerIpAddress);
-                Assert.Equal(new DateTime(2026, 11, 8, 13, 30, 15), rows[1].JoinDate);
-                Assert.All(rows, r => Assert.False(r.IsLikelySpoof));
-            }
-        }
-        finally
-        {
-            SqlConnection.ClearAllPools();
-            await using var connection = new SqlConnection(master.ConnectionString);
-            await connection.ExecuteAsync($"ALTER DATABASE [{database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{database}]");
-        }
-    }
-}
-
-/// <summary>A test that needs a SQL Server: skipped unless BF2WA_TEST_SQLSERVER is set.</summary>
-public sealed class SqlServerFactAttribute : FactAttribute
-{
-    public const string Variable = "BF2WA_TEST_SQLSERVER";
-
-    public SqlServerFactAttribute()
-    {
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(Variable)))
-            Skip = $"Set {Variable} to a SQL Server connection string to run it";
     }
 }

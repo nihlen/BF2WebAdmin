@@ -3,11 +3,14 @@
 WebAdmin keeps its servers, modules, player auth levels, map mods, recorded matches and player joins in one database.
 Three are supported:
 
-| Provider | Data access | Schema | For |
+| Provider | Context | Migrations | For |
 |---|---|---|---|
-| `sqlite` | EF Core, `BF2Context` | EF migrations in `src/BF2WebAdmin.Data/Migrations`, applied at startup | small installs, development |
-| `postgres` | EF Core with Npgsql, `PostgresBF2Context` | EF migrations in `src/BF2WebAdmin.Data/Migrations/Postgres`, applied at startup | larger installs |
-| `sqlserver` | Dapper | `src/BF2WebAdmin.Data/Schema.sql` for a new database; `SqlServerSchemaUpdates` applies later changes at startup | existing SQL Server installs |
+| `sqlite` | `BF2Context` | `src/BF2WebAdmin.Data/Migrations` | small installs, development |
+| `postgres` | `PostgresBF2Context` (Npgsql) | `src/BF2WebAdmin.Data/Migrations/Postgres` | larger installs |
+| `sqlserver` | `SqlServerBF2Context` | `src/BF2WebAdmin.Data/Migrations/SqlServer` | existing SQL Server installs |
+
+All three run on EF Core with the same repositories (`src/BF2WebAdmin.Data/Repositories`, one short context per call);
+WebAdmin applies the provider's migrations at startup.
 
 ## Configuration
 
@@ -54,16 +57,27 @@ Database `bf2webadmin`, `snake_case` singular table names, `timestamptz` in UTC,
 In C# the paths stay `MatchRoundPlayer.MovementPathJson` and `ProjectilePathsJson`, base64 strings of the same gzip
 bytes; `MatchRepository` converts them.
 
+## The SQL Server schema
+
+The tables that WebAdmin's SQL Server databases have had since 2022 (`dbo`, singular names: `Server`, `ServerModule`,
+`ServerPlayerAuth`, `MapMod`, `MapModObject`, `Match`, `MatchRound`, `MatchRoundPlayer`, `JoinHistory`, `ServerBan`),
+with `Match.ChangeSeq` from sequence `MatchChangeSeq`. Until 0.1.0 WebAdmin used Dapper there, with the schema in
+`Schema.sql`. The first EF migration (`InitialSqlServer`) creates that schema with statements that check what exists, so
+on a database from before EF Core it only adds what is missing (the export cursor and its numbers for older matches,
+`ServerBan`, three foreign key indexes) and keeps the data. A `JoinHistory` that is already there stays as it is.
+`Server.ServerId` is `nvarchar(20)`, so an `adminServerId` can have at most 20 characters.
+
 ## Migrations
 
-The two EF providers have their own migrations, one context each:
+Each provider has its own migrations and context:
 
 ```powershell
 cd src\BF2WebAdmin.Data
 dotnet ef migrations add <Name> --context BF2Context --output-dir Migrations                   # SQLite
 dotnet ef migrations add <Name> --context PostgresBF2Context --output-dir Migrations/Postgres   # Postgres
+dotnet ef migrations add <Name> --context SqlServerBF2Context --output-dir Migrations/SqlServer # SQL Server
 ```
 
-A model change usually needs both. The Postgres-only shape (table names, the path table, the sequence, required
-columns) is in `PostgresBF2Context.OnModelCreating`; SQLite keeps its schema. A change for SQL Server goes into
-`Schema.sql` and, for existing databases, into `SqlServerSchemaUpdates`.
+A model change usually needs all three. The Postgres-only shape (table names, the path table, the sequence, required
+columns) is in `PostgresBF2Context.OnModelCreating`, the SQL Server one in `SqlServerBF2Context.OnModelCreating`;
+SQLite keeps its schema.

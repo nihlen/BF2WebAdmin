@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BF2WebAdmin.Data.Repositories;
 
-/// <summary>Map mods on EF Core (SQLite, Postgres), one short context per call.</summary>
+/// <summary>Map mods on EF Core (SQLite, SQL Server, Postgres), one short context per call.</summary>
 public class MapRepository : IMapRepository
 {
     private readonly IDbContextFactory<BF2Context> _contextFactory;
@@ -48,7 +48,12 @@ public class MapRepository : IMapRepository
     public async Task DeleteAsync(Guid id)
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
-        context.MapMods.Remove(new MapMod {Id = id });
+        // With its objects: SQL Server's foreign key does not cascade
+        var map = await context.MapMods.Include(mm => mm.MapModObjects).FirstOrDefaultAsync(mm => mm.Id == id);
+        if (map == null)
+            return;
+
+        context.MapMods.Remove(map);
         await context.SaveChangesAsync();
     }
 }

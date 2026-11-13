@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BF2WebAdmin.Data.Repositories;
 
-/// <summary>The player joins on EF Core: table JoinHistory on SQLite, player_join on Postgres.</summary>
+/// <summary>The player joins on EF Core: table JoinHistory on SQLite and SQL Server, player_join on Postgres.</summary>
 public class JoinHistoryRepository : IJoinHistoryRepository
 {
     private readonly IDbContextFactory<BF2Context> _contextFactory;

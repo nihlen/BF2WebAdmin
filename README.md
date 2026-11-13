@@ -79,10 +79,9 @@ HMAC handshake with a key per server. [docs/admin-channel.md](docs/admin-channel
 5. **Restart policy.** Use `unless-stopped` (Docker) or `Always` (Kubernetes) for the game servers. `.restartserver`
    quits the game server cleanly with exit code 0, so `on-failure` would leave it stopped.
 6. **Database.** SQLite, Postgres or SQL Server: `ConnectionStrings:BF2DB` and `Database:Provider` (`sqlite`,
-   `postgres`, `sqlserver`), see [docs/database.md](docs/database.md). SQLite and Postgres are migrated at startup. For
-   SQL Server, run the two `ALTER TABLE` lines after the `Server` table in `src/BF2WebAdmin.Data/Schema.sql`
-   (`Server.AdminKey`, `Server.IsTestServer`). `Server.ServerId` is `nvarchar(20)` there, so an `adminServerId` can
-   have at most 20 characters.
+   `postgres`, `sqlserver`), see [docs/database.md](docs/database.md). WebAdmin migrates all three at startup, an
+   existing SQL Server database too. On SQL Server `Server.ServerId` is `nvarchar(20)`, so an `adminServerId` can have
+   at most 20 characters.
 7. **Logins.** `DataProtection:KeysPath`, a directory on a volume, keeps the keys that protect the login cookies, so
    logins survive a new container. Without it everyone logs in again after a deploy.
 8. **Optional settings.** `ServerSettings:ChatPrefix` is the name in brackets before WebAdmin's chat lines (default

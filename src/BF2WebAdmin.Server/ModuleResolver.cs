@@ -16,7 +16,8 @@ public class ModuleResolver : IModuleResolver
 
     private static readonly StringBuilder CommandDocumentation;
 
-    public static IEnumerable<string> AllModuleNames => _moduleTypes.Select(t => t.Name);
+    // The modules a server group can enable; one that comes with another (LoadedWith) is not listed
+    public static IEnumerable<string> AllModuleNames => _moduleTypes.Where(t => t.GetCustomAttribute<LoadedWithAttribute>() == null).Select(t => t.Name);
     public static IEnumerable<Type> AllModuleTypes => _moduleTypes;
     public IEnumerable<Type> ModuleTypes => _moduleTypes;
     private static IEnumerable<Type> _moduleTypes;

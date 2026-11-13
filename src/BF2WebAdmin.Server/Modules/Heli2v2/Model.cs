@@ -2,19 +2,6 @@ using BF2WebAdmin.Common.Entities.Game;
 
 namespace BF2WebAdmin.Server.Modules.Heli2v2;
 
-public class ProjectilePath
-{
-    public Projectile Projectile { get; set; }
-    public IList<RoundPosition> Path { get; set; } = new List<RoundPosition>();
-}
-
-public class TvMissileSetting
-{
-    public string Name { get; set; }
-    public string Template { get; set; }
-    public string DefaultValue { get; set; }
-}
-
 public class Match
 {
     public IList<Round> Rounds { get; set; }

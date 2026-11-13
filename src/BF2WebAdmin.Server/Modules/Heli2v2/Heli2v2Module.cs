@@ -1,7 +1,5 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Text;
-using System.Text.RegularExpressions;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Data.Abstractions;
@@ -13,7 +11,6 @@ using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 using Discord;
 using Humanizer;
-using Humanizer.Localisation;
 using Newtonsoft.Json;
 using Polly;
 using Polly.Registry;
@@ -61,7 +58,7 @@ public class Heli2v2Module : BaseModule,
     private readonly ITaskRunner _taskRunner;
     private readonly IReadOnlyPolicyRegistry<string> _policyRegistry;
     private const int DefaultDelay = 25; // 1000/35 fps ~ 28.5
-    private const int AltitudeOffset = 140; // Dalian?
+    private const int AltitudeOffset = MatchStatistics.AltitudeOffset;
     private const double DefaultPositionTrackerInterval = 0.25; // Dalian?
 
     private int _stopCounter;
@@ -132,233 +129,21 @@ public class Heli2v2Module : BaseModule,
         await SendDiscordMessageAsync("2v2 mode enabled");
     }
 
-    private string Sanitize(string text)
+    private async Task SendMatchReportAsync(Match match)
     {
-        return DiscordModule.Sanitize(text);
-    }
+        var report = MatchStatistics.Build(match, _timeProvider.GetUtcNow(), Logger);
+        await SendDiscordMessageAsync(report.Text);
 
-    private async Task GetMatchStatisticsAsync(Match match)
-    {
-        var dalianUsPad = Position.Parse("255.100/148.400/-258.700");
-        var dalianChPad = Position.Parse("-218.000/153.900/159.000");
-
-        var builder = new EmbedBuilder();
-        builder.WithColor(Color.Blue);
-
-        var duration = (match.MatchEnd ?? _timeProvider.GetUtcNow()) - match.MatchStart!.Value;
-
-        var draws = 0;
-        var roundTotalDuration = 0d;
-        var biggestTvCurveKill = ((RoundPlayer?)null, 0d, 0d);
-        var longestHydraKill = ((RoundPlayer?)null, 0d);
-        var longestRoundDuration = 0d;
-        var shortestRoundDuration = double.MaxValue;
-        var teamStats = match.TeamHashes.ToDictionary(h => h, h => new TeamStats { TeamHash = h });
-        var playerStats = match.Rounds.First().Players.ToDictionary(player => player.Player.Hash, player => new PlayerStats { PlayerHash = player.Player.Hash });
-
-        foreach (var round in match.Rounds.Where(r => !r.IsActive))
-        {
-            var roundDuration = ((round.RoundEnd ?? _timeProvider.GetUtcNow()) - round.RoundStart!.Value).TotalSeconds;
-            roundTotalDuration += roundDuration;
-
-            if (roundDuration > longestRoundDuration) longestRoundDuration = roundDuration;
-            if (roundDuration < shortestRoundDuration) shortestRoundDuration = roundDuration;
-
-            if (round.WinningTeamId == -1)
-            {
-                draws++;
-            }
-            else
-            {
-                teamStats[round.WinningTeamHash].Wins++;
-
-                foreach (var player in round.Players)
-                {
-                    if (player.SubVehicle == null)
-                    {
-                        Logger.LogWarning("player.SubVehicle is null in {StatisticsMethod} for {PlayerName}", nameof(GetMatchStatisticsAsync), player?.Player?.Name);
-                    }
-
-                    if (player.SubVehicle != null)
-                    {
-                        if (player.SubVehicle.ToLower().EndsWith("cogunner")) playerStats[player.Player.Hash].GunnerCount++;
-                        else playerStats[player.Player.Hash].PilotCount++;
-                    }
-
-                    if (match.Map == "dalian_2_v_2")
-                    {
-                        playerStats[player.Player.Hash].TotalDistanceFromPad += player.StartPosition?.Distance(player.TeamId == 2 ? dalianUsPad : dalianChPad) ?? 0;
-                    }
-
-                    if (player.MovementPath != null && player.MovementPath.Any())
-                    {
-                        var previousPosition = player.MovementPath.First().Position;
-                        double totalAltitude = 0d, totalDistanceM = 0d;
-                        foreach (var roundPosition in player.MovementPath)
-                        {
-                            totalAltitude += roundPosition.Position.Height - AltitudeOffset;
-                            totalDistanceM += previousPosition.Distance(roundPosition.Position);
-                            previousPosition = roundPosition.Position;
-                        }
-
-                        playerStats[player.Player.Hash].TotalAverageAltitude += totalAltitude / player.MovementPath.Count;
-                        var totalDistanceKm = totalDistanceM / 1000;
-                        var averageSpeedKmph = totalDistanceKm / (round.RoundEnd.Value - round.RoundStart.Value).TotalHours;
-                        playerStats[player.Player.Hash].TotalAverageSpeed += averageSpeedKmph;
-                    }
-
-                    if (player.SaidGo) playerStats[player.Player.Hash].GoStartCount++;
-                    else playerStats[player.Player.Hash].RdyStartCount++;
-
-                    if (player.TeamId == 2) playerStats[player.Player.Hash].TeamUsCount++;
-                    else playerStats[player.Player.Hash].TeamChCount++;
-
-                    if (player.SubVehicle != null)
-                    {
-                        if (player.SubVehicle.ToLower().Contains("ah1z")) playerStats[player.Player.Hash].Ah1zCount++;
-                        else playerStats[player.Player.Hash].Z10Count++;
-                    }
-
-                    if (player.TeamHash != round.WinningTeamHash)
-                        continue;
-
-                    var playerVictims = round.Players.Where(p => p.KillerHash == player.Player.Hash).ToList();
-                    if (playerVictims.Any(p => p.KillerWeapon?.ToLower().EndsWith("tv") ?? false))
-                    {
-                        playerStats[player.Player.Hash].TvWinCount++;
-                        var tvStats = CalculateTvStats(player.LastProjectilePath);
-                        if (tvStats.angle > biggestTvCurveKill.Item3) biggestTvCurveKill = (player, tvStats.distance, tvStats.angle);
-                    }
-
-                    if (playerVictims.Any(p => p.KillerWeapon?.ToLower().EndsWith("gun") ?? false))
-                    {
-                        playerStats[player.Player.Hash].MgWinCount++;
-                    }
-
-                    var hydraVictim = playerVictims.FirstOrDefault(p => p.KillerWeapon?.ToLower().EndsWith("launcher") ?? false);
-                    if (hydraVictim != null)
-                    {
-                        playerStats[player.Player.Hash].HydraWinCount++;
-                        var distance = hydraVictim.KillerPosition.Distance(round.Players.First(p => p.TeamHash != player.TeamHash).DeathPosition);
-                        if (distance > longestHydraKill.Item2) longestHydraKill = (player, distance);
-                    }
-
-                    if (round.Players.Where(p => p.TeamHash == round.LosingTeamHash).All(p => p.KillerWeapon == null)) playerStats[player.Player.Hash].EnemyCrashWinCount++;
-                }
-            }
-        }
-
-        var numRounds = match.Rounds.Count;
-        var mostMgWins = playerStats.Values.OrderByDescending(p => p.MgWinCount).First();
-        var mostMgWinsPlayer = match.Rounds.First().Players.First(p => p.Player.Hash == mostMgWins.PlayerHash);
-
-        var sb = new StringBuilder();
-
-        sb.AppendLine("```md");
-        sb.AppendLine($"# 2v2 ended after {((match.MatchEnd ?? _timeProvider.GetUtcNow()) - match.MatchStart.Value).Humanize()} on {match.ServerName} #\n");
-
-        builder.WithTitle("View match statistics");
-        builder.Url = $"https://bf2.nihlen.net/matches/{match.Id.ToString().ToLower()}";
-
-        builder.WithDescription($"2v2 ended after {((match.MatchEnd ?? _timeProvider.GetUtcNow()) - match.MatchStart.Value).Humanize(2, minUnit: TimeUnit.Minute)} on {match.ServerName}\n\u200B");
-
-        if (teamStats.Values.First().Wins == teamStats.Values.Last().Wins)
-        {
-            sb.AppendLine($"Score: tied {teamStats.Values.First().Wins} - {teamStats.Values.Last().Wins}\n");
-        }
-        else if (teamStats.Values.First().Wins > teamStats.Values.Last().Wins)
-        {
-            var players = match.Rounds[0].Players.Where(p => p.TeamHash == teamStats.Values.First().TeamHash);
-            var playerNames = string.Join("> <", players.Select(p => Sanitize(p.Player.ShortName)));
-            sb.AppendLine($"Score: {teamStats.Values.First().Wins} - {teamStats.Values.Last().Wins} for <{playerNames}>\n");
-        }
-        else
-        {
-            var players = match.Rounds[0].Players.Where(p => p.TeamHash == teamStats.Values.Last().TeamHash);
-            var playerNames = string.Join("> <", players.Select(p => Sanitize(p.Player.ShortName)));
-            sb.AppendLine($"Score: {teamStats.Values.Last().Wins} - {teamStats.Values.First().Wins} for <{playerNames}>\n");
-        }
-
-        var maxWins = teamStats.Max(s => s.Value.Wins);
-
-        foreach (var (_, stats) in teamStats.OrderByDescending(s => s.Value.Wins))
-        {
-            var players = match.Rounds[0].Players.Where(p => p.TeamHash == stats.TeamHash).ToList();
-            var playerTeamStats = playerStats.Values.Where(s => players.Any(p => p.Player.Hash == s.PlayerHash)).ToList();
-            var firstPlayer = playerTeamStats.First(s => players.Any(p => p.Player.Hash == s.PlayerHash));
-            var playerNames = string.Join(" and ", players.Select(p => Sanitize(p.Player.ShortName)));
-            sb.AppendLine($"# {playerNames} #");
-
-            var playerNamesEmbed = string.Join("  +  ", players.Select(p => $":flag_{p.Player.Country?.Code?.ToLower() ?? "md"}: {Sanitize(p.Player.ShortName)}"));
-            builder.AddField(
-                $"`{stats.Wins,3} ` \u200B \u200B \u200B {playerNamesEmbed} {(stats.Wins == maxWins ? "\u200B :trophy:" : string.Empty)}",
-                "\u200B"
-            );
-
-            var pilot = playerTeamStats.OrderByDescending(p => p.PilotCount).First();
-            var pilotPlayer = players.First(p => p.Player.Hash == pilot.PlayerHash);
-            sb.AppendLine($"Pilot: {Sanitize(pilotPlayer.Player.ShortName)} {FormatPercent(pilot.PilotCount, numRounds)}");
-
-            var gunner = playerTeamStats.OrderByDescending(p => p.GunnerCount).First();
-            var gunnerPlayer = players.First(p => p.Player.Hash == gunner.PlayerHash);
-            sb.AppendLine($"Gunner: {Sanitize(gunnerPlayer.Player.ShortName)} {FormatPercent(gunner.GunnerCount, numRounds)}");
-
-            sb.AppendLine($"Team: US {FormatPercent(firstPlayer.TeamUsCount, numRounds)} / CH {FormatPercent(firstPlayer.TeamChCount, numRounds)}");
-            sb.AppendLine($"Vehicle: AH-1Z {FormatPercent(firstPlayer.Ah1zCount, numRounds)} / Z-10 {FormatPercent(firstPlayer.Z10Count, numRounds)}");
-            sb.AppendLine($"Start: RDY {FormatPercent(firstPlayer.RdyStartCount, numRounds)} / GO {FormatPercent(firstPlayer.GoStartCount, numRounds)}");
-
-            sb.Append("Wins: ");
-            sb.Append($"TV {FormatPercent(playerTeamStats.Sum(p => p.TvWinCount), stats.Wins)} / ");
-            sb.Append($"Hydra {FormatPercent(playerTeamStats.Sum(p => p.HydraWinCount), stats.Wins)} / ");
-            sb.Append($"MG {FormatPercent(playerTeamStats.Sum(p => p.MgWinCount), stats.Wins)} / ");
-            sb.AppendLine($"Enemy crash {FormatPercent(firstPlayer.EnemyCrashWinCount, stats.Wins)}");
-
-            sb.AppendLine($"Pad: avg. start distance {firstPlayer.TotalDistanceFromPad / numRounds:##} m");
-            sb.AppendLine($"Altitude: avg. per round {firstPlayer.TotalAverageAltitude / numRounds:##} m");
-            sb.AppendLine($"Speed: avg. per round {firstPlayer.TotalAverageSpeed / numRounds:##} km/h\n");
-        }
-
-        builder.AddField("Map", match.Map);
-
-        if (biggestTvCurveKill.Item1 != null)
-        {
-            sb.AppendLine($"Biggest TV curve kill: est. {biggestTvCurveKill.Item2:##} m {biggestTvCurveKill.Item3:##}° by {Sanitize(biggestTvCurveKill.Item1?.Player.ShortName ?? "?")}");
-            builder.AddField("Biggest TV curve kill", $"Est. {biggestTvCurveKill.Item2:##} m {biggestTvCurveKill.Item3:##}° by {Sanitize(biggestTvCurveKill.Item1?.Player.ShortName ?? "?")}");
-        }
-
-        if (longestHydraKill.Item1 != null)
-        {
-            sb.AppendLine($"Longest hydra kill: est. {longestHydraKill.Item2:##} m by {Sanitize(longestHydraKill.Item1?.Player.ShortName ?? "?")}");
-            builder.AddField("Longest hydra kill", $"Est. {longestHydraKill.Item2:##} m by {Sanitize(longestHydraKill.Item1?.Player.ShortName ?? "?")}");
-        }
-
-        if (mostMgWins.MgWinCount > 0)
-        {
-            sb.AppendLine($"Most MG wins: {mostMgWins.MgWinCount} by {Sanitize(mostMgWinsPlayer?.Player.ShortName ?? "?")}");
-            builder.AddField("Most MG wins", $"{mostMgWins.MgWinCount} by {Sanitize(mostMgWinsPlayer?.Player.ShortName ?? "?")}");
-        }
-
-        sb.AppendLine($"Round duration: avg. {roundTotalDuration / numRounds:##} s / longest {longestRoundDuration:##} s / shortest {shortestRoundDuration:##} s");
-        sb.AppendLine($"Draw rounds: {draws}");
-        sb.Append("```");
-
-        await SendDiscordMessageAsync(sb.ToString());
-
-        if (duration > TimeSpan.FromMinutes(10) && match.Rounds.Count > 10)
+        if (report.PostEmbed)
         {
             Logger.LogInformation("Sending match results for {MatchId}", match.Id);
-            await SendDiscordEmbedAsync(builder.Build());
+            await SendDiscordEmbedAsync(report.Embed);
         }
         else
         {
+            var duration = (match.MatchEnd ?? _timeProvider.GetUtcNow()) - match.MatchStart!.Value;
             Logger.LogInformation("Not sending match results for {MatchId} (duration: {Duration}, rounds: {RoundCount})", match.Id, duration, match.Rounds.Count);
         }
-    }
-
-    private static string FormatPercent(int a, int b)
-    {
-        var value = 100d * ((double)a / b);
-        return value < 0.5 ? "0%" : $"{value:##}%";
     }
 
     private Match? GetActiveMatch()
@@ -439,27 +224,6 @@ public class Heli2v2Module : BaseModule,
     private Round _pendingRound;
 
     private bool enableEndOfRoundTeleport = true;
-
-    private (double distance, double angle) CalculateTvStats(IList<RoundPosition> killTvPath, bool debug = false)
-    {
-        double killTvDistance = 0d, killTvAngle = 0d;
-        if (killTvPath == null || !killTvPath.Any())
-            return (killTvDistance, killTvAngle);
-
-        var firstSample = killTvPath.First();
-        var previousPosition = firstSample.Position;
-        var previousRotation = firstSample.Rotation;
-        foreach (var sample in killTvPath)
-        {
-            killTvDistance += previousPosition.Distance(sample.Position);
-            var angle = previousRotation.Angle(sample.Rotation);
-            killTvAngle += angle;
-            previousPosition = sample.Position;
-            previousRotation = sample.Rotation;
-        }
-
-        return (killTvDistance, killTvAngle);
-    }
 
     private readonly ConcurrentDictionary<string, bool> _autopadPlayerHashes = new ConcurrentDictionary<string, bool>();
 
@@ -1099,21 +863,14 @@ public class Heli2v2Module : BaseModule,
         if (e.Message.Type != MessageType.Player || e.Message.Channel != ChatChannel.Global)
             return;
 
-        const string padPattern = @"^j?pad$";
-        var isPadMatch = Regex.IsMatch(e.Message.Text, padPattern, RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-        if (isPadMatch)
+        var chat = ReadyMessage.Parse(e.Message.Text);
+        if (chat == ReadyChat.Pad)
         {
             RemoveActiveRoundWithPlayer(e.Message.Player.Hash);
             return;
         }
 
-        // TODO: fix 2 players ready on 1 team then switching
-        const string readyPattern = @"^j?[^0-9A-Za-z]*(?!gg)(([ready]{1,8}|[go]{1,5})[A-z0-9\?\!\.]{0,2})[^0-9A-Za-z]*$";
-        const string readyPatternWithOtherText = @"(^(j?rd[y]?|j?g[o]?)[ ]+)|[ ]+(rd[y]?|g[o]?)$";
-
-        var isReadyMatch = Regex.IsMatch(e.Message.Text, readyPattern, RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-        var isReadyWithOtherMatch = Regex.IsMatch(e.Message.Text, readyPatternWithOtherText, RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-        if (!isReadyMatch && !isReadyWithOtherMatch || e.Message.Text == "yes")
+        if (chat != ReadyChat.Ready)
             return;
 
         var teamPlayers = e.Message.Player.Vehicle?.Players ?? Array.Empty<Player>();
@@ -1435,7 +1192,7 @@ public class Heli2v2Module : BaseModule,
                 {
                     // TODO: get max X and Y angles per s or ms and see what you can get max as default
                     await _delayProvider.DelayAsync(4000, ModuleCancellationToken);
-                    var (distance, angle) = CalculateTvStats(path.Path, true);
+                    var (distance, angle) = MatchStatistics.TvShot(path.Path);
                     _gameServer.GameWriter.SendText($"{e.Projectile.Owner.ShortName} TV: est. {distance:###} m {angle:###} degrees");
                 }, ModuleCancellationToken);
             }
@@ -1498,7 +1255,7 @@ public class Heli2v2Module : BaseModule,
 
         try
         {
-            await GetMatchStatisticsAsync(e.Match);
+            await SendMatchReportAsync(e.Match);
         }
         catch (Exception ex)
         {
@@ -1523,71 +1280,9 @@ public class Heli2v2Module : BaseModule,
         {
             var winningTeam = _gameServer.Teams.FirstOrDefault(t => t.Id == e.Round.WinningTeamId);
             var timeDiff = e.Round.RoundEnd!.Value - e.Round.RoundStart!.Value;
-
             var match = GetActiveMatch();
 
-            var teamAHash = match.TeamHashes.First();
-            var teamBHash = match.TeamHashes.Last();
-
-            var teamAWins = match.Rounds.Count(r => r.WinningTeamHash == teamAHash && r.LosingTeamHash == teamBHash);
-            var teamBWins = match.Rounds.Count(r => r.WinningTeamHash == teamBHash && r.LosingTeamHash == teamAHash);
-
-            var teamAIndicator = teamAHash == e.Round.WinningTeamHash ? "+" : string.Empty;
-            var teamBIndicator = teamBHash == e.Round.WinningTeamHash ? "+" : string.Empty;
-
-            var teamAPlayers = e.Round.Players.Where(p => p.TeamHash == teamAHash);
-            var teamBPlayers = e.Round.Players.Where(p => p.TeamHash == teamBHash);
-
-            var totalRounds = match.Rounds.Count(r => r.Players.Any(p => p.TeamHash == teamAHash) && r.Players.Any(p => p.TeamHash == teamBHash));
-
-            var tvKillerHash = e.Round.Players.FirstOrDefault(p => p.KillerWeapon?.ToLower().EndsWith("tv") ?? false)?.KillerHash;
-            var tvAttacker = e.Round.Players.FirstOrDefault(p => p.Player.Hash == tvKillerHash);
-            var killTvPath = e.Round.Players.FirstOrDefault(p => p.TeamHash == e.Round.WinningTeamHash && p.ProjectilePaths.Any())?.LastProjectilePath;
-            var (killTvDistance, killTvAngle) = tvAttacker != null ? CalculateTvStats(killTvPath) : (0d, 0d);
-
-            var victimPlayer = e.Round.Players.FirstOrDefault(p => p.TeamHash == e.Round.LosingTeamHash);
-            var hydraKillerHash = e.Round.Players.FirstOrDefault(p => p.KillerWeapon?.ToLower().EndsWith("launcher") ?? false)?.KillerHash;
-            var hydraAttacker = e.Round.Players.FirstOrDefault(p => p.Player.Hash == hydraKillerHash);
-            var killHydraDistance = 0d;
-            if (victimPlayer != null && hydraAttacker != null)
-            {
-                killHydraDistance = victimPlayer.KillerPosition.Distance(victimPlayer.DeathPosition);
-            }
-
-            var mgKillerHash = e.Round.Players.FirstOrDefault(p => p.KillerWeapon?.ToLower().EndsWith("gun") ?? false)?.KillerHash;
-            var mgAttacker = e.Round.Players.FirstOrDefault(p => p.Player.Hash == mgKillerHash);
-            var killMgDistance = 0d;
-            if (victimPlayer != null && mgAttacker != null)
-            {
-                killMgDistance = victimPlayer.KillerPosition.Distance(victimPlayer.DeathPosition);
-            }
-
-            var unknownKillVictim = tvAttacker == null && hydraAttacker == null && mgAttacker == null
-                ? e.Round.Players.Where(p => p.TeamHash == e.Round.LosingTeamHash).FirstOrDefault(p => p.KillerWeapon != null)
-                : null;
-
-            var isCrash = e.Round.WinningTeamId != -1 && e.Round.Players.Where(p => p.TeamHash == e.Round.LosingTeamHash).All(p => p.KillerWeapon == null);
-
-            var sb = new StringBuilder();
-
-            if (e.Round.WinningTeamId == -1)
-            {
-                sb.Append($"```md\nRound {totalRounds} ended in a CLASSIC DRAW in {(int)timeDiff.TotalSeconds} s\n\n");
-            }
-            else
-            {
-                sb.Append($"```md\nRound {totalRounds} won by {winningTeam?.Name ?? "?"} in {(int)timeDiff.TotalSeconds} s\n\n");
-                sb.Append(killTvDistance > 0 ? $"TV: est. {killTvDistance:###}m {killTvAngle:###}°\n\n" : string.Empty);
-                sb.Append(killHydraDistance > 0 ? $"Hydra: est. {killHydraDistance:###}m\n\n" : string.Empty);
-                sb.Append(killMgDistance > 0 ? $"MG: est. {killMgDistance:###}m\n\n" : string.Empty);
-                sb.Append(unknownKillVictim != null ? $"Unknown weapon: {unknownKillVictim?.KillerWeapon}\n\n" : string.Empty);
-                sb.Append(isCrash ? "Crashed\n\n" : string.Empty);
-            }
-
-            sb.Append($"<{string.Join("> <", teamAPlayers.Select(p => p.Player.ShortName))}> {teamAWins}{teamAIndicator} vs ");
-            sb.Append($"{teamBWins}{teamBIndicator} <{string.Join("> <", teamBPlayers.Select(p => p.Player.ShortName))}>```");
-
-            await SendDiscordMessageAsync(sb.ToString());
+            await SendDiscordMessageAsync(MatchStatistics.RoundSummary(match, e.Round, winningTeam?.Name));
 
             if (e.Round.WinningTeamId == -1)
             {

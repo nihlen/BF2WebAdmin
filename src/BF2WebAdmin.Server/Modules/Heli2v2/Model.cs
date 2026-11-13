@@ -149,3 +149,13 @@ public class PlayerStats
     public double TotalAverageAltitude { get; set; }
     public double TotalAverageSpeed { get; set; }
 }
+/// <summary>A team's id in a match: its two player hashes in ordinal order, joined.</summary>
+public static class TeamHash
+{
+    public static string Of(Player p1, Player p2) => Of(p1.Hash, p2.Hash);
+
+    public static string Of(IEnumerable<string> playerHashes) => Of(playerHashes.First(), playerHashes.Last());
+
+    public static string Of(string hash1, string hash2) =>
+        string.Compare(hash1, hash2, StringComparison.Ordinal) <= 0 ? hash1 + hash2 : hash2 + hash1;
+}

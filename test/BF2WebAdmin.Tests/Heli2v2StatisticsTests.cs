@@ -82,7 +82,7 @@ public class Heli2v2StatisticsTests
         Assert.Equal("dalian_2_v_2", Assert.Single(report.Embed.Fields, f => f.Name == "Map").Value);
     }
 
-    private static readonly DateTime Start = new(2026, 11, 13, 20, 0, 0, DateTimeKind.Utc);
+    internal static readonly DateTime Start = new(2026, 11, 13, 20, 0, 0, DateTimeKind.Utc);
 
     private static List<RoundPosition> TvPath() =>
     [
@@ -92,7 +92,7 @@ public class Heli2v2StatisticsTests
     ];
 
     /// <summary>China (AB) wins round 1 with a TV missile from B; round 2 is a draw.</summary>
-    private static Match TwoRoundMatch(out Round tvWin, out Round draw)
+    internal static Match TwoRoundMatch(out Round tvWin, out Round draw)
     {
         var (_, _, players) = Data.Setup2v2Players();
         var match = new Match

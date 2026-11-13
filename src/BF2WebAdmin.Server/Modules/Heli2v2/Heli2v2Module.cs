@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Diagnostics;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Data.Abstractions;
@@ -24,51 +23,27 @@ public class Heli2v2Module : BaseModule,
     IHandleEventAsync<PlayerLeftEvent>,
     IHandleEventAsync<PlayerPositionEvent>,
     IHandleEventAsync<ProjectilePositionEvent>,
-    IHandleEventAsync<PlayerVehicleEvent>,
     IHandleEventAsync<MatchStartEvent>,
     IHandleEventAsync<MatchEndEvent>,
     IHandleEventAsync<RoundStartEvent>,
     IHandleEventAsync<RoundEndEvent>,
     IHandleCommand<SwitchLaterCommand>,
-    IHandleCommand<HeliMgCommand>,
-    IHandleCommand<NoclipCommand>,
-    IHandleCommand<StalkCommand>,
-    IHandleCommand<StopCommand>,
-    IHandleCommand<Toggle2v2Command>,
-    IHandleCommand<ToggleTvLogCommand>,
-    IHandleCommand<RecordCommand>,
-    IHandleCommandAsync<PlaybackCommand>,
-    IHandleCommandAsync<LoopCommand>,
-    IHandleCommandAsync<PadCommand>,
-    IHandleCommandAsync<AutoPadCommand>,
-    IHandleCommandAsync<AutoPadAllCommand>,
-    IHandleCommandAsync<NasaCommand>,
-    IHandleCommandAsync<GetTvMissileValuesCommand>,
-    IHandleCommandAsync<SetTvMissileValueCommand>,
-    IHandleCommandAsync<SetTvMissileTypeCommand>,
-    IHandleCommandAsync<NoFencesCommand>
+    IHandleCommand<Toggle2v2Command>
 {
     private readonly IGameServer _gameServer;
     private readonly IDelayProvider _delayProvider;
     private readonly TimeProvider _timeProvider;
     private readonly ITaskRunner _taskRunner;
-    private const int DefaultDelay = 25; // 1000/35 fps ~ 28.5
-    private const int AltitudeOffset = MatchStatistics.AltitudeOffset;
     private const double DefaultPositionTrackerInterval = 0.25; // Dalian?
-
-    private int _stopCounter;
 
     private int _switchCounter;
     private int _switchRounds;
 
-    private int _antiNasaAltitude;
-    private bool _antiNasaActive;
-
     private bool _roundsActive;
     private IList<Match> _matches;
 
-    private Player _stalker;
-    private Player _stalked;
+    /// <summary>2v2 mode (.2v2 toggles it): ready lines start rounds, and the practice commands that need it work.</summary>
+    public bool RoundsActive => _roundsActive;
 
     // Match and round writes, in order and in the background
     private readonly MatchStore _store;
@@ -87,9 +62,6 @@ public class Heli2v2Module : BaseModule,
     private void ClearMatches()
     {
         _switchCounter = 0;
-        _stopCounter = 0;
-        _antiNasaAltitude = 0;
-        _antiNasaActive = false;
         _matches = new List<Match>();
     }
 
@@ -215,10 +187,6 @@ public class Heli2v2Module : BaseModule,
 
     private Round _pendingRound;
 
-    private bool enableEndOfRoundTeleport = true;
-
-    private readonly ConcurrentDictionary<string, bool> _autopadPlayerHashes = new ConcurrentDictionary<string, bool>();
-
     private ValueTask HandleRoundKillAsync(Player attacker, Position attackerPosition, Player victim, Position victimPosition, string weapon)
     {
         // TODO: detect draws - wait 1 s before declaring winner - or detect patterns - check vehicle status/id?
@@ -321,420 +289,12 @@ public class Heli2v2Module : BaseModule,
         _switchRounds = command.Rounds;
     }
 
-    public void Handle(HeliMgCommand command)
-    {
-        if (command.Value == 0)
-        {
-            _gameServer.GameWriter.SendConsole(RconScript.MgOff);
-            _gameServer.GameWriter.SendText("Heli MG off");
-        }
-
-        if (command.Value == 1)
-        {
-            _gameServer.GameWriter.SendConsole(RconScript.MgOn);
-            _gameServer.GameWriter.SendText("Heli MG on");
-        }
-    }
-
-    public void Handle(NoclipCommand command)
-    {
-        var player = _gameServer.GetPlayerByName(command.Name);
-        if (player == null)
-            return;
-
-        if (player.Vehicle == null)
-            return;
-
-        var hasCollision = command.Value == 1 ? 0 : 1;
-        player.Vehicle.HasCollision = hasCollision == 1;
-
-        // The console's object commands act on the active object, selected by its console (grid) id
-        _gameServer.GameWriter.SendSetObjectActive(player.Vehicle.ConsoleId);
-        _gameServer.GameWriter.SendConsole(player.Vehicle.HasCollision ? RconScript.NoclipOff : RconScript.NoclipOn);
-    }
-
-    private ValueTask RemoveNoClipAsync(Player? player, Vehicle? vehicle)
-    {
-        if (vehicle is not null || player?.PreviousVehicle is null || player.PreviousVehicle.HasCollision && player.PreviousVehicle.Players.Any())
-            return ValueTask.CompletedTask;
-
-        player.PreviousVehicle.HasCollision = true;
-        _gameServer.GameWriter.SendSetObjectActive(player.PreviousVehicle.ConsoleId);
-        _gameServer.GameWriter.SendConsole(RconScript.NoclipOff);
-
-        return ValueTask.CompletedTask;
-    }
-
-    public void Handle(StalkCommand command)
-    {
-        _stalker = command.Message.Player;
-        _stalked = _gameServer.GetPlayerByName(command.Name);
-        if (_stalked == null)
-            return;
-    }
-
-    public void Handle(StopCommand command)
-    {
-        _stalker = null;
-        _stalked = null;
-        StopRecording();
-        _playbackCancellation?.Cancel();
-
-        _gameServer.GameWriter.SendConsole(RconScript.InitServer);
-    }
-
-    public async ValueTask HandleAsync(PadCommand command)
-    {
-        // TODO: Teleport all full helis back to their respective pad (stack multiple)
-        await FreezeAtPadAsync(0, command.Message.Player.Index, _gameServer.Players.ToArray());
-    }
-
-    private Task FreezeAtPadAsync(int duration, int requesterPlayerIndex, params Player[] players)
-    {
-        var usPadPos = new Position(239.8, 166.0, -249.9);
-        var chPadPos = new Position(-222.8, 166.0, 151.0);
-
-        // Level, facing the other pad
-        var usPadRot = new Rotation(YawTowards(usPadPos, chPadPos), 0.0, 0.0);
-        var chPadRot = new Rotation(YawTowards(chPadPos, usPadPos), 0.0, 0.0);
-
-        foreach (var player in players)
-        {
-            if (player.Vehicle == null || !player.Vehicle.RootVehicleTemplate.Contains("ahe"))
-                continue;
-
-            if (players.Length > 4 && player.Vehicle.Players.Count < 2 && player.Index != requesterPlayerIndex)
-                continue;
-
-            _gameServer.GameWriter.SendHealth(player, 875);
-            if (player.Team.Id == 1)
-            {
-                _gameServer.GameWriter.SendTeleport(player, chPadPos, chPadRot);
-            }
-            else if (player.Team.Id == 2)
-            {
-                _gameServer.GameWriter.SendTeleport(player, usPadPos, usPadRot);
-            }
-        }
-
-        return Task.CompletedTask;
-    }
-
-    // BF2 yaw in degrees: 0 faces +Z (Position.Y), 90 faces +X
-    private static double YawTowards(Position from, Position to) =>
-        Math.Atan2(to.X - from.X, to.Y - from.Y) * 180 / Math.PI;
-
-    public ValueTask HandleAsync(AutoPadCommand command)
-    {
-        if (!_roundsActive)
-        {
-            _gameServer.GameWriter.SendText("2v2 mode is not currently active");
-            return ValueTask.CompletedTask;
-        }
-
-        var player = _gameServer.GetPlayerByName(command.Name);
-        if (player == null)
-        {
-            _gameServer.GameWriter.SendText("Player not found");
-            return ValueTask.CompletedTask;
-        }
-
-        if (_autopadPlayerHashes.ContainsKey(player.Hash))
-        {
-            _gameServer.GameWriter.SendText($"Autopad disabled for {player.DisplayName}");
-            _autopadPlayerHashes.Remove(player.Hash, out _);
-        }
-        else
-        {
-            _gameServer.GameWriter.SendText($"Autopad enabled for {player.DisplayName}");
-            _autopadPlayerHashes.AddOrUpdate(player.Hash, true, (k, v) => true);
-        }
-
-        return ValueTask.CompletedTask;
-    }
-
-    public ValueTask HandleAsync(AutoPadAllCommand command)
-    {
-        if (!_roundsActive)
-        {
-            _gameServer.GameWriter.SendText("2v2 mode is not currently active");
-            return ValueTask.CompletedTask;
-        }
-
-        throw new NotImplementedException();
-    }
-
-    public ValueTask HandleAsync(NasaCommand command)
-    {
-        if (command.Value == 0)
-        {
-            StopAntiNasa();
-            return ValueTask.CompletedTask;
-        }
-
-        _antiNasaAltitude = command.Value + AltitudeOffset;
-        StartAntiNasa();
-
-        return ValueTask.CompletedTask;
-    }
-
-    private void StartAntiNasa()
-    {
-        _antiNasaActive = true;
-        _gameServer.GameWriter.SendText($"Anti NASA active ({_antiNasaAltitude - AltitudeOffset} m)");
-    }
-
-    private void StopAntiNasa()
-    {
-        _antiNasaActive = false;
-        _gameServer.GameWriter.SendText("Anti NASA inactive");
-    }
-
-    private async Task BlurAsync(long duration, params Player[] players)
-    {
-        var startTime = _timeProvider.GetUtcNow().UtcDateTime;
-        var startCount = _stopCounter;
-        while (IsActive(duration, startTime, startCount))
-        {
-            foreach (var player in players)
-            {
-                _gameServer.GameWriter.SendGameEvent(player, 13, 1);
-            }
-
-            await _delayProvider.DelayAsync(DefaultDelay, ModuleCancellationToken);
-        }
-    }
-
-    private bool IsActive(long duration, DateTime startTime, int startCount)
-    {
-        return (_timeProvider.GetUtcNow() - startTime).TotalMilliseconds < duration && startCount == _stopCounter;
-    }
-
     public void Handle(Toggle2v2Command command)
     {
         if (_roundsActive)
             RemoveRoundEvents();
         else
             SetupRoundEvents();
-    }
-
-    // TODO: Recording WIP - might have some use - move to own module
-    private Player _playerRecordingTarget;
-    private Stopwatch _playerRecordingWatch;
-    private IList<(long, Position, Rotation)>? _playerRecordingPositions;
-    private CancellationTokenSource _playbackCancellation;
-
-    public void Handle(RecordCommand command)
-    {
-        if (_playerRecordingWatch is { IsRunning: true })
-            StopRecording();
-        else
-            StartRecording(command);
-    }
-
-    private void StartRecording(RecordCommand command)
-    {
-        _playerRecordingPositions = new List<(long, Position, Rotation)>(1000);
-        _playerRecordingTarget = command.Message.Player;
-        _playerRecordingWatch = Stopwatch.StartNew();
-        _gameServer.GameWriter.SendText("Recording started");
-    }
-
-    private void StopRecording()
-    {
-        _playerRecordingWatch?.Stop();
-        _gameServer.GameWriter.SendText("Recording stopped");
-    }
-
-    public async ValueTask HandleAsync(PlaybackCommand command)
-    {
-        if (_playerRecordingPositions == null)
-        {
-            _gameServer.GameWriter.SendText("No recording found");
-            return;
-        }
-
-        _playbackCancellation?.Cancel();
-        _playbackCancellation = new CancellationTokenSource();
-        await Task.Run(() =>
-        {
-            _gameServer.GameWriter.SendText("Started playback");
-
-            StartPlayback();
-
-            _gameServer.GameWriter.SendText("Stopped playback");
-        }, _playbackCancellation.Token);
-    }
-
-    public async ValueTask HandleAsync(LoopCommand command)
-    {
-        if (_playerRecordingPositions == null)
-        {
-            _gameServer.GameWriter.SendText("No recording found");
-            return;
-        }
-
-        _playbackCancellation?.Cancel();
-        _playbackCancellation = new CancellationTokenSource();
-        await Task.Run(() =>
-        {
-            _gameServer.GameWriter.SendText("Started looping playback");
-
-            while (!_playbackCancellation.IsCancellationRequested)
-            {
-                StartPlayback();
-            }
-
-            _gameServer.GameWriter.SendText("Stopped looping playback");
-        }, _playbackCancellation.Token);
-    }
-
-    private void StartPlayback()
-    {
-        // TODO: get new timestamps from events
-        var sw = Stopwatch.StartNew();
-        foreach (var snapshot in _playerRecordingPositions)
-        {
-            if (ModuleCancellationToken.IsCancellationRequested)
-                return;
-
-            SpinWait.SpinUntil(() => sw.ElapsedMilliseconds > snapshot.Item1, 1000);
-            Logger.LogError("Variance: {VarianceMs}", sw.ElapsedMilliseconds - snapshot.Item1);
-            _gameServer.GameWriter.SendTeleport(_playerRecordingTarget, snapshot.Item2, snapshot.Item3);
-            if (_playbackCancellation.IsCancellationRequested)
-                break;
-        }
-    }
-
-    public IEnumerable<TvMissileSetting> DefaultTvMissileSettings = new[]
-    {
-        new TvMissileSetting { Name = "trackingDelay", Template = "ObjectTemplate.seek.trackingDelay {0}", DefaultValue = "0.2" },
-        new TvMissileSetting { Name = "maxYaw", Template = "ObjectTemplate.follow.maxYaw {0}", DefaultValue = "1.5" },
-        new TvMissileSetting { Name = "maxPitch", Template = "ObjectTemplate.follow.maxPitch {0}", DefaultValue = "1.5" },
-        new TvMissileSetting { Name = "changePitch", Template = "ObjectTemplate.follow.changePitch {0}", DefaultValue = "0.2" },
-        new TvMissileSetting { Name = "changeYaw", Template = "ObjectTemplate.follow.changeYaw {0}", DefaultValue = "0.2" },
-        new TvMissileSetting { Name = "minDist", Template = "ObjectTemplate.follow.minDist {0}", DefaultValue = "10" },
-        new TvMissileSetting { Name = "drag", Template = "ObjectTemplate.drag {0}", DefaultValue = "0.1" },
-        new TvMissileSetting { Name = "mass", Template = "ObjectTemplate.mass {0}", DefaultValue = "500" },
-        // No followStiffness: it exists on Camera and doesn't work server side
-        new TvMissileSetting { Name = "timeToLive", Template = "ObjectTemplate.timeToLive CRD_NONE/{0}/0/0", DefaultValue = "3.5" },
-        new TvMissileSetting { Name = "maxSpeed", Template = "ObjectTemplate.maxSpeed {0}", DefaultValue = "125" },
-    };
-
-    public async ValueTask HandleAsync(GetTvMissileValuesCommand command)
-    {
-        var result = new List<(string, string, string)>();
-        foreach (var defaultSetting in DefaultTvMissileSettings)
-        {
-            // Commands run in order, so the getter reads the template made active just before it
-            _gameServer.GameWriter.SendConsole("ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv");
-            var lines = await _gameServer.GameWriter.ConsoleAsync(defaultSetting.Template.Split(' ').First());
-            result.Add((defaultSetting.Name, string.Join(" ", lines).Trim(), defaultSetting.DefaultValue));
-        }
-
-        _gameServer.GameWriter.SendText($"TV missile settings: {string.Join(", ", result.Take(6).Select(r => $"{r.Item1}: {r.Item2} ({r.Item3})"))}");
-        _gameServer.GameWriter.SendText(string.Join(", ", result.Skip(6).Select(r => $"{r.Item1}: {r.Item2} ({r.Item3})")), false);
-    }
-
-    public ValueTask HandleAsync(SetTvMissileValueCommand command)
-    {
-        if (string.IsNullOrEmpty(command.Value))
-        {
-            return ValueTask.CompletedTask;
-        }
-
-        var matchingSetting = DefaultTvMissileSettings.FirstOrDefault(s => s.Name.Equals(command.Name, StringComparison.InvariantCultureIgnoreCase));
-        if (matchingSetting == null)
-        {
-            _gameServer.GameWriter.SendText("Setting not found");
-            return ValueTask.CompletedTask;
-        }
-
-        _gameServer.GameWriter.SendConsole(
-            "ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv",
-            string.Format(matchingSetting.Template, command.Value)
-        );
-
-        _gameServer.GameWriter.SendText($"TV Missile {matchingSetting.Name} set to {command.Value}");
-
-        return ValueTask.CompletedTask;
-    }
-
-    public ValueTask HandleAsync(SetTvMissileTypeCommand command)
-    {
-        if (command.Type.Contains(" "))
-        {
-            return ValueTask.CompletedTask;
-        }
-
-        if (command.Type == "default")
-        {
-            SetDefaultTvMissile();
-        }
-        else if (command.Type == "test")
-        {
-            _gameServer.GameWriter.SendConsole(
-                "ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv",
-                "ObjectTemplate.seek.trackingDelay 0.2", // 0.2
-                "ObjectTemplate.follow.maxYaw 1.5", // 1.5
-                "ObjectTemplate.follow.maxPitch 1.5", // 1.5
-                "ObjectTemplate.follow.changePitch 100", // 0.2
-                "ObjectTemplate.follow.changeYaw 100", // 0.2
-                "ObjectTemplate.follow.minDist 10", // 10
-                "ObjectTemplate.drag 0", // 0.1
-                "ObjectTemplate.mass 0", // 500
-                "ObjectTemplate.timeToLive CRD_NONE/3.5/0/0", // 3.5
-                "ObjectTemplate.maxSpeed 125" // 125
-            );
-        }
-        else
-        {
-            _gameServer.GameWriter.SendText("Setting not found");
-            return ValueTask.CompletedTask;
-        }
-
-        _gameServer.GameWriter.SendText($"TV Missile set to {command.Type}");
-        return ValueTask.CompletedTask;
-    }
-
-    private void SetDefaultTvMissile()
-    {
-        _gameServer.GameWriter.SendConsole(
-            "ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv",
-            "ObjectTemplate.seek.trackingDelay 0.2",
-            "ObjectTemplate.follow.maxYaw 1.5",
-            "ObjectTemplate.follow.maxPitch 1.5",
-            "ObjectTemplate.follow.changePitch 0.2",
-            "ObjectTemplate.follow.changeYaw 0.2",
-            "ObjectTemplate.follow.minDist 10",
-            "ObjectTemplate.drag 0.1",
-            "ObjectTemplate.mass 500",
-            "ObjectTemplate.timeToLive CRD_NONE/3.5/0/0",
-            "ObjectTemplate.maxSpeed 125"
-        );
-    }
-
-    private readonly ConcurrentDictionary<string, ProjectilePath> _tvLogPlayers = new();
-
-    public void Handle(ToggleTvLogCommand command)
-    {
-        var player = _gameServer.GetPlayerByName(command.Name);
-        if (player == null)
-        {
-            _gameServer.GameWriter.SendText("Player not found");
-            return;
-        }
-
-        if (_tvLogPlayers.ContainsKey(player.Hash))
-        {
-            _tvLogPlayers.Remove(player.Hash, out _);
-            _gameServer.GameWriter.SendText($"Disabled TV logging for {player.DisplayName}");
-        }
-        else
-        {
-            _tvLogPlayers.TryAdd(player.Hash, new ProjectilePath());
-            _gameServer.GameWriter.SendText($"Enabled TV logging for {player.DisplayName}");
-        }
     }
 
     public async ValueTask HandleAsync(MapChangedEvent e)
@@ -751,7 +311,6 @@ public class Heli2v2Module : BaseModule,
 
         _gameServer.GameWriter.SendConsole(RconScript.InitServer);
         _gameServer.GameWriter.SendTimerInterval(DefaultPositionTrackerInterval);
-        SetDefaultTvMissile();
 
         // Only clear match if it's a different map, else keep counting as long as it's the same players
         if (match?.Map != e.Map.Name)
@@ -997,30 +556,6 @@ public class Heli2v2Module : BaseModule,
             }
         }
 
-        if (_stalker is not null && _stalked is not null)
-        {
-            if (e.Player.Index == _stalked.Index)
-            {
-                var newPosition = new Position(e.Position.X, e.Position.Height + 10, e.Position.Y);
-                _gameServer.GameWriter.SendTeleport(_stalker, newPosition);
-            }
-        }
-
-        if (_antiNasaActive)
-        {
-            if (e.Position.Height >= _antiNasaAltitude)
-            {
-                var newPosition = new Position(e.Position.X, _antiNasaAltitude, e.Position.Y);
-                _gameServer.GameWriter.SendTeleport(e.Player, newPosition);
-            }
-        }
-
-        if (_playerRecordingWatch != null && _playerRecordingWatch.IsRunning)
-        {
-            Logger.LogInformation("Recorded player {Position} {Rotation}", e.Position, e.Rotation);
-            _playerRecordingPositions.Add((_playerRecordingWatch.ElapsedMilliseconds, e.Position, e.Rotation));
-        }
-
         return ValueTask.CompletedTask;
     }
 
@@ -1035,11 +570,10 @@ public class Heli2v2Module : BaseModule,
 
         var round = GetActiveRound();
         var roundPlayer = round?.Players.FirstOrDefault(p => p.Player.Hash == e.Projectile.Owner.Hash);
-        var isLoggedTv = _tvLogPlayers.TryGetValue(e.Projectile.Owner.Hash, out var path);
-        if (roundPlayer == null && !isLoggedTv)
+        if (roundPlayer == null)
             return ValueTask.CompletedTask;
 
-        var timestamp = (now - (round?.RoundStart ?? now)).TotalMilliseconds;
+        var timestamp = (now - round!.RoundStart!.Value).TotalMilliseconds;
         var roundPosition = new RoundPosition
         {
             Id = e.Projectile.Id,
@@ -1049,45 +583,15 @@ public class Heli2v2Module : BaseModule,
             Ping = e.Projectile.Owner.Score.Ping
         };
 
-        if (isLoggedTv)
+        if (roundPlayer.LastProjectileId != e.Projectile.Id)
         {
-            if (path.Projectile?.Id != e.Projectile.Id)
-            {
-                path.Projectile = e.Projectile;
-                path.Path.Clear();
-                _taskRunner.RunBackgroundTask("Send projectile message", async () =>
-                {
-                    // TODO: get max X and Y angles per s or ms and see what you can get max as default
-                    await _delayProvider.DelayAsync(4000, ModuleCancellationToken);
-                    var (distance, angle) = MatchStatistics.TvShot(path.Path);
-                    _gameServer.GameWriter.SendText($"{e.Projectile.Owner.ShortName} TV: est. {distance:###} m {angle:###} degrees");
-                }, ModuleCancellationToken);
-            }
-
-            path.Path.Add(roundPosition);
+            roundPlayer.ProjectilePaths.Add(new List<RoundPosition>());
+            roundPlayer.LastProjectileId = e.Projectile.Id;
         }
 
-        if (roundPlayer != null)
-        {
-            if (roundPlayer.LastProjectileId != e.Projectile.Id)
-            {
-                roundPlayer.ProjectilePaths.Add(new List<RoundPosition>());
-                roundPlayer.LastProjectileId = e.Projectile.Id;
-            }
-
-            roundPlayer.ProjectilePaths.Last().Add(roundPosition);
-        }
+        roundPlayer.ProjectilePaths.Last().Add(roundPosition);
 
         return ValueTask.CompletedTask;
-    }
-
-    public ValueTask HandleAsync(PlayerVehicleEvent e)
-    {
-        if (!_roundsActive)
-            return ValueTask.CompletedTask;
-
-        // TODO: check if player is the last in the vehicle
-        return RemoveNoClipAsync(e.Player, e.Vehicle);
     }
 
     public async ValueTask HandleAsync(MatchStartEvent e)
@@ -1153,19 +657,6 @@ public class Heli2v2Module : BaseModule,
             {
                 _gameServer.GameWriter.SendText($"Round {match.Rounds.Count} won by {winningTeam.Name} in {(int)timeDiff.TotalSeconds} s");
             }
-
-            if (enableEndOfRoundTeleport)
-            {
-                _taskRunner.RunBackgroundTask("Handle end of round teleport", async () =>
-                {
-                    var winningPlayers = e.Round.Players.Where(p => p.TeamHash == e.Round.WinningTeamHash && p.IsAlive).ToList();
-                    if (winningPlayers.Any(p => _autopadPlayerHashes.ContainsKey(p.Player.Hash)))
-                    {
-                        await _delayProvider.DelayAsync(2000, ModuleCancellationToken);
-                        await FreezeAtPadAsync(0, 0, winningPlayers.First().Player);
-                    }
-                }, ModuleCancellationToken);
-            }
         }
         catch (Exception ex)
         {
@@ -1182,40 +673,5 @@ public class Heli2v2Module : BaseModule,
             _switchRounds = 0;
             SwitchAll();
         }
-    }
-
-    public async ValueTask HandleAsync(NoFencesCommand command)
-    {
-        var fenceTemplates = new[]
-        {
-            "fence_corrugated_3x12m",
-            "fence_corrugated_3x12m_broken",
-            "fence_corrugated_3x12m_broken_parts",
-            "wirefence_72m",
-            "wirefence_end",
-            "wirefence_48m",
-            "wirefence_24m",
-            "fence_corrugated_pole_3m",
-            "fence_corrugated_3x48m",
-            "fence_corrugated_3x24m",
-            "fence_corrugated_3x12m_corner_02",
-            "fence_corrugated_3x12m_corner_01",
-            "lamppost_highway_01"
-        };
-
-        var removedObjects = 0;
-
-        foreach (var fenceTemplate in fenceTemplates)
-        {
-            // Static map objects have a console (grid) id and usually no networkable id
-            var objects = await GameServer.GameWriter.ListObjectsAsync(fenceTemplate);
-            foreach (var o in objects)
-            {
-                GameServer.GameWriter.SendDeleteObject(o.ConsoleId);
-                removedObjects++;
-            }
-        }
-
-        GameServer.GameWriter.SendText($"Removed {removedObjects} fences and lamp posts");
     }
 }

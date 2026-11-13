@@ -1,5 +1,6 @@
 ﻿using System.Data.Common;
 using System.Net;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
@@ -175,11 +176,26 @@ public partial class ModManager : IModManager
         return _globalServices.GetRequiredService<T>();
     }
 
+    /// <summary>
+    /// The modules of a server group: the default ones, those it enables, and the modules that come with those
+    /// (<see cref="LoadedWithAttribute"/>; they cannot be enabled on their own).
+    /// </summary>
+    public static IReadOnlyList<Type> ModuleTypesFor(IEnumerable<string> enabledModuleNames)
+    {
+        var names = enabledModuleNames.ToHashSet();
+        var chosen = ModuleResolver.AllModuleTypes
+            .Where(t => t.GetCustomAttribute<LoadedWithAttribute>() == null && (DefaultModuleNames.Contains(t.Name) || names.Contains(t.Name)))
+            .ToList();
+        var companions = ModuleResolver.AllModuleTypes
+            .Where(t => t.GetCustomAttribute<LoadedWithAttribute>() is { } with && chosen.Contains(with.Module));
+        return chosen.Concat(companions).ToList();
+    }
+
     private async Task CreateModulesAsync()
     {
         var serverSettingsRepository = _services.GetRequiredService<IServerSettingsRepository>();
         var enabledModuleNames = await serverSettingsRepository.GetModulesAsync(ServerSettings.ServerGroup);
-        var enabledModuleTypes = _moduleResolver.ModuleTypes.Where(t => DefaultModuleNames.Contains(t.Name) || enabledModuleNames.Contains(t.Name));
+        var enabledModuleTypes = ModuleTypesFor(enabledModuleNames);
 
         // Instantiate modules
         foreach (var moduleType in enabledModuleTypes)

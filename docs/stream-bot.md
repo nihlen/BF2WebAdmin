@@ -16,7 +16,8 @@ RabbitMQ with MassTransit.
   own (`StreamBot/StreamBotAuthentication.cs`): it opens the hub and nothing else. The admin key
   (`Authentication:ApiKey`) does not open the hub, and the bot key does not open the web API. Without the setting no
   bot can connect.
-- **What the bot learns:** a game server's id, address, game and query ports, and the match id.
+- **What the bot learns:** a game server's id, address, game and query ports, map, size and human player names, and
+  the match id.
 
 ## Messages
 
@@ -24,11 +25,17 @@ JSON with camelCase names. `StreamBot/StreamBotContracts.cs` has them; the bot h
 
 | Direction | Method | Body |
 |---|---|---|
-| WebAdmin → bot | `StartStream` | `serverId`, `gameServerIp`, `gameServerPort`, `gameQueryPort`, `matchId` |
+| WebAdmin → bot | `StartStream` | `serverId`, `gameServerIp`, `gameServerPort`, `gameQueryPort`, `matchId`, `state` |
 | WebAdmin → bot | `StopStream` | `serverId`, `gameServerIp`, `gameServerPort`, `matchId` |
 | bot → WebAdmin | `StreamStarted` | `serverId`, `matchId`, `botName`, `streamUrl` |
 | bot → WebAdmin | `StreamStopped` | `serverId`, `matchId` |
+| bot → WebAdmin | `GetServerState` | `serverId`; returns the `state` (`map`, `maxPlayers`, `humanPlayers`), or null when the server is not connected |
 
 A start goes to the bot that connected last, a stop to every connected bot. Nothing is queued: with no bot connected,
 `.stream` answers "No stream bot is connected" and a match is not streamed. The bot echoes `serverId`, which WebAdmin
 uses to find the server.
+
+The bot decides itself whether it can stream a server (`state` in the start request): the map it spectates
+(`dalian_2_v_2`), a free slot (more than 4) and a human player other than itself. While it streams it asks
+`GetServerState` every 5 minutes and stops (and reports `StreamStopped`) when that no longer holds, so a missed stop
+or a server that went away does not leave it streaming. Before 0.1.0 it queried the game server over GameSpy for this.

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using BF2WebAdmin.Server.Abstractions;
 using Microsoft.AspNetCore.SignalR;
 
 namespace BF2WebAdmin.Server.StreamBot;
@@ -6,11 +7,11 @@ namespace BF2WebAdmin.Server.StreamBot;
 /// <summary>Starts and stops the stream of a game server (.stream, .stopstream and each 2v2 match).</summary>
 public interface IGameStreamService
 {
-    /// <summary>Asks a stream bot to stream the server; false when no bot is connected.</summary>
-    Task<bool> StartGameStreamAsync(string serverId, string ipAddress, int gamePort, int queryPort, Guid? matchId);
+    /// <summary>Asks a stream bot to stream the server (with its state now); false when no bot is connected.</summary>
+    Task<bool> StartGameStreamAsync(IGameServer server, Guid? matchId);
 
     /// <summary>Asks the stream bots to stop streaming the server; false when no bot is connected.</summary>
-    Task<bool> StopGameStreamAsync(string serverId, string ipAddress, int gamePort, Guid? matchId);
+    Task<bool> StopGameStreamAsync(IGameServer server, Guid? matchId);
 }
 
 /// <summary>
@@ -36,25 +37,25 @@ public class StreamBotService(IHubContext<StreamBotHub, IStreamBotClient> hub, I
         logger.LogInformation("Stream bot disconnected ({Connections} connected)", _connections.Count);
     }
 
-    public async Task<bool> StartGameStreamAsync(string serverId, string ipAddress, int gamePort, int queryPort, Guid? matchId)
+    public async Task<bool> StartGameStreamAsync(IGameServer server, Guid? matchId)
     {
         var newest = _connections.OrderByDescending(c => c.Value).Select(c => c.Key).FirstOrDefault();
         if (newest is null)
         {
-            logger.LogInformation("No stream bot connected to stream {ServerId}", serverId);
+            logger.LogInformation("No stream bot connected to stream {ServerId}", server.Id);
             return false;
         }
 
-        await hub.Clients.Client(newest).StartStream(new StartStreamRequest(serverId, ipAddress, gamePort, queryPort, matchId));
+        await hub.Clients.Client(newest).StartStream(new StartStreamRequest(server.Id, server.IpAddress.ToString(), server.GamePort, server.QueryPort, matchId, StreamServerState.Of(server)));
         return true;
     }
 
-    public async Task<bool> StopGameStreamAsync(string serverId, string ipAddress, int gamePort, Guid? matchId)
+    public async Task<bool> StopGameStreamAsync(IGameServer server, Guid? matchId)
     {
         if (_connections.IsEmpty)
             return false;
 
-        await hub.Clients.All.StopStream(new StopStreamRequest(serverId, ipAddress, gamePort, matchId));
+        await hub.Clients.All.StopStream(new StopStreamRequest(server.Id, server.IpAddress.ToString(), server.GamePort, matchId));
         return true;
     }
 }

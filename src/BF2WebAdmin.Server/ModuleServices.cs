@@ -20,11 +20,8 @@ public static class ModuleServices
     public static IServiceCollection AddGameModules(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions();
-        services.Configure<TwitterConfig>(configuration.GetSection("Twitter"));
-        services.Configure<MashapeConfig>(configuration.GetSection("Mashape"));
         services.Configure<DiscordConfig>(configuration.GetSection("Discord"));
         services.Configure<LogConfig>(configuration.GetSection("ServerSettings"));
-        services.Configure<GeoipConfig>(configuration.GetSection("Geoip"));
 
         // Shared by all servers
         services.AddSingleton<ICountryResolver>(_ => new CountryResolver(configuration["Geoip:DatabasePath"]));

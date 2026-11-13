@@ -90,14 +90,13 @@ public class CommandTests
         var directory = Path.Combine(Path.GetTempPath(), "bf2wa-tests-" + Guid.NewGuid().ToString("N"));
         using var logModule = new LogModule(server, Options.Create(new LogConfig { ServerLogDirectory = directory }));
         _resolver.Modules[typeof(LogModule)] = logModule;
-        _resolver.Modules[typeof(QuoteModule)] = new QuoteModule(server, Options.Create(new MashapeConfig()));
+        _resolver.Modules[typeof(DictionaryModule)] = new DictionaryModule(server);
 
         Assert.Single(_resolver.EventHandlers[typeof(ChatMessageEvent)]);
         Assert.Single(_resolver.EventHandlers[typeof(MapChangedEvent)]);
         Assert.Empty(_resolver.EventHandlers[typeof(PlayerPositionEvent)]);
-        Assert.Single(_resolver.CommandHandlers[typeof(QuoteCommand)]);
-        Assert.Single(_resolver.CommandHandlers[typeof(QuoteCategoryCommand)]);
-        Assert.True(_resolver.IsHandled(typeof(QuoteCommand)));
+        Assert.Single(_resolver.CommandHandlers[typeof(DefineCommand)]);
+        Assert.True(_resolver.IsHandled(typeof(DefineCommand)));
         Assert.False(_resolver.IsHandled(typeof(SwitchCommand)));
     }
 

@@ -41,8 +41,6 @@ public class FakeServerSettingsRepository : IServerSettingsRepository
             "MapModule",
             "WebModule",
             "DictionaryModule",
-            "QuoteModule",
-            "TwitterModule",
             "LogModule",
         });
     }

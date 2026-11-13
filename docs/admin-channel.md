@@ -70,6 +70,12 @@ repositories, retry policies and Discord webhooks are shared. A module reload di
   `.interval`), vehicles and game state at 1 Hz, and the hit/miss replay (stream 20) for `agm114_hellfire_tv`.
   While a 3D viewer is open on the server, players, vehicles, projectiles and aim (stream 5) run at 30 Hz; the
   applier still hands the modules players and projectiles at the tracker rate and vehicles at 1 Hz.
+- A player's team, alive state and vehicle come from events and snapshots. The player stream reports them too, and
+  when it disagrees with the model for a second of game time (`StreamCorrectionDelay`: a latest-wins frame can be
+  applied before an older event that is still queued), its values win, with the same team and vehicle events a
+  snapshot sends, and the applier logs a warning "corrected from the player stream" (`StreamCorrections` counts
+  them). Each one is an event the model missed. A death takes the player out of its vehicle, with or without an
+  `ExitVehicle`.
 
 ### 3D viewer
 

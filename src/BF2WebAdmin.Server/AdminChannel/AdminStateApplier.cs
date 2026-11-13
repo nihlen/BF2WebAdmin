@@ -22,6 +22,17 @@ public class AdminStateApplier : IAdminSessionHandler
     private AdminSession? _session;
     // While a viewer is open the streams run at 30 Hz; the modules still get them at the tracker rate
     private uint _nextPlayerTick, _nextProjectileTick, _nextVehicleTick;
+    // What the player stream reports differently from the model (team, alive, seat), and since when (stream time)
+    private readonly Dictionary<Player, (string Mismatch, double Since)> _streamMismatches = new();
+
+    /// <summary>
+    /// How long (game seconds) the player stream must disagree with the model before it corrects it. A stream frame is
+    /// latest-wins, so it can be applied before an older event that is still queued; a second is plenty for that event.
+    /// </summary>
+    public const double StreamCorrectionDelay = 1.0;
+
+    /// <summary>The corrections the player stream made since startup: each is an event the model missed.</summary>
+    public int StreamCorrections { get; private set; }
 
     public AdminStateApplier(GameServer server, ILogger<AdminStateApplier> logger, IJoinHistoryWriter? joinHistory = null)
     {
@@ -195,6 +206,7 @@ public class AdminStateApplier : IAdminSessionHandler
 
         await ApplyGameStateAsync(snapshot.Game, time);
         ApplyVehicles(snapshot.Vehicles);
+        _streamMismatches.Clear();
 
         var present = new HashSet<int>();
         foreach (var info in snapshot.Players)
@@ -254,8 +266,7 @@ public class AdminStateApplier : IAdminSessionHandler
     /// <summary>Puts the player in the vehicle the state reports, or takes it out.</summary>
     private async ValueTask ApplySeatAsync(Player player, AdminPlayerState state, DateTimeOffset time)
     {
-        var seated = (state.Flags & AdminPlayerState.FlagSeated) != 0 && state.IsAlive && state.RootNetId != 0;
-        if (!seated)
+        if (!IsSeated(state))
         {
             if (player.Vehicle != null)
                 await _server.UpdatePlayerVehicleAsync(player, null, null, time);
@@ -325,6 +336,7 @@ public class AdminStateApplier : IAdminSessionHandler
                 continue;
 
             player.Squad = state.Squad;
+            await ReconcileAsync(player, state, stream.Time, time);
             if (!state.IsAlive)
             {
                 // The root position is 0/0/0 while dead; keep the last one
@@ -335,6 +347,61 @@ public class AdminStateApplier : IAdminSessionHandler
             await _server.UpdatePlayerAsync(player, ToPosition(state.Position), ToRotation(state.Rotation), state.Ping, time);
         }
     }
+
+    /// <summary>
+    /// Team, alive and seat come from events and snapshots. The player stream reports them too: when it disagrees with
+    /// the model for <see cref="StreamCorrectionDelay"/>, an event was missed, and the stream's values win (with the
+    /// same team and vehicle events a snapshot sends) and a warning is logged.
+    /// </summary>
+    private async ValueTask ReconcileAsync(Player player, AdminPlayerState state, double streamTime, DateTimeOffset time)
+    {
+        var mismatch = Mismatch(player, state);
+        if (mismatch == null)
+        {
+            _streamMismatches.Remove(player);
+            return;
+        }
+
+        if (!_streamMismatches.TryGetValue(player, out var seen) || seen.Mismatch != mismatch || streamTime < seen.Since)
+        {
+            _streamMismatches[player] = (mismatch, streamTime);
+            return;
+        }
+
+        if (streamTime - seen.Since < StreamCorrectionDelay)
+            return;
+
+        _streamMismatches.Remove(player);
+        StreamCorrections++;
+        _logger.LogWarning("Admin channel {ServerId}: player {Index} '{Name}' corrected from the player stream ({Mismatch}): an event was missed",
+            _server.Id, player.Index, player.Name, mismatch);
+
+        if (player.Team?.Id != state.Team)
+            await _server.UpdatePlayerTeamAsync(player, state.Team, time);
+
+        player.IsAlive = state.IsAlive;
+        await ApplySeatAsync(player, state, time);
+    }
+
+    /// <summary>How the stream's team, alive and seat differ from the model, or null when they agree.</summary>
+    private static string? Mismatch(Player player, AdminPlayerState state)
+    {
+        var differences = new List<string>(3);
+        if (player.Team?.Id != state.Team)
+            differences.Add($"team {player.Team?.Id.ToString() ?? "none"} -> {state.Team}");
+
+        if (player.IsAlive != state.IsAlive)
+            differences.Add(state.IsAlive ? "alive" : "dead");
+
+        var vehicleId = IsSeated(state) ? (int)state.RootNetId : 0;
+        if ((player.Vehicle?.RootVehicleId ?? 0) != vehicleId)
+            differences.Add($"vehicle {player.Vehicle?.RootVehicleId ?? 0} -> {vehicleId}");
+
+        return differences.Count == 0 ? null : string.Join(", ", differences);
+    }
+
+    private static bool IsSeated(AdminPlayerState state) =>
+        (state.Flags & AdminPlayerState.FlagSeated) != 0 && state.IsAlive && state.RootNetId != 0;
 
     private void ApplyVehicles(IReadOnlyList<AdminVehicleState> vehicles)
     {
@@ -403,7 +470,10 @@ public class AdminStateApplier : IAdminSessionHandler
 
             case EvPlayerDisconnect ev:
                 if (FindPlayer(ev.Player) is { } leaving)
+                {
+                    _streamMismatches.Remove(leaving);
                     await _server.RemovePlayerAsync(leaving, time);
+                }
                 break;
 
             case EvSpawn ev:
@@ -427,6 +497,11 @@ public class AdminStateApplier : IAdminSessionHandler
                     var isSuicide = !_lastKillKind.TryGetValue(ev.Player, out var kind) || kind is not (KillKind.Kill or KillKind.RoadKill);
                     _lastKillKind.Remove(ev.Player);
                     await _server.SetPlayerDeathAsync(dead, ToPosition(ev.Position), isSuicide, time);
+
+                    // A dead player is in no vehicle (as in a snapshot and the player stream), whether or not an
+                    // ExitVehicle comes with the death
+                    if (dead.Vehicle != null)
+                        await _server.UpdatePlayerVehicleAsync(dead, null, null, time);
                 }
                 break;
 
@@ -457,7 +532,8 @@ public class AdminStateApplier : IAdminSessionHandler
                 break;
 
             case EvVehicle { Type: AdminMessageType.EvExitVehicle } ev:
-                if (FindPlayer(ev.Player) is { } exiting && (exiting.Vehicle == null || exiting.Vehicle.RootVehicleId == (int)ev.RootNetId))
+                // Nothing to do when the player already left it (a death takes the player out)
+                if (FindPlayer(ev.Player) is { } exiting && exiting.Vehicle?.RootVehicleId == (int)ev.RootNetId)
                     await _server.UpdatePlayerVehicleAsync(exiting, null, null, time);
                 break;
 

@@ -208,7 +208,10 @@ try
 
     // SQLite, SQL Server or Postgres (Database:Provider, else from the connection string; docs/database.md)
     var database = DatabaseSetup.FromConfiguration(builder.Configuration);
-    database.AddRepositories(builder.Services, maps: false, joins: true);
+    database.AddRepositories(builder.Services, maps: true, joins: true);
+
+    // The game modules: shared services once, each server's modules in a scope of their own (ModManager)
+    builder.Services.AddGameModules(builder.Configuration);
 
     var app = builder.Build();
 

@@ -38,6 +38,11 @@ locks. The apply loop waits for an event's handlers as before; a chat command is
 the module thread must not block: CPU-heavy work (Heli2v2's playback) and long I/O loops (the Discord bot) run on the
 thread pool with their own `Task.Run`. The web API's direct calls into `WebModule` are not on it.
 
+The modules' services are registered once in the host (`ModuleServices.cs`, from `Program.cs`), with the host's
+configuration. `ModManager` creates a server's modules in a scope of the host's provider: the modules and the server's
+own services (`ModuleScope`: `IGameServer`, its mediator, its `ITaskRunner`, its token) are scoped, the settings,
+repositories, retry policies and Discord webhooks are shared. A module reload disposes the scope and its modules.
+
 ### Identity and keys
 
 - The module's `adminServerId` is the server's `Server.ServerId` (for example `1.2.3.4:16567`). The source address

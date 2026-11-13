@@ -1,8 +1,4 @@
-﻿using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json.Serialization;
-using AspNetCore.Authentication.ApiKey;
+﻿using System.Text.Json.Serialization;
 using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Data;
 using BF2WebAdmin.Data.Abstractions;
@@ -14,7 +10,7 @@ using BF2WebAdmin.Server.Controllers;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Services;
-using MassTransit;
+using BF2WebAdmin.Server.StreamBot;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Json;
@@ -77,32 +73,6 @@ try
     builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Authentication"));
     builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
 
-    var mqSettings = builder.Configuration.GetSection("RabbitMQ").Get<RabbitMqSettings>();
-    if (!string.IsNullOrWhiteSpace(mqSettings?.Host))
-    {
-        builder.Services.AddMassTransit(x =>
-        {
-            x.SetKebabCaseEndpointNameFormatter();
-
-            x.UsingRabbitMq((context, cfg) =>
-            {
-                cfg.Host(mqSettings.Host, mqSettings.Port, mqSettings.VirtualHost, host =>
-                {
-                    host.Username(mqSettings.Username);
-                    host.Password(mqSettings.Password);
-                });
-
-                cfg.ReceiveEndpoint("game-stream-server", e =>
-                {
-                    e.Consumer(() => context.GetRequiredService<GameStreamConsumer>());
-                });
-            });
-        });
-
-        builder.Services.AddOptions<MassTransitHostOptions>().Configure(o => o.WaitUntilStarted = true);
-        builder.Services.AddSingleton<GameStreamConsumer>();
-    }
-
     builder.Services.AddSingleton<ViewerRegistry>();
     builder.Services.AddSingleton(services => new MissileArchive(services.GetService<TimeProvider>() ?? TimeProvider.System));
     builder.Services.AddSingleton<BF2WebAdmin.Server.Api.CommandLog>();
@@ -162,46 +132,14 @@ try
                 return Task.CompletedTask;
             };
         })
-        .AddApiKeyInHeader(ApiKeyDefaults.AuthenticationScheme, options =>
-        {
-            options.Realm = "bf2-webadmin";
-            options.KeyName = "X-API-KEY";
-            options.Events = new ApiKeyEvents
-            {
-                OnValidateKey = async (context) =>
-                {
-                    var apiKey = authSettings.ApiKey;
-                    if (string.IsNullOrWhiteSpace(apiKey))
-                    {
-                        context.NoResult();
-                        return;
-                    }
-
-                    // Exact and in fixed time, like the password (it was case-insensitive)
-                    var isValid = context.ApiKey is { } given && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(apiKey), Encoding.UTF8.GetBytes(given));
-                    if (isValid)
-                    {
-                        var claims = new[]
-                        {
-                            new Claim(ClaimTypes.NameIdentifier, "api-user", ClaimValueTypes.String, context.Options.ClaimsIssuer),
-                            new Claim(ClaimTypes.Name, "api-user", ClaimValueTypes.String, context.Options.ClaimsIssuer),
-                        };
-                        context.Principal = new ClaimsPrincipal(new ClaimsIdentity(claims, context.Scheme.Name));
-                        context.Success();
-                    }
-                    else
-                    {
-                        context.NoResult();
-                    }
-                },
-            };
-        });
+        // The admin API key (Api/AdminApiKeyAuthentication.cs) and the stream bot's own key, for its hub only (StreamBot/StreamBotAuthentication.cs)
+        .AddAdminApiKey(authSettings.ApiKey)
+        .AddStreamBotKey(authSettings.StreamBotKey);
 
     builder.Services.AddAuthorization(options =>
     {
-        options.AddPolicy(ApiEndpoints.AdminPolicy, policy => policy
-            .AddAuthenticationSchemes(CookieAuthenticationDefaults.AuthenticationScheme, ApiKeyDefaults.AuthenticationScheme)
-            .RequireAuthenticatedUser());
+        options.AddAdminPolicy();
+        options.AddStreamBotPolicy();
     });
 
     builder.Services.AddResponseCompression(opts => { opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[] { "application/octet-stream" }); });
@@ -263,6 +201,7 @@ try
     app.MapControllers();
     app.MapApi();
     app.MapHub<ServerHub>("/hubs/server");
+    app.MapHub<StreamBotHub>(StreamBotHub.Path);
     if (app.Environment.IsDevelopment())
         app.MapOpenApi();
 

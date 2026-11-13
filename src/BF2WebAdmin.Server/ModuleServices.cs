@@ -3,6 +3,7 @@ using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Configuration.Models;
 using BF2WebAdmin.Server.Logging;
 using BF2WebAdmin.Server.Services;
+using BF2WebAdmin.Server.StreamBot;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Polly.Registry;
 
@@ -26,7 +27,8 @@ public static class ModuleServices
         // Shared by all servers
         services.AddSingleton<ICountryResolver>(_ => new CountryResolver(configuration["Geoip:DatabasePath"]));
         services.AddSingleton<IReadOnlyPolicyRegistry<string>>(sp => ModManager.CreatePolicyRegistry(sp.GetRequiredService<ILogger<ModManager>>()));
-        services.AddSingleton<IGameStreamService>(sp => new RabbitMqGameStreamService(sp.GetService<MassTransit.IBus>()));
+        services.AddSingleton<StreamBotService>();
+        services.AddSingleton<IGameStreamService>(sp => sp.GetRequiredService<StreamBotService>());
         services.AddSingleton<IDelayProvider, DelayProvider>();
         services.TryAddSingleton(TimeProvider.System);
 

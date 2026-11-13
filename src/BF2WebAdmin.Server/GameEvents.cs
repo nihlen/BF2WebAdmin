@@ -28,6 +28,6 @@ public record MatchEndEvent(Modules.Heli2v2.Match Match, DateTimeOffset TimeStam
 public record RoundStartEvent(Modules.Heli2v2.Round Round, DateTimeOffset TimeStamp) : IEvent;
 public record RoundEndEvent(Modules.Heli2v2.Round Round, DateTimeOffset TimeStamp) : IEvent;
 
-// RabbitMQ events
+// The stream bot (StreamBot/StreamBotHub.cs)
 public record GameStreamStartedEvent(Guid? MatchId, string StreamUrl, string BotName, DateTimeOffset TimeStamp) : IEvent;
 public record GameStreamStoppedEvent(Guid? MatchId, DateTimeOffset TimeStamp) : IEvent;

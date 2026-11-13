@@ -16,6 +16,9 @@ public class AuthSettings
 {
     public IEnumerable<AdminUser> Admins { get; set; }
     public string ApiKey { get; set; }
+
+    /// <summary>The stream bot's key, for its hub only (StreamBot/StreamBotAuthentication.cs); without it no bot can connect.</summary>
+    public string? StreamBotKey { get; set; }
 }
 
 public class AdminUser

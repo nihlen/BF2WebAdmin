@@ -89,7 +89,9 @@ HMAC handshake with a key per server. [docs/admin-channel.md](docs/admin-channel
    run at God level (everyone else there runs them at Admin level; unset, it is the one user that was built in before);
    `Discord:DebugGuildName` picks the guild that gets
    the bots' debug messages. `Authentication:ApiKey` is compared exactly, case included.
-9. **Discord bots.** A server's bot (its token in the server's settings) needs the **Message Content Intent**, turned
+9. **Stream bot (optional).** `Authentication:StreamBotKey` is the key the stream bot connects with, to
+   `/hubs/stream-bot` only; see [docs/stream-bot.md](docs/stream-bot.md).
+10. **Discord bots.** A server's bot (its token in the server's settings) needs the **Message Content Intent**, turned
    on for the bot under Bot in the Discord developer portal: it reads the commands in its admin channel. Without it
    Discord refuses the bot's connection.
 

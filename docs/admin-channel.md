@@ -28,7 +28,11 @@ modules ── IGameWriter (AdminGameWriter) ── typed commands / Console, in
 | `GameServerRegistry.cs` | `IGameServerRegistry`: configured servers (DB + config), the `GameServer` per server id, key lookup |
 
 Modules see `IGameServer`, the `GameEvents.cs` records and `IGameWriter`. `GameServer`'s mutators are not on
-`IGameServer`; only the applier calls them.
+`IGameServer`; only the applier calls them. The game classes (`Player`, `Vehicle`, `Team`, `Map` in
+`BF2WebAdmin.Common/Entities/Game`) hold only what the game server reports (plus the player's GeoIP country, looked up
+by the applier before the join event); modules do not set them and keep their own state per player or vehicle
+(`BF2Module`'s ping samples, `DiscordModule`'s cooldowns, `PracticeModule`'s noclip vehicles). C# cannot stop a class in
+the same assembly from calling a public setter, so this is a rule, not a compile error.
 
 Each server's modules run on one thread of their own (`Extensions/ModuleContext.cs`, a `SynchronizationContext`
 that `ModManager` creates with the modules). The `Mediator` runs every event handler and chat command there, the

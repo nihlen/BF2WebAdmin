@@ -9,7 +9,7 @@ using BF2WebAdmin.Server.Logging;
 namespace BF2WebAdmin.Server.Modules;
 
 /// <summary>
-/// Every server's base module: players' countries, the join message in game, joins, leaves and the connection state on
+/// Every server's base module: the join message in game, joins, leaves and the connection state on
 /// the Discord webhooks, and the info commands (.time, .pos, .ping). The commands for admins come with it:
 /// <see cref="AdminModule"/>, <see cref="ServerControlModule"/> and <see cref="FunModule"/>.
 /// </summary>
@@ -17,6 +17,7 @@ public class BF2Module : BaseModule,
     IHandleEventAsync<PlayerJoinEvent>,
     IHandleEventAsync<PlayerLeftEvent>,
     IHandleEventAsync<PlayerSpawnEvent>,
+    IHandleEventAsync<PlayerPositionEvent>,
     IHandleEventAsync<SocketStateChangedEvent>,
     IHandleCommand<TimeCommand>,
     IHandleCommand<PositionCommand>,
@@ -24,15 +25,16 @@ public class BF2Module : BaseModule,
     IHandleCommand<PingCommand>,
     IHandleCommand<PingSelfCommand>
 {
-    private readonly ICountryResolver _countryResolver;
     private readonly IChatLogger _chatLogger;
+
+    // Each player's ping samples (ping: count) from the player stream while alive, for .ping
+    private readonly Dictionary<Player, SortedDictionary<int, int>> _pings = new();
 
     // Players who joined and have not spawned yet: the join message in game waits for the spawn
     private readonly IDictionary<int, bool> _newPlayers = new Dictionary<int, bool>();
 
-    public BF2Module(IGameServer server, ICountryResolver countryResolver, IChatLogger chatLogger, ILogger<BF2Module> logger, CancellationTokenSource cts) : base(server, logger, cts)
+    public BF2Module(IGameServer server, IChatLogger chatLogger, ILogger<BF2Module> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
-        _countryResolver = countryResolver;
         _chatLogger = chatLogger;
     }
 
@@ -42,9 +44,6 @@ public class BF2Module : BaseModule,
     public async ValueTask HandleAsync(PlayerJoinEvent e)
     {
         _newPlayers.TryAdd(e.Player.Index, true);
-        var countryResponse = _countryResolver.GetCountryResponse(e.Player.IpAddress.ToString());
-        e.Player.Country.Code = countryResponse?.Country?.IsoCode;
-        e.Player.Country.Name = countryResponse?.Country?.Name;
 
         if (!IsReconnecting)
         {
@@ -59,6 +58,7 @@ public class BF2Module : BaseModule,
     public async ValueTask HandleAsync(PlayerLeftEvent e)
     {
         _newPlayers.Remove(e.Player.Index);
+        _pings.Remove(e.Player);
         await _chatLogger.SendAsync(
             $"`{e.Player.DisplayName} left {GameServer.Name} ({GameServer.Players.Count()}/{GameServer.MaxPlayers})`",
             GameServer.ModManager.ServerSettings?.ServerGroup,
@@ -120,26 +120,46 @@ public class BF2Module : BaseModule,
         PrintPingDeviation(command.Message.Player);
     }
 
+    public ValueTask HandleAsync(PlayerPositionEvent e)
+    {
+        if (!_pings.TryGetValue(e.Player, out var samples))
+            _pings[e.Player] = samples = new SortedDictionary<int, int>();
+
+        samples[e.Ping] = samples.GetValueOrDefault(e.Ping) + 1;
+        return ValueTask.CompletedTask;
+    }
+
     private void PrintPingDeviation(Player player)
     {
-        var count = player.PingHistory.Sum(entry => entry.Value);
-
-        // Average
-        var averagePing = player.PingHistory.Sum(entry => entry.Key * entry.Value) / count;
-
-        // Median
-        var medianPing = player.Score.Ping;
-        var temp = 0;
-        foreach (var entry in player.PingHistory)
+        if (!_pings.TryGetValue(player, out var samples) || samples.Count == 0)
         {
-            temp += entry.Value;
-            if (temp >= count)
+            GameServer.GameWriter.SendText($"{player.DisplayName} ping: {player.Score.Ping} (no history yet)");
+            return;
+        }
+
+        var (average, median) = PingStatistics(samples);
+        GameServer.GameWriter.SendText($"{player.DisplayName} ping: avg {average}, median {median}, jitter +/- ?");
+    }
+
+    /// <summary>The average and median of ping samples (ping: count).</summary>
+    public static (int Average, int Median) PingStatistics(SortedDictionary<int, int> samples)
+    {
+        var count = samples.Sum(entry => (long)entry.Value);
+        var average = (int)(samples.Sum(entry => (long)entry.Key * entry.Value) / count);
+
+        // The ping at the middle sample, counting up from the lowest
+        var median = samples.Keys.Last();
+        var seen = 0L;
+        foreach (var (ping, n) in samples)
+        {
+            seen += n;
+            if (seen * 2 >= count)
             {
-                medianPing = entry.Key;
+                median = ping;
                 break;
             }
         }
 
-        GameServer.GameWriter.SendText($"{player.DisplayName} ping: avg {averagePing}, median {medianPing}, jitter +/- ?");
+        return (average, median);
     }
 }

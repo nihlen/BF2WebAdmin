@@ -3,10 +3,14 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using BF2WebAdmin.Common;
 using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Entities;
+using BF2WebAdmin.Server.Modules;
+using MaxMind.GeoIP2.Responses;
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 using Xunit;
 
 namespace BF2WebAdmin.Tests;
@@ -125,5 +129,31 @@ public class AdminStateApplierTests
             await StreamAsync(server, State(team: 1, alive: false));
 
         Assert.Equal(0, server.Applier.StreamCorrections);
+    }
+
+    [Fact]
+    public async Task ANewPlayerHasItsCountryBeforeTheJoinEvent()
+    {
+        var countries = Substitute.For<ICountryResolver>();
+        countries.GetCountryResponse("198.51.100.7").Returns(System.Text.Json.JsonSerializer.Deserialize<CountryResponse>("""{"country":{"iso_code":"SE","names":{"en":"Sweden"}}}"""));
+        var services = new ServiceCollection().AddLogging().AddSingleton(countries).BuildServiceProvider();
+        var server = new GameServer(new ServerInfo { ServerId = "127.0.0.1:16569", IsTestServer = true }, IPAddress.Loopback, services, CancellationToken.None);
+
+        var info = new AdminPlayerInfo(PlayerId, "pilot", AdminPlayerInfo.FlagConnected, 0, "198.51.100.7", "", new AdminPlayerScore(0, 0, 0, 0, 0, -1), State(1));
+        await server.Applier.OnMessageAsync(null!, new EvPlayerConnect(1, 1, info));
+
+        Assert.Equal(("SE", "Sweden"), (server.GetPlayer(PlayerId)!.Country.Code, server.GetPlayer(PlayerId)!.Country.Name));
+    }
+}
+
+public class PingStatisticsTests
+{
+    [Fact]
+    public void AverageAndMedianOfTheSamples()
+    {
+        // 40 x3, 50 x1, 200 x1: the median is the middle sample, not the last one seen
+        var samples = new SortedDictionary<int, int> { [200] = 1, [40] = 3, [50] = 1 };
+        Assert.Equal((74, 40), BF2Module.PingStatistics(samples));
+        Assert.Equal((60, 60), BF2Module.PingStatistics(new SortedDictionary<int, int> { [60] = 2 }));
     }
 }

@@ -18,6 +18,7 @@ public class AdminStateApplier : IAdminSessionHandler
     private readonly GameServer _server;
     private readonly ILogger<AdminStateApplier> _logger;
     private readonly IJoinHistoryWriter? _joinHistory;
+    private readonly ICountryResolver? _countries;
     private readonly Dictionary<int, KillKind> _lastKillKind = new();
     private AdminSession? _session;
     // While a viewer is open the streams run at 30 Hz; the modules still get them at the tracker rate
@@ -34,11 +35,13 @@ public class AdminStateApplier : IAdminSessionHandler
     /// <summary>The corrections the player stream made since startup: each is an event the model missed.</summary>
     public int StreamCorrections { get; private set; }
 
-    public AdminStateApplier(GameServer server, ILogger<AdminStateApplier> logger, IJoinHistoryWriter? joinHistory = null)
+    public AdminStateApplier(GameServer server, ILogger<AdminStateApplier> logger, IJoinHistoryWriter? joinHistory = null,
+        ICountryResolver? countries = null)
     {
         _server = server;
         _logger = logger;
         _joinHistory = joinHistory;
+        _countries = countries;
     }
 
     public async ValueTask OnMessageAsync(AdminSession session, AdminMessage message)
@@ -305,12 +308,31 @@ public class AdminStateApplier : IAdminSessionHandler
         player.Score.Deaths = info.Score.Deaths;
         player.Score.TeamKills = info.Score.TeamKills;
         player.Score.Ping = state.Ping;
+        SetCountry(player);
 
         if (string.IsNullOrEmpty(player.Hash))
             _logger.LogWarning("Admin channel {ServerId}: player {Index} '{Name}' has no CD-key hash and the server is not a test server: no player key",
                 _server.Id, info.Id, info.Name);
 
         return player;
+    }
+
+    /// <summary>The country of the player's address (GeoIP), before the join event so every module sees it.</summary>
+    private void SetCountry(Player player)
+    {
+        if (_countries == null || player.IpAddress.Equals(IPAddress.None))
+            return;
+
+        try
+        {
+            var country = _countries.GetCountryResponse(player.IpAddress.ToString())?.Country;
+            player.Country.Code = country?.IsoCode;
+            player.Country.Name = country?.Name;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Admin channel {ServerId}: no country for {Address}", _server.Id, player.IpAddress);
+        }
     }
 
     /// <summary>

@@ -2,6 +2,10 @@
 
 namespace BF2WebAdmin.Common.Entities.Game;
 
+/// <summary>
+/// A vehicle as the game server reports it (admin channel): set only by WebAdmin's state applier. Modules keep their
+/// own per-vehicle state (noclip, freeze) themselves.
+/// </summary>
 public class Vehicle : Entity
 {
     public IList<Player> Players { get; set; }

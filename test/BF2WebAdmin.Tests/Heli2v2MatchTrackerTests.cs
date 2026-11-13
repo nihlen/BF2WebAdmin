@@ -80,6 +80,22 @@ public class Heli2v2MatchTrackerTests
     }
 
     [Fact]
+    public async Task APlayerLeavingDuringTheFirstRound_StillLetsTheMatchEnd()
+    {
+        await StartRoundAsync();
+        var match = _tracker.ActiveMatch!;
+
+        _server.Players.Returns(_players.Take(3).ToArray());
+        await _tracker.OnPlayerLeftAsync(_players[3].Hash);
+        Assert.Empty(match.Rounds); // The active round went with the player
+        await _mediator.DidNotReceiveWithAnyArgs().PublishAsync(default(MatchEndEvent)!);
+
+        _server.Players.Returns(_players.Take(2).ToArray());
+        await _tracker.OnPlayerLeftAsync(_players[2].Hash);
+        await _mediator.Received(1).PublishAsync(Arg.Is<MatchEndEvent>(e => e.Match == match));
+    }
+
+    [Fact]
     public async Task TheSameMap_KeepsTheMatch_AnotherMapEndsIt()
     {
         await StartRoundAsync();

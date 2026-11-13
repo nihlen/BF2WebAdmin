@@ -168,6 +168,10 @@ public class Heli2v2Module : BaseModule,
 
     private async Task SendMatchReportAsync(Match match)
     {
+        // A match whose only round was dropped (a player left during it) has nothing to report
+        if (match.Rounds.Count == 0)
+            return;
+
         var report = MatchStatistics.Build(match, _timeProvider.GetUtcNow(), Logger);
         await SendDiscordMessageAsync(report.Text);
 

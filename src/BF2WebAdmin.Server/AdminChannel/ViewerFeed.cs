@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Hubs;
-using BF2WebAdmin.Server.Modules.BF2;
+using BF2WebAdmin.Server.Modules;
 using Microsoft.AspNetCore.SignalR;
 
 namespace BF2WebAdmin.Server.AdminChannel;

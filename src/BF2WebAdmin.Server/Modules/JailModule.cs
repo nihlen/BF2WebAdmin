@@ -5,7 +5,7 @@ using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Extensions;
 
-namespace BF2WebAdmin.Server.Modules.BF2;
+namespace BF2WebAdmin.Server.Modules;
 
 /// <summary>
 /// .jail keeps a player at the jail for an hour: teleported back when they spawn or get more than 100 m away. Leaving

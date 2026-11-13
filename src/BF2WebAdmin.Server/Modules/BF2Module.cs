@@ -12,7 +12,7 @@ using BF2WebAdmin.Server.Logging;
 using BF2WebAdmin.Server.Services;
 using BF2WebAdmin.Server.Communication;
 
-namespace BF2WebAdmin.Server.Modules.BF2;
+namespace BF2WebAdmin.Server.Modules;
 
 public class BF2Module : BaseModule,
     IHandleEventAsync<PlayerJoinEvent>,

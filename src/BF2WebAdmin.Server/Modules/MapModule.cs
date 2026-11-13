@@ -6,7 +6,7 @@ using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 
-namespace BF2WebAdmin.Server.Modules.BF2;
+namespace BF2WebAdmin.Server.Modules;
 
 public class MapModule : IModule,
     IHandleEventAsync<MapChangedEvent>,

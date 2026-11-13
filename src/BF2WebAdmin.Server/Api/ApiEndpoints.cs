@@ -11,7 +11,7 @@ using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Controllers;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Hubs;
-using BF2WebAdmin.Server.Modules.BF2;
+using BF2WebAdmin.Server.Modules;
 using BF2WebAdmin.Server.Services;
 using BF2WebAdmin.Server.Communication;
 using BF2WebAdmin.Server.Communication.DTOs;

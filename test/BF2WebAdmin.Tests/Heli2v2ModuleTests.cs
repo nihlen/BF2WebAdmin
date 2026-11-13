@@ -9,14 +9,14 @@ using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Data.Entities;
 using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.Abstractions;
-using BF2WebAdmin.Server.Modules.BF2;
+using BF2WebAdmin.Server.Modules;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Polly.Registry;
 using Xunit;
 using Xunit.Abstractions;
-using Match = BF2WebAdmin.Server.Modules.BF2.Match;
+using Match = BF2WebAdmin.Server.Modules.Match;
 
 namespace BF2WebAdmin.Tests;
 

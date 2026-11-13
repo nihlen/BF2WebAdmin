@@ -18,7 +18,7 @@ using Microsoft.Extensions.Options;
 using DiscordConfig = BF2WebAdmin.Server.Configuration.Models.DiscordConfig;
 using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;
 
-namespace BF2WebAdmin.Server.Modules.BF2;
+namespace BF2WebAdmin.Server.Modules;
 
 // TODO: .need <players> command?
 public class DiscordModule : BaseModule, IAsyncDisposable,

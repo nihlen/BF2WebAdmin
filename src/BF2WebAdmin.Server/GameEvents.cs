@@ -23,10 +23,10 @@ public record ProjectilePositionEvent(Projectile Projectile, Position Position, 
 public record ChatMessageEvent(Message Message, DateTimeOffset TimeStamp) : IEvent;
 
 // Heli 2v2 events
-public record MatchStartEvent(Modules.BF2.Match Match, DateTimeOffset TimeStamp) : IEvent;
-public record MatchEndEvent(Modules.BF2.Match Match, DateTimeOffset TimeStamp) : IEvent;
-public record RoundStartEvent(Modules.BF2.Round Round, DateTimeOffset TimeStamp) : IEvent;
-public record RoundEndEvent(Modules.BF2.Round Round, DateTimeOffset TimeStamp) : IEvent;
+public record MatchStartEvent(Modules.Match Match, DateTimeOffset TimeStamp) : IEvent;
+public record MatchEndEvent(Modules.Match Match, DateTimeOffset TimeStamp) : IEvent;
+public record RoundStartEvent(Modules.Round Round, DateTimeOffset TimeStamp) : IEvent;
+public record RoundEndEvent(Modules.Round Round, DateTimeOffset TimeStamp) : IEvent;
 
 // RabbitMQ events
 public record GameStreamStartedEvent(Guid? MatchId, string StreamUrl, string BotName, DateTimeOffset TimeStamp) : IEvent;

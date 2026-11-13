@@ -6,6 +6,7 @@ using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Communication;
 using BF2WebAdmin.Server.Services;
+using BF2WebAdmin.Server.StreamBot;
 using Discord;
 using Microsoft.Extensions.Options;
 using DiscordConfig = BF2WebAdmin.Server.Configuration.Models.DiscordConfig;
@@ -215,23 +216,24 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
 
     public async ValueTask HandleAsync(StartStreamCommand command)
     {
-        await StartStreamAsync();
-        GameServer.GameWriter.SendText("Requested stream bot");
+        var requested = await StartStreamAsync(matchId: null);
+        GameServer.GameWriter.SendText(requested ? "Requested stream bot" : "No stream bot is connected");
     }
 
     public async ValueTask HandleAsync(StopStreamCommand command)
     {
-        await StopStreamAsync();
-        GameServer.GameWriter.SendText("Requested stream bot stop");
+        var requested = await StopStreamAsync(matchId: null);
+        GameServer.GameWriter.SendText(requested ? "Requested stream bot stop" : "No stream bot is connected");
     }
 
-    public async ValueTask HandleAsync(MatchStartEvent e) => await StartStreamAsync();
+    // Each 2v2 match is streamed when a bot is connected
+    public async ValueTask HandleAsync(MatchStartEvent e) => await StartStreamAsync(e.Match.Id);
 
-    public async ValueTask HandleAsync(MatchEndEvent e) => await StopStreamAsync();
+    public async ValueTask HandleAsync(MatchEndEvent e) => await StopStreamAsync(e.Match.Id);
 
-    private Task StartStreamAsync() =>
-        _gameStreamService.StartGameStreamAsync(GameServer.IpAddress.ToString(), GameServer.GamePort, GameServer.QueryPort);
+    private Task<bool> StartStreamAsync(Guid? matchId) =>
+        _gameStreamService.StartGameStreamAsync(GameServer.Id, GameServer.IpAddress.ToString(), GameServer.GamePort, GameServer.QueryPort, matchId);
 
-    private Task StopStreamAsync() =>
-        _gameStreamService.StopGameStreamAsync(GameServer.IpAddress.ToString(), GameServer.GamePort);
+    private Task<bool> StopStreamAsync(Guid? matchId) =>
+        _gameStreamService.StopGameStreamAsync(GameServer.Id, GameServer.IpAddress.ToString(), GameServer.GamePort, matchId);
 }

@@ -7,7 +7,7 @@ using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Modules.DiscordBot;
-using BF2WebAdmin.Server.Services;
+using BF2WebAdmin.Server.StreamBot;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;

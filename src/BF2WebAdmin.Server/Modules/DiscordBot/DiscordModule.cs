@@ -47,6 +47,9 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
     private readonly IGameStreamService _gameStreamService;
     private readonly DiscordConnection? _connection;
     private readonly IDictionary<int, bool> _newPlayers = new Dictionary<int, bool>();
+    // The last .leave and .admin of each player, for their cooldowns
+    private readonly Dictionary<Player, DateTime> _lastLeaveNotification = new();
+    private readonly Dictionary<Player, DateTime> _lastAdminCall = new();
 
     public DiscordModule(IGameServer server, IGameStreamService gameStreamService, ITaskRunner taskRunner, IServerBanRepository banRepository, IOptions<DiscordConfig> discordConfig,
         ILogger<DiscordModule> logger, CancellationTokenSource cts) : base(server, logger, cts)
@@ -133,6 +136,8 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
         UpdateStatus();
 
         _newPlayers.Remove(e.Player.Index);
+        _lastLeaveNotification.Remove(e.Player);
+        _lastAdminCall.Remove(e.Player);
         await SendTextMessageToChannelsAsync($"`{Sanitize(e.Player.DisplayName)} disconnected`");
     }
 
@@ -171,11 +176,11 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
             return ValueTask.CompletedTask;
         }
 
-        var isCommandCooldown = DateTime.UtcNow - command.Message.Player.LastLeaveNotification < TimeSpan.FromMinutes(5);
+        var isCommandCooldown = DateTime.UtcNow - _lastLeaveNotification.GetValueOrDefault(command.Message.Player) < TimeSpan.FromMinutes(5);
         if (isCommandCooldown)
             return ValueTask.CompletedTask;
 
-        command.Message.Player.LastLeaveNotification = DateTime.UtcNow;
+        _lastLeaveNotification[command.Message.Player] = DateTime.UtcNow;
 
         GameServer.GameWriter.SendText($"{command.Message.Player.DisplayName} is leaving in {command.Minutes} minutes - Discord notification sent");
         _connection.SendToNotificationChannels($"`{command.Message.Player.DisplayName}` is leaving in {command.Minutes} minutes");
@@ -184,11 +189,11 @@ public class DiscordModule : BaseModule, IAsyncDisposable,
 
     public async ValueTask HandleAsync(CallAdminCommand command)
     {
-        var isCommandCooldown = DateTime.UtcNow - command.Message.Player.LastAdminCall < TimeSpan.FromMinutes(30);
+        var isCommandCooldown = DateTime.UtcNow - _lastAdminCall.GetValueOrDefault(command.Message.Player) < TimeSpan.FromMinutes(30);
         if (isCommandCooldown)
             return;
 
-        command.Message.Player.LastAdminCall = DateTime.UtcNow;
+        _lastAdminCall[command.Message.Player] = DateTime.UtcNow;
 
         await SendTextMessageToChannelsAsync($"@everyone Admin requested by {Sanitize(command.Message.Player.Name)}: {Sanitize(command.Reason)}");
         GameServer.GameWriter.SendText($"{command.Message.Player.Name} called an admin");

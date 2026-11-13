@@ -5,6 +5,10 @@ using System.Net;
 
 namespace BF2WebAdmin.Common.Entities.Game;
 
+/// <summary>
+/// A player as the game server reports it (admin channel): set only by WebAdmin's state applier, from events, snapshots
+/// and the player stream. Modules read it and keep their own per-player state (cooldowns, statistics) themselves.
+/// </summary>
 public class Player : Entity
 {
     public string Name { get; set; }
@@ -25,11 +29,6 @@ public class Player : Entity
     public Team Team { get; set; }
     public bool IsAlive { get; set; }
     public Score Score { get; } = new Score();
-
-    // Custom/Aggregate properties from modules
-    public IDictionary<int, int> PingHistory { get; } = new Dictionary<int, int>();
-    public DateTime LastLeaveNotification { get; set; }
-    public DateTime LastAdminCall { get; set; }
 
     public string DisplayName => Name?.Trim();
     public string ShortName
@@ -58,6 +57,7 @@ public class Score
     public int Ping { get; set; }
 }
 
+/// <summary>The country of the player's address (GeoIP), looked up when the player is added.</summary>
 public class Country
 {
     public string Name { get; set; }

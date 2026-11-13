@@ -82,7 +82,8 @@ public class GameServer : IGameServer
         _cancellationToken = _lifetime.Token;
         _gameWriter = new AdminGameWriter(this, _globalServices.GetRequiredService<ILogger<AdminGameWriter>>(),
             _globalServices.GetService<IConfiguration>()?["ServerSettings:ChatPrefix"] ?? AdminGameWriter.DefaultChatPrefix);
-        Applier = new AdminStateApplier(this, _globalServices.GetRequiredService<ILogger<AdminStateApplier>>(), _globalServices.GetService<IJoinHistoryWriter>());
+        Applier = new AdminStateApplier(this, _globalServices.GetRequiredService<ILogger<AdminStateApplier>>(), _globalServices.GetService<IJoinHistoryWriter>(),
+            _globalServices.GetService<ICountryResolver>());
 
         _viewers = _globalServices.GetService<ViewerRegistry>();
         Viewer = new ViewerFeed(this, _viewers, _globalServices.GetService<IHubContext<ServerHub, IServerHubClient>>(), _logger, _cancellationToken,
@@ -279,11 +280,6 @@ public class GameServer : IGameServer
     {
         player.Position = position;
         player.Rotation = rotation;
-
-        if (!player.PingHistory.ContainsKey(ping))
-            player.PingHistory.Add(ping, 0);
-
-        player.PingHistory[ping]++;
         player.Score.Ping = ping;
 
         if (_enablePositionUpdates)

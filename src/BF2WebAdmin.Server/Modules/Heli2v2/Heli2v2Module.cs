@@ -3,7 +3,6 @@ using System.Diagnostics;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Data.Abstractions;
-using BF2WebAdmin.Data.Entities;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Commands.BF2;
@@ -11,8 +10,6 @@ using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Extensions;
 using Discord;
 using Humanizer;
-using Newtonsoft.Json;
-using Polly;
 using Polly.Registry;
 using MessageType = BF2WebAdmin.Common.Entities.Game.MessageType;
 
@@ -52,11 +49,9 @@ public class Heli2v2Module : BaseModule,
     IHandleCommandAsync<NoFencesCommand>
 {
     private readonly IGameServer _gameServer;
-    private readonly IMatchRepository _matchRepository;
     private readonly IDelayProvider _delayProvider;
     private readonly TimeProvider _timeProvider;
     private readonly ITaskRunner _taskRunner;
-    private readonly IReadOnlyPolicyRegistry<string> _policyRegistry;
     private const int DefaultDelay = 25; // 1000/35 fps ~ 28.5
     private const int AltitudeOffset = MatchStatistics.AltitudeOffset;
     private const double DefaultPositionTrackerInterval = 0.25; // Dalian?
@@ -75,19 +70,16 @@ public class Heli2v2Module : BaseModule,
     private Player _stalker;
     private Player _stalked;
 
-    // Match and round writes, in order (a match is inserted before its rounds and its end), off the apply loop. A write keeps
-    // retrying for up to ~34 minutes (RetryPolicyLongAsync) while the game goes on
-    private readonly SerialTaskQueue _saves;
+    // Match and round writes, in order and in the background
+    private readonly MatchStore _store;
 
     public Heli2v2Module(IGameServer server, IMatchRepository matchRepository, IDelayProvider delayProvider, TimeProvider timeProvider, ITaskRunner taskRunner, IReadOnlyPolicyRegistry<string> policyRegistry, ILogger<Heli2v2Module> logger, CancellationTokenSource cts) : base(server, logger, cts)
     {
         _gameServer = server;
-        _matchRepository = matchRepository;
         _delayProvider = delayProvider;
         _timeProvider = timeProvider;
         _taskRunner = taskRunner;
-        _policyRegistry = policyRegistry;
-        _saves = new SerialTaskQueue(logger);
+        _store = new MatchStore(matchRepository, policyRegistry, logger);
         ClearMatches();
         SetupRoundEvents();
     }
@@ -313,15 +305,6 @@ public class Heli2v2Module : BaseModule,
         }
 
         return ValueTask.CompletedTask;
-    }
-
-    private static string GetTeamHash(Player p1, Player p2) => GetTeamHash(p1.Hash, p2.Hash);
-
-    private static string GetTeamHash(IEnumerable<string> playerHashes) => GetTeamHash(playerHashes.First(), playerHashes.Last());
-
-    private static string GetTeamHash(string hash1, string hash2)
-    {
-        return string.Compare(hash1, hash2, StringComparison.Ordinal) <= 0 ? hash1 + hash2 : hash2 + hash1;
     }
 
     public void Handle(SwitchLaterCommand command)
@@ -754,84 +737,6 @@ public class Heli2v2Module : BaseModule,
         }
     }
 
-    private static Data.Entities.Match ToMatchEntity(Match match, bool mapRounds = false)
-    {
-        var result = new Data.Entities.Match
-        {
-            Id = match.Id,
-            ServerId = match.ServerId,
-            ServerName = match.ServerName,
-            Map = match.Map,
-            Type = match.Type,
-            MatchStart = match.MatchStart,
-            MatchEnd = match.MatchEnd
-        };
-
-        var teamAHash = match.TeamHashes.First();
-        var teamBHash = match.TeamHashes.Last();
-
-        var firstRound = match.Rounds?.FirstOrDefault();
-        var teamAPlayers = firstRound?.Players.Where(p => p.TeamHash == teamAHash);
-        var teamBPlayers = firstRound?.Players.Where(p => p.TeamHash == teamBHash);
-
-        result.TeamAHash = teamAHash;
-        result.TeamBHash = teamBHash;
-
-        result.TeamAName = string.Join(" and ", teamAPlayers?.Select(p => p.Player.ShortName) ?? Enumerable.Empty<string>());
-        result.TeamBName = string.Join(" and ", teamBPlayers?.Select(p => p.Player.ShortName) ?? Enumerable.Empty<string>());
-
-        var finishedRounds = match.Rounds?.Where(r => r.IsFinished).ToList();
-        if (finishedRounds != null && finishedRounds.Any())
-        {
-            result.TeamAScore = finishedRounds.Count(r => r.WinningTeamHash == teamAHash);
-            result.TeamBScore = finishedRounds.Count(r => r.WinningTeamHash == teamBHash);
-
-            if (mapRounds)
-            {
-                result.MatchRounds = finishedRounds.Select(ToRoundEntity).ToList();
-            }
-        }
-
-        return result;
-    }
-
-    private static MatchRound ToRoundEntity(Round round)
-    {
-        var result = new MatchRound
-        {
-            Id = round.Id,
-            MatchId = round.MatchId,
-            WinningTeamId = round.WinningTeamId,
-            PositionTrackerInterval = round.PositionTrackerInterval,
-            RoundStart = round.RoundStart,
-            RoundEnd = round.RoundEnd
-        };
-
-        if (round.Players.Any())
-        {
-            result.MatchRoundPlayers = round.Players.Select(p => new MatchRoundPlayer
-            {
-                RoundId = p.RoundId,
-                PlayerHash = p.PlayerHash,
-                MatchId = round.MatchId!.Value,
-                PlayerName = p.PlayerName,
-                TeamId = p.TeamId,
-                SubVehicle = p.SubVehicle,
-                SaidGo = p.SaidGo,
-                StartPosition = p.StartPosition,
-                DeathPosition = p.DeathPosition,
-                DeathTime = p.DeathTime,
-                KillerHash = p.KillerHash,
-                KillerWeapon = p.KillerWeapon,
-                KillerPosition = p.KillerPosition,
-                MovementPathJson = Compression.CompressText(JsonConvert.SerializeObject(p.MovementPath.Select(p => p.ToString()))),
-                ProjectilePathsJson = Compression.CompressText(JsonConvert.SerializeObject(p.ProjectilePaths.Select(p => p.Select(pp => pp.ToString())))),
-            }).ToList();
-        }
-
-        return result;
-    }
-
     public async ValueTask HandleAsync(MapChangedEvent e)
     {
         var match = GetActiveMatch();
@@ -908,7 +813,7 @@ public class Heli2v2Module : BaseModule,
             };
         }
 
-        var teamHash = GetTeamHash(teamPlayers[0], teamPlayers[1]);
+        var teamHash = TeamHash.Of(teamPlayers[0], teamPlayers[1]);
         foreach (var vehiclePlayer in e.Message.Player.Vehicle!.Players)
         {
             var roundPlayer = _pendingRound.Players.FirstOrDefault(p => p.Player.Hash == vehiclePlayer.Hash);
@@ -1001,47 +906,9 @@ public class Heli2v2Module : BaseModule,
             try
             {
                 var teamHashes = _pendingRound.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
-                var previousMatchDb = (await _matchRepository.GetMatchesByNewestAsync(0, 1)).FirstOrDefault();
-                if (previousMatchDb is { MatchEnd: null })
+                var previousMatch = await _store.GetOpenMatchAsync(_gameServer.GetPlayerByHash);
+                if (previousMatch != null)
                 {
-                    previousMatchDb = await _matchRepository.GetMatchAsync(previousMatchDb.Id);
-                    var previousTeamHashesUnsorted = new[] { previousMatchDb.TeamAHash, previousMatchDb.TeamBHash };
-                    var previousMatch = new Match
-                    {
-                        Id = previousMatchDb.Id,
-                        MatchStart = previousMatchDb.MatchStart,
-                        Map = previousMatchDb.Map,
-                        ServerId = previousMatchDb.ServerId,
-                        ServerName = previousMatchDb.ServerName,
-                        TeamHashes = previousTeamHashesUnsorted,
-                        Type = previousMatchDb.Type,
-                        Rounds = previousMatchDb.MatchRounds?.Select(r => new Round
-                        {
-                            Id = r.Id,
-                            MatchId = r.MatchId,
-                            RoundStart = r.RoundStart,
-                            RoundEnd = r.RoundEnd,
-                            WinningTeamId = r.WinningTeamId,
-                            WinningTeamHash = GetTeamHash(r.MatchRoundPlayers.Where(p => p.TeamId == r.WinningTeamId).Select(p => p.PlayerHash)),
-                            LosingTeamHash = GetTeamHash(r.MatchRoundPlayers.Where(p => p.TeamId != r.WinningTeamId).Select(p => p.PlayerHash)),
-                            PositionTrackerInterval = r.PositionTrackerInterval,
-                            Players = r.MatchRoundPlayers?.Select(p =>
-                            {
-                                var player = _gameServer.GetPlayerByHash(p.PlayerHash);
-                                return new RoundPlayer(player, previousTeamHashesUnsorted.FirstOrDefault(h => h.Contains(player.Hash)), r.Id)
-                                {
-                                    SaidGo = p.SaidGo,
-                                    DeathPosition = p.DeathPosition,
-                                    DeathTime = p.DeathTime,
-                                    KillerHash = p.KillerHash,
-                                    KillerWeapon = p.KillerWeapon,
-                                    KillerPosition = p.KillerPosition,
-                                    StartPosition = p.StartPosition
-                                };
-                            }).ToList() ?? new List<RoundPlayer>()
-                        }).ToList() ?? new List<Round>()
-                    };
-
                     var previousTeamHashes = previousMatch.Rounds.FirstOrDefault()?.Players.Select(p => p.TeamHash).Distinct().OrderBy(v => v).ToArray();
                     var previousMatchHasSameTeams = teamHashes.All(hash => previousTeamHashes?.Any(oldHash => oldHash == hash) ?? false);
                     var mostRecentRoundEnd = previousMatch.Rounds.MaxBy(r => r.RoundEnd)?.RoundEnd ?? _timeProvider.GetUtcNow();
@@ -1230,15 +1097,10 @@ public class Heli2v2Module : BaseModule,
 
         Logger.LogInformation("Saving new match {MatchId}", e.Match.Id);
 
-        var match = ToMatchEntity(e.Match);
-        QueueSave($"Save new match {e.Match.Id}", () => _matchRepository.InsertMatchAsync(match));
+        _store.InsertMatch(e.Match);
         await SendDiscordMessageAsync("New 2v2 match started");
         _gameServer.GameWriter.SendText("New 2v2 match started");
     }
-
-    /// <summary>A database write with the long retry, after the writes queued before it (see <see cref="_saves"/>).</summary>
-    private void QueueSave(string description, Func<Task> save) =>
-        _saves.Enqueue(description, () => _policyRegistry.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(save));
 
     public async ValueTask HandleAsync(MatchEndEvent e)
     {
@@ -1247,8 +1109,7 @@ public class Heli2v2Module : BaseModule,
 
         Logger.LogInformation("Saving match end results for {MatchId}", e.Match.Id);
 
-        var match = ToMatchEntity(e.Match);
-        QueueSave($"Save match end {e.Match.Id}", () => _matchRepository.UpdateMatchAsync(match));
+        _store.UpdateMatch(e.Match);
 
         var duration = e.Match.MatchEnd!.Value - e.Match.MatchStart!.Value;
         _gameServer.GameWriter.SendText($"2v2 match ended after {duration.Humanize()}.");
@@ -1312,8 +1173,7 @@ public class Heli2v2Module : BaseModule,
         }
 
         Logger.LogInformation("Saving round {RoundId} on match {MatchId}", e.Round.Id, e.Round.MatchId);
-        var round = ToRoundEntity(e.Round);
-        QueueSave($"Save round {e.Round.Id} of match {e.Round.MatchId}", () => _matchRepository.InsertRoundAsync(round));
+        _store.InsertRound(e.Round);
 
         // Switch command
         var shouldSwitchTeams = _switchRounds > 0 && ++_switchCounter >= _switchRounds;

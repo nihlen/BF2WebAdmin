@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
+using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Services;
 
@@ -261,6 +263,70 @@ public class AdminGameWriter : IGameWriter
 
         Fire(id => new CmdSetObjectActive(id, ObjectRef.Console((uint)consoleId)));
     }
+
+    public void SetVehicleDisabled(Vehicle vehicle, bool disabled)
+    {
+        if (!Activate(vehicle))
+            return;
+
+        SendConsole($"object.setIsDisabledRecursive {(disabled ? 1 : 0)}");
+    }
+
+    public void SetVehicleCollision(Vehicle vehicle, bool hasCollision)
+    {
+        if (!Activate(vehicle))
+            return;
+
+        SendConsole(hasCollision ? RconScript.NoclipOff : RconScript.NoclipOn);
+    }
+
+    /// <summary>Makes the vehicle the console's active object; false without a console id (logged).</summary>
+    private bool Activate(Vehicle vehicle)
+    {
+        if (vehicle.ConsoleId < 0)
+        {
+            _logger.LogWarning("Admin channel {ServerId}: {Template} {Id} has no console id", _server.Id, vehicle.RootVehicleTemplate, vehicle.RootVehicleId);
+            return false;
+        }
+
+        SendSetObjectActive(vehicle.ConsoleId);
+        return true;
+    }
+
+    public void SetGravity(double gravity) => SendConsole($"physics.gravity {gravity.ToString(CultureInfo.InvariantCulture)}");
+
+    public void SetTemplate(string type, string template, params (string Property, string Value)[] values)
+    {
+        var lines = new List<string>(values.Length + 1) { $"ObjectTemplate.activeSafe {ConsoleWord(type)} {ConsoleWord(template)}" };
+        lines.AddRange(values.Select(v => $"ObjectTemplate.{ConsoleWord(v.Property)} {ConsoleValue(v.Value)}"));
+        SendConsole(lines.ToArray());
+    }
+
+    public async Task<string> GetTemplateValueAsync(string type, string template, string property)
+    {
+        // Commands run in order, so the getter reads the template made active just before it
+        SendConsole($"ObjectTemplate.activeSafe {ConsoleWord(type)} {ConsoleWord(template)}");
+        var lines = await ConsoleAsync($"ObjectTemplate.{ConsoleWord(property)}");
+        return string.Join(" ", lines).Trim();
+    }
+
+    public Task<IReadOnlyList<string>> ListBansAsync(bool byCdKey) =>
+        ConsoleAsync(byCdKey ? "admin.listBannedKeys" : "admin.listBannedAddresses");
+
+    public Task RemoveBanAsync(bool byCdKey, string identifier) =>
+        ConsoleAsync((byCdKey ? "admin.removeKeyFromBanList " : "admin.removeAddressFromBanList ") + ConsoleWord(identifier));
+
+    /// <summary>A template, type or property name: one word, no spaces or line breaks.</summary>
+    private static string ConsoleWord(string word) =>
+        string.IsNullOrWhiteSpace(word) || word.Any(c => char.IsWhiteSpace(c) || char.IsControl(c))
+            ? throw new ArgumentException($"'{word}' is not a console word", nameof(word))
+            : word;
+
+    /// <summary>A value: one line (a value such as CRD_NONE/3.5/0/0 has no spaces either, but some take several words).</summary>
+    private static string ConsoleValue(string value) =>
+        string.IsNullOrWhiteSpace(value) || value.Any(char.IsControl)
+            ? throw new ArgumentException($"'{value}' is not a console value", nameof(value))
+            : value.Trim();
 
     public async Task<IReadOnlyList<ObjectListEntry>> ListObjectsAsync(string template, int maxEntries = 4096)
     {

@@ -79,6 +79,35 @@ public interface IGameWriter
     /// <summary>Make an object the console's active object for the raw console lines that follow (object.active idN).</summary>
     void SendSetObjectActive(long consoleId);
 
+    /// <summary>Disable (freeze) or enable a vehicle and its parts (object.setIsDisabledRecursive).</summary>
+    void SetVehicleDisabled(Vehicle vehicle, bool disabled);
+
+    /// <summary>
+    /// Give a vehicle collision back, or take it away (noclip, which also takes no damage from flipping, water or critical
+    /// damage); <see cref="Constants.RconScript.NoclipOn"/> and <see cref="Constants.RconScript.NoclipOff"/>.
+    /// </summary>
+    void SetVehicleCollision(Vehicle vehicle, bool hasCollision);
+
+    /// <summary>The world's gravity (physics.gravity, default <see cref="DefaultGravity"/>).</summary>
+    void SetGravity(double gravity);
+
+    const double DefaultGravity = -14.73;
+
+    /// <summary>
+    /// Set properties of an object template, in order: <c>ObjectTemplate.activeSafe {type} {template}</c>, then
+    /// <c>ObjectTemplate.{property} {value}</c> for each. Every new object of the template has them; existing ones keep theirs.
+    /// </summary>
+    void SetTemplate(string type, string template, params (string Property, string Value)[] values);
+
+    /// <summary>A property of an object template, as the console prints it (empty when the engine has none).</summary>
+    Task<string> GetTemplateValueAsync(string type, string template, string property);
+
+    /// <summary>The engine's ban list lines (admin.listBannedKeys or admin.listBannedAddresses).</summary>
+    Task<IReadOnlyList<string>> ListBansAsync(bool byCdKey);
+
+    /// <summary>Take a CD-key hash or an address off the engine's ban list.</summary>
+    Task RemoveBanAsync(bool byCdKey, string identifier);
+
     Task<IReadOnlyList<ObjectListEntry>> ListObjectsAsync(string template, int maxEntries = 4096);
     Task<ObjectSpawned> SpawnObjectAsync(string template, Position position, Rotation rotation, int team = 0);
     void SendDeleteObject(long consoleId);

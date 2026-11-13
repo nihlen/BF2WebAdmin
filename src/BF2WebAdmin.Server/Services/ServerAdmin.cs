@@ -185,8 +185,8 @@ public sealed class ServerAdmin
     /// <summary>The server's ban list (from the engine) with WebAdmin's records, newest first.</summary>
     public async Task<IReadOnlyList<BanDto>> GetBansAsync()
     {
-        var keys = await _server.GameWriter.ConsoleAsync("admin.listBannedKeys");
-        var addresses = await _server.GameWriter.ConsoleAsync("admin.listBannedAddresses");
+        var keys = await _server.GameWriter.ListBansAsync(byCdKey: true);
+        var addresses = await _server.GameWriter.ListBansAsync(byCdKey: false);
         var records = (await _bans.GetBansAsync(_server.Id)).ToDictionary(b => b.Identifier, StringComparer.OrdinalIgnoreCase);
         var now = DateTime.UtcNow;
 
@@ -209,10 +209,10 @@ public sealed class ServerAdmin
             throw new AdminCommandException($"Not a CD-key hash or an address: '{identifier}'", AdminErrorCode.InvalidValue);
 
         var byCdKey = HashPattern.IsMatch(identifier);
-        var listed = ParseBanList(await _server.GameWriter.ConsoleAsync(byCdKey ? "admin.listBannedKeys" : "admin.listBannedAddresses"))
+        var listed = ParseBanList(await _server.GameWriter.ListBansAsync(byCdKey))
             .Any(e => e.Identifier.Equals(identifier, StringComparison.OrdinalIgnoreCase));
 
-        await _server.GameWriter.ConsoleAsync((byCdKey ? "admin.removeKeyFromBanList " : "admin.removeAddressFromBanList ") + identifier);
+        await _server.GameWriter.RemoveBanAsync(byCdKey, identifier);
         await _bans.RemoveBanAsync(_server.Id, identifier);
         return listed ? $"Unbanned {identifier}" : $"{identifier} was not banned";
     }

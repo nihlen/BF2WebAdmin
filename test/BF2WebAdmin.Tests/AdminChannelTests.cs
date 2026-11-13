@@ -478,6 +478,58 @@ public class AdminChannelTests
     }
 
     [Fact]
+    public async Task NamedCommandsSendTheirConsoleLinesInOrder()
+    {
+        var (session, module, _, run) = await StartSessionAsync();
+        await Task.Delay(200);
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection().AddLogging().BuildServiceProvider();
+        var server = new BF2WebAdmin.Server.Entities.GameServer(new BF2WebAdmin.Server.ServerInfo { ServerId = ServerId }, IPAddress.Loopback, services,
+            CancellationToken.None);
+        server.AttachSession(session);
+        var writer = new AdminGameWriter(server, NullLogger<AdminGameWriter>.Instance);
+
+        async Task<string> NextLine() => Assert.IsType<CmdConsole>(await module.ReadAsync()).Line;
+
+        var heli = new BF2WebAdmin.Common.Entities.Game.Vehicle { ConsoleId = 29328, RootVehicleTemplate = "ahe_ah1z" };
+        writer.SetVehicleDisabled(heli, true);
+        Assert.Equal(29328u, Assert.IsType<CmdSetObjectActive>(await module.ReadAsync()).Target.Id);
+        Assert.Equal("object.setIsDisabledRecursive 1", await NextLine());
+
+        writer.SetVehicleCollision(heli, false);
+        Assert.IsType<CmdSetObjectActive>(await module.ReadAsync());
+        foreach (var line in BF2WebAdmin.Server.Constants.RconScript.NoclipOn)
+            Assert.Equal(line, await NextLine());
+
+        // No console id: nothing goes out
+        writer.SetVehicleDisabled(new BF2WebAdmin.Common.Entities.Game.Vehicle(), true);
+
+        writer.SetGravity(-9.81);
+        Assert.Equal("physics.gravity -9.81", await NextLine());
+
+        writer.SetTemplate("GenericProjectile", "agm114_hellfire_tv", ("drag", "0.1"), ("timeToLive", "CRD_NONE/3.5/0/0"));
+        Assert.Equal("ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv", await NextLine());
+        Assert.Equal("ObjectTemplate.drag 0.1", await NextLine());
+        Assert.Equal("ObjectTemplate.timeToLive CRD_NONE/3.5/0/0", await NextLine());
+        Assert.Throws<ArgumentException>(() => writer.SetTemplate("GenericProjectile", "agm114_hellfire_tv", ("drag 1\nquit", "0")));
+
+        var value = writer.GetTemplateValueAsync("GenericProjectile", "agm114_hellfire_tv", "drag");
+        Assert.Equal("ObjectTemplate.activeSafe GenericProjectile agm114_hellfire_tv", await NextLine());
+        var get = Assert.IsType<CmdConsole>(await module.ReadAsync());
+        Assert.Equal("ObjectTemplate.drag", get.Line);
+        await module.SendAsync(new ConsoleResult(get.RequestId, 0, ["0.1 "]));
+        Assert.Equal("0.1", await value);
+
+        var unban = writer.RemoveBanAsync(byCdKey: false, "203.0.113.9");
+        var remove = Assert.IsType<CmdConsole>(await module.ReadAsync());
+        Assert.Equal("admin.removeAddressFromBanList 203.0.113.9", remove.Line);
+        await module.SendAsync(new ConsoleResult(remove.RequestId, 0, []));
+        await unban;
+
+        session.Close("test");
+        await run;
+    }
+
+    [Fact]
     public async Task MalformedFrameGetsError2AndCloses()
     {
         var (_, module, handler, run) = await StartSessionAsync();

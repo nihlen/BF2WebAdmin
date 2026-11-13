@@ -152,56 +152,27 @@ public class ChopperMayhemModule : BaseModule,
         }
     }
         
+    /// <summary>The jets' weapons made harmless on map change: template, explosion radius and force.</summary>
+    private static readonly (string Template, string Radius, string Force)[] HarmlessJetWeapons =
+    [
+        ("AIR_J10_Cannon_Projectile", "5", "1000"),
+        ("aa11_archer", "25", "10000000"),
+        ("mec_250_bomb", "25", "10000000"),
+        ("Air_F35b_AutoCannon_Projectile", "5", "1000"),
+        ("aim9m_sidewinder", "25", "10000000"),
+        ("mk82_dumbbomb", "25", "10000000")
+    ];
+
     public async ValueTask HandleAsync(MapChangedEvent e)
     {
         GameServer.GameWriter.SendConsole(RconScript.HeliLessBsDamageOn);
-        GameServer.GameWriter.SendConsole(
-            // No J10 damage
-            "ObjectTemplate.activeSafe GenericProjectile AIR_J10_Cannon_Projectile",
-            "ObjectTemplate.detonation.explosionDamage 0",
-            "ObjectTemplate.minDamage 1",
-            "ObjectTemplate.damage 1",
-            "ObjectTemplate.detonation.explosionRadius 5",
-            "ObjectTemplate.detonation.explosionForce 1000",
-            "ObjectTemplate.detonation.explosionDamage 1",
-            "ObjectTemplate.activeSafe GenericProjectile aa11_archer",
-            "ObjectTemplate.detonation.explosionDamage 0",
-            "ObjectTemplate.minDamage 1",
-            "ObjectTemplate.damage 1",
-            "ObjectTemplate.detonation.explosionRadius 25",
-            "ObjectTemplate.detonation.explosionForce 10000000",
-            "ObjectTemplate.detonation.explosionDamage 1",
-            "ObjectTemplate.activeSafe GenericProjectile mec_250_bomb",
-            "ObjectTemplate.detonation.explosionDamage 0",
-            "ObjectTemplate.minDamage 1",
-            "ObjectTemplate.damage 1",
-            "ObjectTemplate.detonation.explosionRadius 25",
-            "ObjectTemplate.detonation.explosionForce 10000000",
-            "ObjectTemplate.detonation.explosionDamage 1",
-
-            // No F35B damage
-            "ObjectTemplate.activeSafe GenericProjectile Air_F35b_AutoCannon_Projectile",
-            "ObjectTemplate.detonation.explosionDamage 0",
-            "ObjectTemplate.minDamage 1",
-            "ObjectTemplate.damage 1",
-            "ObjectTemplate.detonation.explosionRadius 5",
-            "ObjectTemplate.detonation.explosionForce 1000",
-            "ObjectTemplate.detonation.explosionDamage 1",
-            "ObjectTemplate.activeSafe GenericProjectile aim9m_sidewinder",
-            "ObjectTemplate.detonation.explosionDamage 0",
-            "ObjectTemplate.minDamage 1",
-            "ObjectTemplate.damage 1",
-            "ObjectTemplate.detonation.explosionRadius 25",
-            "ObjectTemplate.detonation.explosionForce 10000000",
-            "ObjectTemplate.detonation.explosionDamage 1",
-            "ObjectTemplate.activeSafe GenericProjectile mk82_dumbbomb",
-            "ObjectTemplate.detonation.explosionDamage 0",
-            "ObjectTemplate.minDamage 1",
-            "ObjectTemplate.damage 1",
-            "ObjectTemplate.detonation.explosionRadius 25",
-            "ObjectTemplate.detonation.explosionForce 10000000",
-            "ObjectTemplate.detonation.explosionDamage 1"
-        );
+        // No J10 or F35B damage: their cannons, missiles and bombs only push
+        foreach (var (template, radius, force) in HarmlessJetWeapons)
+        {
+            GameServer.GameWriter.SetTemplate("GenericProjectile", template,
+                ("detonation.explosionDamage", "0"), ("minDamage", "1"), ("damage", "1"),
+                ("detonation.explosionRadius", radius), ("detonation.explosionForce", force), ("detonation.explosionDamage", "1"));
+        }
 
         if (e.Map.Name.ToLower() == "dalian_plant")
         {

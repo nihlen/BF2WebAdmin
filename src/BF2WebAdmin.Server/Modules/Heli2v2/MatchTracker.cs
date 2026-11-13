@@ -334,7 +334,9 @@ public sealed class MatchTracker(
         if (match == null)
             return;
 
-        var onlinePlayersCount = match.Rounds.FirstOrDefault()?.Players.Count(p => server.Players.Any(gp => gp.Hash == p.Player.Hash));
+        // By the team hashes (a team's is its two player hashes), not the first round: a match whose only round went with
+        // a leaving player has no rounds, and it would never end
+        var onlinePlayersCount = server.Players.Count(p => match.TeamHashes.Any(h => h.Contains(p.Hash)));
         if (onlinePlayersCount <= 2)
             await EndMatchAsync(match);
     }

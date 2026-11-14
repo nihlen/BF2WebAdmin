@@ -1,0 +1,17 @@
+{
+  "name": "bf2webadmin-game-scripts",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Game scripts: TypeScript that WebAdmin pushes to a game server's module, which runs it every tick (docs/scripts.md)",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node --disable-warning=ExperimentalWarning build.mjs",
+    "test": "npm run build && node --test \"test/*.test.mjs\""
+  },
+  "devDependencies": {
+    "typescript": "~7.0.2"
+  },
+  "volta": {
+    "node": "24.22.1"
+  }
+}

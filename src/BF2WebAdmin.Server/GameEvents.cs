@@ -31,3 +31,8 @@ public record RoundEndEvent(Modules.Heli2v2.Round Round, DateTimeOffset TimeStam
 // The stream bot (StreamBot/StreamBotHub.cs)
 public record GameStreamStartedEvent(Guid? MatchId, string StreamUrl, string BotName, DateTimeOffset TimeStamp) : IEvent;
 public record GameStreamStoppedEvent(Guid? MatchId, DateTimeOffset TimeStamp) : IEvent;
+
+// Game scripts (docs/scripts.md): what a running script emitted or logged, and its end
+public record ScriptDataEvent(IScriptRun Script, System.Text.Json.JsonElement Data, DateTimeOffset TimeStamp) : IEvent;
+public record ScriptLogEvent(IScriptRun Script, string Line, DateTimeOffset TimeStamp) : IEvent;
+public record ScriptFinishedEvent(IScriptRun Script, ScriptResult Result, DateTimeOffset TimeStamp) : IEvent;

@@ -26,7 +26,7 @@ deploy or test against a game server.
 
 | Path | Contents |
 |---|---|
-| `src/BF2WebAdmin.Server` | The host (`Program.cs`): web API for the web UI (`Api/ApiEndpoints.cs`: queries and commands), SignalR hub (`Hubs/ServerHub.cs`: live updates only; the DTOs and hub events it and the web API send are in `Communication/`), the export API for other programs (`Api/ExportEndpoints.cs`, contract in [docs/export-api.md](docs/export-api.md): matches by change cursor, player joins, servers), `Controllers/ServerController.cs` (`/api/v1/servers` with the API key; BF2v2's API adds and removes its temporary VPS servers with its `POST` and `DELETE`), `Services/StaleMatchCloser.cs` (ends matches left open), `AdminChannel/` (listener, handshake, session, protocol codec, state applier), game modules (`Modules/`: `BF2Module` with `AdminModule`, `ServerControlModule` and `FunModule` on every server, `MapModule`, `ChopperMayhemModule`, ...; `Modules/DiscordBot/`: a server's Discord bot (`DiscordModule` for the game's messages, `DiscordConnection` for the client and its send queue, `DiscordCommandHandler` for what people write to it); `Modules/Heli2v2/`: `Heli2v2Module` with `MatchTracker` (rounds and matches as they are played), `MatchStore` (saves), `MatchStatistics` (summaries) and the practice modules that load with it; their services are registered once in `ModuleServices.cs` and each server gets a scope), `StreamBot/` (the stream bot's hub `/hubs/stream-bot`, its own key `Authentication:StreamBotKey`; [docs/stream-bot.md](docs/stream-bot.md)), `Services/ServerAdmin.cs` (kick, warn, ban, unban and the `!` admin commands of the web chat box and Discord, all over the admin channel; the bans are the engine's own list, WebAdmin records who and why in `ServerBan`), configuration in `Configuration/` (`appsettings.json`, `appsettings.<profile>.json`; a published build runs profile `release`, log level Information) plus an `appsecrets.json` |
+| `src/BF2WebAdmin.Server` | The host (`Program.cs`): web API for the web UI (`Api/ApiEndpoints.cs`: queries and commands), SignalR hub (`Hubs/ServerHub.cs`: live updates only; the DTOs and hub events it and the web API send are in `Communication/`), the export API for other programs (`Api/ExportEndpoints.cs`, contract in [docs/export-api.md](docs/export-api.md): matches by change cursor, player joins, servers), `Controllers/ServerController.cs` (`/api/v1/servers` with the API key; BF2v2's API adds and removes its temporary VPS servers with its `POST` and `DELETE`), `Services/StaleMatchCloser.cs` (ends matches left open), `AdminChannel/` (listener, handshake, session, protocol codec, state applier, `ScriptRunner.cs` for game scripts), `GameScripts/` (the game scripts: TypeScript that WebAdmin sends to a game server's module, which runs it every tick; an npm project with its own tests, built and embedded by the server's build; `nasa` for `.nasa` and `dance` for `.dance`, each with a fallback for servers whose module runs no scripts; [docs/scripts.md](docs/scripts.md)), game modules (`Modules/`: `BF2Module` with `AdminModule`, `ServerControlModule` and `FunModule` on every server, `MapModule`, `ChopperMayhemModule`, ...; `Modules/DiscordBot/`: a server's Discord bot (`DiscordModule` for the game's messages, `DiscordConnection` for the client and its send queue, `DiscordCommandHandler` for what people write to it); `Modules/Heli2v2/`: `Heli2v2Module` with `MatchTracker` (rounds and matches as they are played), `MatchStore` (saves), `MatchStatistics` (summaries) and the practice modules that load with it; their services are registered once in `ModuleServices.cs` and each server gets a scope), `StreamBot/` (the stream bot's hub `/hubs/stream-bot`, its own key `Authentication:StreamBotKey`; [docs/stream-bot.md](docs/stream-bot.md)), `Services/ServerAdmin.cs` (kick, warn, ban, unban and the `!` admin commands of the web chat box and Discord, all over the admin channel; the bans are the engine's own list, WebAdmin records who and why in `ServerBan`), configuration in `Configuration/` (`appsettings.json`, `appsettings.<profile>.json`; a published build runs profile `release`, log level Information) plus an `appsecrets.json` |
 | `src/BF2WebAdmin.Web` | The web UI: Vite, React, TypeScript, TanStack Query and Router, shadcn/ui on Base UI, Tailwind CSS. Talks to the web API (types generated from its OpenAPI document into `src/api/`) and to the hub (event types in `src/api/events.ts`, by hand). See its README |
 | `src/BF2WebAdmin.AppHost` | Aspire AppHost: runs the server, the Vite dev server and an optional OpenBF2 game server (`OpenBF2.cs`, started from the dashboard); publishes one server image with the web UI in `wwwroot` |
 | `src/BF2WebAdmin.Common` | Game entities (`Entities/Game`) and helpers (country lookup, telemetry, caching) |
@@ -40,11 +40,13 @@ the .NET projects (the AppHost too); the web UI is an npm project, not in the so
 
 The web UI needs Node 24, pinned in its `package.json` for Volta (the machine default is Node 20, too old for Vite).
 `dotnet publish` of the server runs `npm ci` and `npm run build` in `src/BF2WebAdmin.Web` and publishes `dist` as
-`wwwroot` (`-p:SkipWebBuild=true` skips it).
+`wwwroot` (`-p:SkipWebBuild=true` skips it). `dotnet build` of the server also needs Node when a game script changed:
+it runs `npm run build` in `src/BF2WebAdmin.Server/GameScripts` (`npm ci` first without `node_modules`) and embeds the
+result (`-p:SkipGameScripts=true` embeds what `GameScripts/dist` already holds).
 
 ```powershell
 dotnet build src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj
-dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 424 tests on 2026-11-13, some skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
+dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 466 tests on 2026-11-14, some skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
 dotnet publish src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj -c Release -o <dir>
 BF2WebAdmin.Server.exe --admin-pin                                    # prints the admin-channel certificate pin
 BF2WebAdmin.Server.exe --admin-cert-create [--pem]                     # prints a new certificate for the Certificate secret, and its pin
@@ -58,6 +60,9 @@ aspire run                                 # server + Vite dev server (aspire.co
 cd src\BF2WebAdmin.Web
 npm run build                              # type check and build the web UI
 npm run api                                # after changing the web API: regenerate src/api/openapi.json and schema.d.ts
+
+cd src\BF2WebAdmin.Server\GameScripts
+npm test                                   # type check and build the game scripts, then their tests (15 on 2026-11-14)
 ```
 
 The server's admin-channel listener defaults to port 4310, which the localtest's play WebAdmin holds; the server stops

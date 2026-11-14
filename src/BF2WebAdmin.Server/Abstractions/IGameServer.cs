@@ -16,6 +16,9 @@ public interface IGameServer
     IModManager ModManager { get; }
     IGameWriter GameWriter { get; }
 
+    /// <summary>Game scripts on this server, where its module runs them (docs/scripts.md).</summary>
+    IScriptRunner Scripts { get; }
+
     ServerInfo ServerInfo { get; }
 
     /// <summary>The configured server id (Server.ServerId), also the module's adminServerId.</summary>

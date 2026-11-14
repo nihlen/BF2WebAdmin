@@ -52,6 +52,8 @@ public enum AdminMessageType : ushort
     EvWeapons = 0x1218,
     EvProjectileCollision = 0x1219,
     EvProjectileTrace = 0x121A,
+    EvScriptFinished = 0x121C,
+    EvScriptEvent = 0x121D,
 
     CmdConsole = 0x1301,
     CmdSay = 0x1302,
@@ -71,11 +73,16 @@ public enum AdminMessageType : ushort
     CmdSetObjectActive = 0x1310,
     CmdSpawnObject = 0x1311,
     CmdDeleteObject = 0x1312,
+    CmdStartScript = 0x1318,
+    CmdStopScript = 0x1319,
+    CmdScriptMessage = 0x131A,
+    CmdListScripts = 0x131B,
 
     Ok = 0x1401,
     ConsoleResult = 0x1402,
     ObjectList = 0x1403,
     ObjectSpawned = 0x1404,
+    ScriptList = 0x1405,
 
     Ping = 0x1501,
     Pong = 0x1502,
@@ -206,6 +213,8 @@ public static class AdminProtocol
                 r.U8(), r.U8(), r.U32(), r.U32(), r.Str(), r.Str(), r.I16(), r.Vec(), r.Vec(), r.Vec(), r.U16(), r.F32(),
                 r.Vec(), r.Vec(), r.Vec(), r.Vec()),
             AdminMessageType.EvProjectileTrace => EvProjectileTrace.Read(ref r),
+            AdminMessageType.EvScriptFinished => new EvScriptFinished(r.U32(), r.U32(), r.U32(), r.Str(), r.U8(), r.Str(), r.U32(), r.U32(), r.U32()),
+            AdminMessageType.EvScriptEvent => new EvScriptEvent(r.U32(), r.U32(), r.U32(), r.U8(), r.Str()),
             AdminMessageType.CmdConsole => new CmdConsole(r.U32(), r.Str()),
             AdminMessageType.CmdSay => new CmdSay(r.U32(), r.U8(), r.U8(), r.Str()),
             AdminMessageType.CmdTeleport => new CmdTeleport(r.U32(), ObjectRef.Read(ref r), r.U8(), r.Vec(), r.Vec()),
@@ -224,10 +233,15 @@ public static class AdminProtocol
             AdminMessageType.CmdSetObjectActive => new CmdSetObjectActive(r.U32(), ObjectRef.Read(ref r)),
             AdminMessageType.CmdSpawnObject => new CmdSpawnObject(r.U32(), r.Str(), r.Vec(), r.Vec(), r.U8()),
             AdminMessageType.CmdDeleteObject => new CmdDeleteObject(r.U32(), ObjectRef.Read(ref r)),
+            AdminMessageType.CmdStartScript => new CmdStartScript(r.U32(), r.U32(), r.U8(), r.U8(), r.Str(), r.Str(), r.Str()),
+            AdminMessageType.CmdStopScript => new CmdStopScript(r.U32(), r.U32()),
+            AdminMessageType.CmdScriptMessage => new CmdScriptMessage(r.U32(), r.U32(), r.Str()),
+            AdminMessageType.CmdListScripts => new CmdListScripts(r.U32()),
             AdminMessageType.Ok => new OkReply(r.U32()),
             AdminMessageType.ConsoleResult => ConsoleResult.Read(ref r),
             AdminMessageType.ObjectList => ObjectList.Read(ref r),
             AdminMessageType.ObjectSpawned => new ObjectSpawned(r.U32(), r.U32(), r.U32()),
+            AdminMessageType.ScriptList => ScriptList.Read(ref r),
             AdminMessageType.Ping => new Ping(r.U32(), r.U64()),
             AdminMessageType.Pong => new Pong(r.U32(), r.U64()),
             AdminMessageType.Error => new ErrorMessage(r.U32(), (AdminErrorCode)r.U16(), r.Str()),
@@ -580,6 +594,9 @@ public sealed record Welcome(
     IReadOnlyList<MapListEntry> Maps, string Team1, string Team2, AdminGameState Game) : AdminMessage
 {
     public const byte CapConsole = 1, CapObjects = 2, CapIdentity = 4;
+
+    /// <summary>The module runs game scripts (StartScript and the other script messages; docs/scripts.md).</summary>
+    public const byte CapScripts = 8;
 
     public override AdminMessageType Type => AdminMessageType.Welcome;
 
@@ -1097,6 +1114,31 @@ public sealed record EvProjectileTrace(uint Seq, uint Tick, uint Id, string Temp
     }
 }
 
+/// <summary>
+/// A game script ended. Result is the JSON text of the script's finish value (empty without one) for
+/// <see cref="ReasonFinished"/>, the error message with its stack for <see cref="ReasonError"/> and
+/// <see cref="ReasonOverBudget"/>, and empty otherwise. The CPU times are the game thread's, in microseconds.
+/// </summary>
+public sealed record EvScriptFinished(uint Seq, uint Tick, uint Instance, string Name, byte Reason, string Result, uint Calls,
+    uint CpuMicroseconds, uint MaxCallMicroseconds) : AdminEvent(Seq, Tick)
+{
+    public const byte ReasonFinished = 1, ReasonStopped = 2, ReasonError = 3, ReasonOverBudget = 4, ReasonLevelUnload = 5;
+
+    public override AdminMessageType Type => AdminMessageType.EvScriptFinished;
+
+    protected override void WriteFields(AdminWriter w) =>
+        w.U32(Instance).Str(Name).Byte(Reason).Str(Result).U32(Calls).U32(CpuMicroseconds).U32(MaxCallMicroseconds);
+}
+
+/// <summary>What a running game script emitted (JSON text) or logged (one line).</summary>
+public sealed record EvScriptEvent(uint Seq, uint Tick, uint Instance, byte Kind, string Payload) : AdminEvent(Seq, Tick)
+{
+    public const byte KindData = 1, KindLog = 2;
+
+    public override AdminMessageType Type => AdminMessageType.EvScriptEvent;
+    protected override void WriteFields(AdminWriter w) => w.U32(Instance).Byte(Kind).Str(Payload);
+}
+
 // ---------------------------------------------------------------- commands (WebAdmin -> module)
 
 public abstract record AdminCommand(uint RequestId) : AdminMessage, IAdminRequest;
@@ -1241,6 +1283,41 @@ public sealed record CmdDeleteObject(uint RequestId, ObjectRef Target) : AdminCo
     }
 }
 
+/// <summary>
+/// Runs a game script (JavaScript source) on the server. Instance is WebAdmin's id for it, not 0 and not a running
+/// script's. Arguments is JSON text, or empty for none. Only sent to a module with <see cref="Welcome.CapScripts"/>.
+/// </summary>
+public sealed record CmdStartScript(uint RequestId, uint Instance, byte ApiVersion, byte Flags, string Name, string Arguments, string Source)
+    : AdminCommand(RequestId)
+{
+    /// <summary>The script API version WebAdmin's scripts are written for.</summary>
+    public const byte Api = 1;
+
+    public const int MaxNameBytes = 64, MaxSourceBytes = 60000, MaxMessageBytes = 8192;
+
+    public override AdminMessageType Type => AdminMessageType.CmdStartScript;
+    public override void Write(AdminWriter w) => w.U32(RequestId).U32(Instance).Byte(ApiVersion).Byte(Flags).Str(Name).Str(Arguments).Str(Source);
+}
+
+public sealed record CmdStopScript(uint RequestId, uint Instance) : AdminCommand(RequestId)
+{
+    public override AdminMessageType Type => AdminMessageType.CmdStopScript;
+    public override void Write(AdminWriter w) => w.U32(RequestId).U32(Instance);
+}
+
+/// <summary>A message (JSON text) for a running script's message handlers.</summary>
+public sealed record CmdScriptMessage(uint RequestId, uint Instance, string Message) : AdminCommand(RequestId)
+{
+    public override AdminMessageType Type => AdminMessageType.CmdScriptMessage;
+    public override void Write(AdminWriter w) => w.U32(RequestId).U32(Instance).Str(Message);
+}
+
+public sealed record CmdListScripts(uint RequestId) : AdminCommand(RequestId)
+{
+    public override AdminMessageType Type => AdminMessageType.CmdListScripts;
+    public override void Write(AdminWriter w) => w.U32(RequestId);
+}
+
 // ---------------------------------------------------------------- replies and keepalive
 
 public sealed record OkReply(uint RequestId) : AdminMessage, IAdminRequest
@@ -1298,6 +1375,28 @@ public sealed record ObjectSpawned(uint RequestId, uint ConsoleId, uint NetId) :
 {
     public override AdminMessageType Type => AdminMessageType.ObjectSpawned;
     public override void Write(AdminWriter w) => w.U32(RequestId).U32(ConsoleId).U32(NetId);
+}
+
+/// <summary>The scripts that run now, in start order (the reply to ListScripts).</summary>
+public sealed record ScriptList(uint RequestId, IReadOnlyList<(uint Instance, string Name)> Scripts) : AdminMessage, IAdminRequest
+{
+    public override AdminMessageType Type => AdminMessageType.ScriptList;
+
+    public static ScriptList Read(ref AdminReader r)
+    {
+        var request = r.U32();
+        var scripts = new (uint, string)[r.U8()];
+        for (var i = 0; i < scripts.Length; i++)
+            scripts[i] = (r.U32(), r.Str());
+        return new ScriptList(request, scripts);
+    }
+
+    public override void Write(AdminWriter w)
+    {
+        w.U32(RequestId).Byte((byte)Scripts.Count);
+        foreach (var (instance, name) in Scripts)
+            w.U32(instance).Str(name);
+    }
 }
 
 public sealed record Ping(uint RequestId, ulong Clock) : AdminMessage, IAdminRequest

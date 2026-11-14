@@ -19,7 +19,7 @@ public static class RconScript
         "ObjectTemplate.active ch_light_soldier",
         "ObjectTemplate.armor.hpLostWhileCriticalDamage 100",
         "ObjectTemplate.armor.criticalDamage 10",
-        "GeometryTemplate.active mec_heavy_soldier",
+        "ObjectTemplate.active mec_heavy_soldier",
         "ObjectTemplate.armor.hpLostWhileCriticalDamage 100",
         "ObjectTemplate.armor.criticalDamage 10",
         "ObjectTemplate.activeSafe Soldier mec_light_soldier",

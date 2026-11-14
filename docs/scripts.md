@@ -188,3 +188,24 @@ npm test          # builds, then runs test/*.test.mjs with node:test
 - **Without a player**, a chat command can be sent through the web API: `POST /api/servers/{id}/chat` with
   `{"message": ".nasa 100"}` and the API key in the `X-API-KEY` header (as the localtest's `tools\console.ps1` does for
   `/rcon`). `.nasa` is `PracticeModule`'s, which loads with `Heli2v2Module`; `.dance` is on every server.
+- **A script alone, without WebAdmin**: openbf2-server-ext's
+  `tools/adminclient/adminclient.py --scenario runscript --script-file GameScripts/dist/<name>.js` starts it on a test
+  server and prints its events, errors and CPU time.
+
+## What was tested on a game server
+
+On 2026-11-14, with this WebAdmin (`f2ca979`) and the module of openbf2-server-ext `a0ba53b` on a WSL test server with
+a bot helicopter hovering at 213.9 m (the setup and all numbers are in openbf2-server-ext `docs/findings/scripts.md`,
+"End to end with BF2WebAdmin"):
+
+| Command | What happened |
+|---|---|
+| `.nasa 60` | The script held the helicopter at 200.15 m (the ceiling is 200 m: the command's 60 plus the 140 m offset) while its pilot kept climbing. It cost 25 µs of the game server's CPU per tick |
+| `.nasa 50`, `.nasa 0` | A message moved the ceiling to 190 m without a new script; 0 stopped the script and the helicopter climbed back |
+| `.dance` | Position held within 0.01 m, one turn of yaw a second, back level at the old yaw after 5 s |
+| A map change with `nasa` running | The script ended with `LevelUnload`; the server went on |
+| The same against a module with `adminAllowScripts 0` | No script was started; `.nasa 60` teleported the helicopter back to 200.0 m four times a second (it climbed to 200.5 m in between), `.dance` used the old loop |
+
+Not tested: what a player sees (there was no human client), more than one player, a link that drops while a script
+runs (only in the unit tests), and the production servers, whose modules are older and get the fallback until they
+are updated.

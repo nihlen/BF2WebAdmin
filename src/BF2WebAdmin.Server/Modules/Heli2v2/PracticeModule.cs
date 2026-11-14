@@ -21,6 +21,7 @@ public class PracticeModule : BaseModule,
     IHandleEventAsync<MapChangedEvent>,
     IHandleEventAsync<PlayerPositionEvent>,
     IHandleEventAsync<PlayerVehicleEvent>,
+    IHandleEventAsync<PlayerLeftEvent>,
     IHandleEventAsync<RoundEndEvent>,
     IHandleEventAsync<SocketStateChangedEvent>,
     IHandleEventAsync<ScriptFinishedEvent>,
@@ -189,18 +190,30 @@ public class PracticeModule : BaseModule,
 
     public ValueTask HandleAsync(PlayerVehicleEvent e)
     {
-        if (!Is2v2Active)
-            return ValueTask.CompletedTask;
-
-        // TODO: check if player is the last in the vehicle
-        var player = e.Player;
-        if (e.Vehicle is not null || player?.PreviousVehicle is not { } left || !_noclipVehicles.Contains(left) && left.Players.Any())
-            return ValueTask.CompletedTask;
-
-        _noclipVehicles.Remove(left);
-        GameServer.GameWriter.SetVehicleCollision(left, true);
+        // Out of a vehicle, or straight into another one (a death and the stream correction also come here); whatever
+        // the 2v2 mode is now, since .noclip may have been used while it was on
+        if (e.Player.PreviousVehicle is { } left && left != e.Vehicle)
+            RestoreCollisionWhenEmpty(left);
 
         return ValueTask.CompletedTask;
+    }
+
+    public ValueTask HandleAsync(PlayerLeftEvent e)
+    {
+        // A player who leaves the server in a vehicle gets no vehicle event; the vehicle has already let go of the player
+        if (e.Player.Vehicle is { } left)
+            RestoreCollisionWhenEmpty(left);
+
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Gives collision back to a vehicle .noclip took it from, once its last player is out. Vehicles .noclip never touched are left alone.</summary>
+    private void RestoreCollisionWhenEmpty(Vehicle vehicle)
+    {
+        if (vehicle.Players.Count > 0 || !_noclipVehicles.Remove(vehicle))
+            return;
+
+        GameServer.GameWriter.SetVehicleCollision(vehicle, true);
     }
 
     public ValueTask HandleAsync(RoundEndEvent e)

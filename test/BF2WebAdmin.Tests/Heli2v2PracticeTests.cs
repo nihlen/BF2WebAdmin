@@ -71,6 +71,59 @@ public class Heli2v2PracticeTests
         server.GameWriter.Received(1).SendText(Arg.Is<string>(s => s.StartsWith("Autopad enabled for")));
     }
 
+    [Fact]
+    public async Task Noclip_IsTurnedOffWhenTheLastPlayerIsOut_OnlyForTheVehicleItWasUsedOn()
+    {
+        var (server, practice, heli) = Setup();
+        var (_, vehicles, players) = Data.Setup2v2Players();
+        server.GetPlayerByName("CH Pilot").Returns(players[0]);
+        practice.Handle(new NoclipCommand { Name = "CH Pilot", Value = 1 });
+        server.GameWriter.Received(1).SetVehicleCollision(vehicles[0], false);
+
+        // The 2v2 mode was turned off meanwhile: the vehicle still gets its collision back
+        heli.Handle(new Toggle2v2Command());
+
+        await practice.HandleAsync(Exit(players[1]));
+        server.GameWriter.DidNotReceive().SetVehicleCollision(vehicles[0], true);
+        await practice.HandleAsync(Exit(players[0]));
+        server.GameWriter.Received(1).SetVehicleCollision(vehicles[0], true);
+
+        // Once only, and nothing for the US heli, which .noclip never touched
+        await practice.HandleAsync(Exit(players[0]));
+        await practice.HandleAsync(Exit(players[2]));
+        await practice.HandleAsync(Exit(players[3]));
+        server.GameWriter.Received(2).SetVehicleCollision(Arg.Any<Vehicle>(), Arg.Any<bool>());
+    }
+
+    [Fact]
+    public async Task Noclip_IsTurnedOffWhenTheLastPlayerLeavesTheServerInTheVehicle()
+    {
+        var (server, practice, _) = Setup();
+        var (_, vehicles, players) = Data.Setup2v2Players();
+        server.GetPlayerByName("US Pilot").Returns(players[2]);
+        practice.Handle(new NoclipCommand { Name = "US Pilot", Value = 1 });
+
+        await practice.HandleAsync(Exit(players[3]));
+
+        // GameServer.RemovePlayerAsync: the vehicle lets go of the player, the player keeps its vehicle
+        vehicles[1].Players.Remove(players[2]);
+        await practice.HandleAsync(new PlayerLeftEvent(players[2], DateTimeOffset.UtcNow));
+        server.GameWriter.Received(1).SetVehicleCollision(vehicles[1], true);
+    }
+
+    /// <summary>What GameServer.UpdatePlayerVehicleAsync does for an exit, and its event.</summary>
+    private static PlayerVehicleEvent Exit(Player player)
+    {
+        if (player.Vehicle is { } vehicle)
+        {
+            player.PreviousVehicle = vehicle;
+            vehicle.Players.Remove(player);
+        }
+
+        player.Vehicle = null!;
+        return new PlayerVehicleEvent(player, null!, DateTimeOffset.UtcNow);
+    }
+
     private static (IGameServer Server, PracticeModule Practice, Heli2v2Module Heli) Setup()
     {
         var server = Substitute.For<IGameServer>();

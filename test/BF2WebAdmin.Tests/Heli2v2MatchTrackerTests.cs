@@ -25,6 +25,7 @@ public class Heli2v2MatchTrackerTests
     private readonly IGameServer _server = Substitute.For<IGameServer>();
     private readonly IMediator _mediator = Substitute.For<IMediator>();
     private readonly IMatchRepository _repository = Substitute.For<IMatchRepository>();
+    private readonly FakeTimeProvider _time;
     private readonly MatchTracker _tracker;
     private readonly Player[] _players;
 
@@ -38,7 +39,8 @@ public class Heli2v2MatchTrackerTests
             _server.GetPlayerByHash(player.Hash).Returns(player);
 
         var store = new MatchStore(_repository, Substitute.For<IReadOnlyPolicyRegistry<string>>(), NullLogger.Instance);
-        _tracker = new MatchTracker(_server, store, Substitute.For<IDelayProvider>(), new FakeTimeProvider(_start), Substitute.For<ITaskRunner>(),
+        _time = new FakeTimeProvider(_start);
+        _tracker = new MatchTracker(_server, store, Substitute.For<IDelayProvider>(), _time, Substitute.For<ITaskRunner>(),
             () => _mediator, _ => Task.CompletedTask, NullLogger.Instance, CancellationToken.None);
     }
 
@@ -107,6 +109,25 @@ public class Heli2v2MatchTrackerTests
         Assert.True(await _tracker.OnMapChangedAsync("other_map", endMatch: true));
         await _mediator.Received(1).PublishAsync(Arg.Is<MatchEndEvent>(e => e.Match == match));
         Assert.Null(_tracker.ActiveMatch);
+    }
+
+    [Fact]
+    public async Task MissilesWithTheSameId_GetAPathEach()
+    {
+        await StartRoundAsync();
+        var gunner = _players[0];
+
+        // The game reuses a missile's network id for the gunner's next missile: a gap of more than a second starts a new path
+        foreach (var ms in new[] { 0, 250, 500, 5500, 5750 })
+        {
+            _time.SetUtcNow(_start.AddMilliseconds(ms));
+            _tracker.AddProjectile(new Projectile { Id = 1700, Owner = gunner, Position = new Position(1, 2, 3), Rotation = new Rotation(0, 0, 0) });
+        }
+
+        _tracker.AddProjectile(new Projectile { Id = 1701, Owner = gunner, Position = new Position(1, 2, 3), Rotation = new Rotation(0, 0, 0) });
+
+        var paths = _tracker.ActiveMatch!.Rounds[0].Players.Single(p => p.Player.Hash == gunner.Hash).ProjectilePaths;
+        Assert.Equal([3, 2, 1], paths.Select(p => p.Count));
     }
 
     [Fact]

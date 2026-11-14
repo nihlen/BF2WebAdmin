@@ -23,6 +23,9 @@ public sealed class MatchTracker(
     ILogger logger,
     CancellationToken cancellationToken)
 {
+    /// <summary>A longer gap between a player's missile samples starts a new missile path</summary>
+    private const int NewProjectilePathGapMs = 1000;
+
     private List<Match> _matches = new();
     private Round? _pendingRound;
 
@@ -383,7 +386,11 @@ public sealed class MatchTracker(
             Ping = projectile.Owner.Score.Ping
         };
 
-        if (roundPlayer.LastProjectileId != projectile.Id)
+        // The game reuses a missile's network id for the same gunner's next missile, so a gap in the samples
+        // (a missile is sampled every ~250 ms, the next one comes after a reload) also starts a new path
+        var lastPath = roundPlayer.ProjectilePaths.LastOrDefault();
+        if (roundPlayer.LastProjectileId != projectile.Id || lastPath is not { Count: > 0 } ||
+            roundPosition.Timestamp - lastPath[lastPath.Count - 1].Timestamp > NewProjectilePathGapMs)
         {
             roundPlayer.ProjectilePaths.Add(new List<RoundPosition>());
             roundPlayer.LastProjectileId = projectile.Id;

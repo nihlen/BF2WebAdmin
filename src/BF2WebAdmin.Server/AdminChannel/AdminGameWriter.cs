@@ -174,6 +174,15 @@ public class AdminGameWriter : IGameWriter
             Fire(id => new CmdSetTeam(id, Id(player), (byte)teamId, kill ? CmdSetTeam.FlagKill : (byte)0));
     }
 
+    public bool SetSeatPreference(Player player, SeatPreference preference)
+    {
+        if (!IsReal(player) || _server.Session is not { IsOpen: true } session || (session.Capabilities & Welcome.CapSeats) == 0)
+            return false;
+
+        session.Fire(id => new CmdSeatPreference(id, Id(player), (byte)preference));
+        return true;
+    }
+
     public void SendScore(Player player, int totalScore, int teamScore, int kills, int deaths)
     {
         const byte mask = CmdSetScore.MaskScore | CmdSetScore.MaskTeamScore | CmdSetScore.MaskKills | CmdSetScore.MaskDeaths;

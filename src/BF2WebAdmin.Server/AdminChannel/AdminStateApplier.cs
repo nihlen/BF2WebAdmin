@@ -110,6 +110,8 @@ public class AdminStateApplier : IAdminSessionHandler
             _logger.LogWarning("Admin channel {ServerId}: raw console disabled (adminAllowConsole 0); module scripts will be refused", _server.Id);
         if ((welcome.Capabilities & Welcome.CapScripts) == 0)
             _logger.LogInformation("Admin channel {ServerId}: the module runs no game scripts; .nasa and dance use WebAdmin's own slower way", _server.Id);
+        if ((welcome.Capabilities & Welcome.CapSeats) == 0)
+            _logger.LogInformation("Admin channel {ServerId}: the module takes no seat preferences; .pilot and .gunner do nothing", _server.Id);
 
         _server.ResetStartTime();
         await _server.UpdateSocketStateAsync(SocketState.Connected, time);

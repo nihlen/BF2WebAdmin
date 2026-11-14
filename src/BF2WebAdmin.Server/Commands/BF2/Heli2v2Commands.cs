@@ -20,6 +20,28 @@ public class AutoPadCommand : BaseCommand
     public string Name { get; set; }
 }
 
+[Command("pilot|fly", Auth.All)]
+public class PilotCommand : BaseCommand
+{
+}
+
+[Command("pilot|fly <Name>", Auth.Admin)]
+public class PilotForCommand : BaseCommand
+{
+    public string Name { get; set; }
+}
+
+[Command("gunner|gun", Auth.All)]
+public class GunnerCommand : BaseCommand
+{
+}
+
+[Command("gunner|gun <Name>", Auth.Admin)]
+public class GunnerForCommand : BaseCommand
+{
+    public string Name { get; set; }
+}
+
 [Command("sw|switch", Auth.Admin)]
 public class SwitchAllCommand : BaseCommand
 {

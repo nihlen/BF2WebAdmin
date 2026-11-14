@@ -495,10 +495,8 @@ public class AdminChannelTests
         Assert.Equal(29328u, Assert.IsType<CmdSetObjectActive>(await module.ReadAsync()).Target.Id);
         Assert.Equal("object.setIsDisabledRecursive 1", await NextLine());
 
-        writer.SetVehicleCollision(heli, false);
-        Assert.IsType<CmdSetObjectActive>(await module.ReadAsync());
-        foreach (var line in BF2WebAdmin.Server.Constants.RconScript.NoclipOn)
-            Assert.Equal(line, await NextLine());
+        // A module without the collision command gets nothing (the console has no collision switch)
+        Assert.False(writer.SetVehicleCollision(heli, false));
 
         // No console id: nothing goes out
         writer.SetVehicleDisabled(new BF2WebAdmin.Common.Entities.Game.Vehicle(), true);

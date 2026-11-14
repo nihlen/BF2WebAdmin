@@ -281,12 +281,13 @@ public class AdminGameWriter : IGameWriter
         SendConsole($"object.setIsDisabledRecursive {(disabled ? 1 : 0)}");
     }
 
-    public void SetVehicleCollision(Vehicle vehicle, bool hasCollision)
+    public bool SetVehicleCollision(Vehicle vehicle, bool hasCollision)
     {
-        if (!Activate(vehicle))
-            return;
+        if (vehicle.RootVehicleId <= 0 || _server.Session is not { IsOpen: true } session || (session.Capabilities & Welcome.CapCollision) == 0)
+            return false;
 
-        SendConsole(hasCollision ? RconScript.NoclipOff : RconScript.NoclipOn);
+        session.Fire(id => new CmdSetCollision(id, ObjectRef.Networkable((uint)vehicle.RootVehicleId), hasCollision ? CmdSetCollision.FlagCollision : (byte)0));
+        return true;
     }
 
     /// <summary>Makes the vehicle the console's active object; false without a console id (logged).</summary>

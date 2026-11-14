@@ -123,24 +123,6 @@ public static class RconScript
         "object.delete"
     };
 
-    // Run after IGameWriter.SendSetObjectActive with the vehicle's console id
-    public static readonly string[] NoclipOn = {
-        // Remove object collision
-        "object.hasCollision 0",
-        "object.armor.hpLostWhileUpSideDown 0",
-        "object.armor.hpLostWhileInWater 0",
-        "object.armor.hpLostWhileInDeepWater 0",
-        "object.armor.hpLostWhileCriticalDamage 0",
-    };
-
-    public static readonly string[] NoclipOff = {
-        // Re-add object collision
-        "object.hasCollision 1",
-        "object.armor.hpLostWhileUpSideDown 350",
-        "object.armor.hpLostWhileInWater 500",
-        "object.armor.hpLostWhileInDeepWater 500",
-        "object.armor.hpLostWhileCriticalDamage 18"
-    };
 
 
     public static readonly string[] SniperArtilleryOn = {

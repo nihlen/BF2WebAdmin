@@ -141,6 +141,24 @@ public class ScriptRunnerTests
     }
 
     [Fact]
+    public async Task CollisionIsSwitchedOnlyByAModuleThatCan()
+    {
+        var heli = new BF2WebAdmin.Common.Entities.Game.Vehicle { RootVehicleId = 1797, ConsoleId = 29149, RootVehicleTemplate = "ahe_ah1z" };
+
+        var without = await ConnectAsync();
+        Assert.False(new AdminGameWriter(without.Server, NullLogger<AdminGameWriter>.Instance).SetVehicleCollision(heli, false));
+
+        var with = await ConnectAsync(AllCapabilities | Welcome.CapCollision);
+        var writer = new AdminGameWriter(with.Server, NullLogger<AdminGameWriter>.Instance);
+        Assert.False(writer.SetVehicleCollision(new BF2WebAdmin.Common.Entities.Game.Vehicle(), false));
+        Assert.True(writer.SetVehicleCollision(heli, false));
+        Assert.True(writer.SetVehicleCollision(heli, true));
+        var off = await with.Module.ReadAsync<CmdSetCollision>();
+        var on = await with.Module.ReadAsync<CmdSetCollision>();
+        Assert.Equal((ObjectRef.Networkable(1797), (byte)0, CmdSetCollision.FlagCollision), (off.Target, off.Flags, on.Flags));
+    }
+
+    [Fact]
     public async Task AScriptIsStarted_ToldThings_AndItsOutputAndEndReachTheModules()
     {
         var link = await ConnectAsync();

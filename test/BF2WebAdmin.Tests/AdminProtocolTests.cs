@@ -133,6 +133,8 @@ public class AdminProtocolTests
         ["cmd_list_scripts"] = new CmdListScripts(33),
         ["cmd_seat_preference"] = new CmdSeatPreference(34, 3, CmdSeatPreference.Second),
         ["cmd_seat_preference_none"] = new CmdSeatPreference(35, 3, CmdSeatPreference.None),
+        ["cmd_set_collision_off"] = new CmdSetCollision(36, ObjectRef.Player(3), 0),
+        ["cmd_set_collision_on"] = new CmdSetCollision(37, ObjectRef.Networkable(1819), CmdSetCollision.FlagCollision),
         ["script_list"] = new ScriptList(33, [(7, "nasa"), (9, "dance")]),
         ["ev_script_finished"] = new EvScriptFinished(28, 10, 7, "nasa", EvScriptFinished.ReasonFinished, "{\"ticks\":90}", 90, 1234, 56),
         ["ev_script_event"] = new EvScriptEvent(29, 10, 7, EvScriptEvent.KindData, "{\"player\":3,\"y\":301.5}"),
@@ -141,7 +143,7 @@ public class AdminProtocolTests
     [Fact]
     public void GoldenFileHasEveryFrame()
     {
-        Assert.Equal(76, Golden.Count);
+        Assert.Equal(78, Golden.Count);
         Assert.Equal(Golden.Keys.OrderBy(k => k), SampleMessages().Keys.OrderBy(k => k));
     }
 

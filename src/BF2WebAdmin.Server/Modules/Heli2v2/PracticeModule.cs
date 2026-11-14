@@ -260,12 +260,16 @@ public class PracticeModule : BaseModule,
             return;
 
         var hasCollision = command.Value != 1;
+        if (!GameServer.GameWriter.SetVehicleCollision(player.Vehicle, hasCollision))
+        {
+            GameServer.GameWriter.SendText("This server can't turn off collision");
+            return;
+        }
+
         if (hasCollision)
             _noclipVehicles.Remove(player.Vehicle);
         else
             _noclipVehicles.Add(player.Vehicle);
-
-        GameServer.GameWriter.SetVehicleCollision(player.Vehicle, hasCollision);
     }
 
     public void Handle(StalkCommand command)

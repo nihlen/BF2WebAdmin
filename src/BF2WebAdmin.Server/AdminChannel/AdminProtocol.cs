@@ -78,6 +78,7 @@ public enum AdminMessageType : ushort
     CmdScriptMessage = 0x131A,
     CmdListScripts = 0x131B,
     CmdSeatPreference = 0x131C,
+    CmdSetCollision = 0x131D,
 
     Ok = 0x1401,
     ConsoleResult = 0x1402,
@@ -239,6 +240,7 @@ public static class AdminProtocol
             AdminMessageType.CmdScriptMessage => new CmdScriptMessage(r.U32(), r.U32(), r.Str()),
             AdminMessageType.CmdListScripts => new CmdListScripts(r.U32()),
             AdminMessageType.CmdSeatPreference => new CmdSeatPreference(r.U32(), r.U8(), r.U8()),
+            AdminMessageType.CmdSetCollision => new CmdSetCollision(r.U32(), ObjectRef.Read(ref r), r.U8()),
             AdminMessageType.Ok => new OkReply(r.U32()),
             AdminMessageType.ConsoleResult => ConsoleResult.Read(ref r),
             AdminMessageType.ObjectList => ObjectList.Read(ref r),
@@ -602,6 +604,9 @@ public sealed record Welcome(
 
     /// <summary>The module takes seat preferences (<see cref="CmdSeatPreference"/>).</summary>
     public const byte CapSeats = 16;
+
+    /// <summary>The module switches an object's collision (<see cref="CmdSetCollision"/>).</summary>
+    public const byte CapCollision = 32;
 
     public override AdminMessageType Type => AdminMessageType.Welcome;
 
@@ -1333,6 +1338,23 @@ public sealed record CmdSeatPreference(uint RequestId, byte Player, byte Seat) :
     public const byte First = 0, Second = 1, None = 255;
     public override AdminMessageType Type => AdminMessageType.CmdSeatPreference;
     public override void Write(AdminWriter w) => w.U32(RequestId).Byte(Player).Byte(Seat);
+}
+
+/// <summary>
+/// Takes an object and its parts out of collision, or puts them back (noclip). Only sent to a module with
+/// <see cref="Welcome.CapCollision"/>.
+/// </summary>
+public sealed record CmdSetCollision(uint RequestId, ObjectRef Target, byte Flags) : AdminCommand(RequestId)
+{
+    public const byte FlagCollision = 1;
+    public override AdminMessageType Type => AdminMessageType.CmdSetCollision;
+
+    public override void Write(AdminWriter w)
+    {
+        w.U32(RequestId);
+        Target.Write(w);
+        w.Byte(Flags);
+    }
 }
 
 // ---------------------------------------------------------------- replies and keepalive

@@ -77,6 +77,7 @@ public class Heli2v2PracticeTests
         var (server, practice, heli) = Setup();
         var (_, vehicles, players) = Data.Setup2v2Players();
         server.GetPlayerByName("CH Pilot").Returns(players[0]);
+        server.GameWriter.SetVehicleCollision(Arg.Any<Vehicle>(), Arg.Any<bool>()).Returns(true);
         practice.Handle(new NoclipCommand { Name = "CH Pilot", Value = 1 });
         server.GameWriter.Received(1).SetVehicleCollision(vehicles[0], false);
 
@@ -101,6 +102,7 @@ public class Heli2v2PracticeTests
         var (server, practice, _) = Setup();
         var (_, vehicles, players) = Data.Setup2v2Players();
         server.GetPlayerByName("US Pilot").Returns(players[2]);
+        server.GameWriter.SetVehicleCollision(Arg.Any<Vehicle>(), Arg.Any<bool>()).Returns(true);
         practice.Handle(new NoclipCommand { Name = "US Pilot", Value = 1 });
 
         await practice.HandleAsync(Exit(players[3]));
@@ -109,6 +111,17 @@ public class Heli2v2PracticeTests
         vehicles[1].Players.Remove(players[2]);
         await practice.HandleAsync(new PlayerLeftEvent(players[2], DateTimeOffset.UtcNow));
         server.GameWriter.Received(1).SetVehicleCollision(vehicles[1], true);
+    }
+
+    [Fact]
+    public void Noclip_OnAServerThatCannot_SaysSo_AndRemembersNothing()
+    {
+        var (server, practice, _) = Setup();
+        var (_, vehicles, players) = Data.Setup2v2Players();
+        server.GetPlayerByName("CH Pilot").Returns(players[0]);
+
+        practice.Handle(new NoclipCommand { Name = "CH Pilot", Value = 1 });
+        server.GameWriter.Received(1).SendText("This server can't turn off collision");
     }
 
     /// <summary>What GameServer.UpdatePlayerVehicleAsync does for an exit, and its event.</summary>

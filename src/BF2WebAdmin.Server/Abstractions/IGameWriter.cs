@@ -90,10 +90,10 @@ public interface IGameWriter
     void SetVehicleDisabled(Vehicle vehicle, bool disabled);
 
     /// <summary>
-    /// Give a vehicle collision back, or take it away (noclip, which also takes no damage from flipping, water or critical
-    /// damage); <see cref="Constants.RconScript.NoclipOn"/> and <see cref="Constants.RconScript.NoclipOff"/>.
+    /// Give a vehicle and its parts collision back, or take it away (noclip). False when the server's module cannot
+    /// (no collision command), the vehicle has no networkable id, or the server is not connected (nothing is sent).
     /// </summary>
-    void SetVehicleCollision(Vehicle vehicle, bool hasCollision);
+    bool SetVehicleCollision(Vehicle vehicle, bool hasCollision);
 
     /// <summary>The world's gravity (physics.gravity, default <see cref="DefaultGravity"/>).</summary>
     void SetGravity(double gravity);

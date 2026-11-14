@@ -118,6 +118,13 @@ engine spawns them in join order and the longest-connected player is pilot. Heli
 latest one wins (a teammate with the same preference is cleared). The module keeps a preference until the player
 disconnects, across admin-link reconnects; WebAdmin's copy is only for that clearing and starts empty after a restart.
 
+### Collision
+
+`.noclip` uses `SetCollision` (capability bit 5), which takes a vehicle and its parts out of collision and puts them
+back. The console lines it used before (`object.hasCollision`, `object.armor.*`) are unknown commands on OpenBF2, which
+answers them with "Unknown object or method!" as plain console output, so noclip did nothing there; armour values exist
+only per template, so noclip no longer changes them. Collision comes back when the vehicle's last player is out.
+
 ## Setup
 
 1. **Certificate and pin.** Two sources:
@@ -245,7 +252,7 @@ Other programs read the joins through the export API ([export-api.md](export-api
 1. **The typed `SpawnObject` does not fit map mods.** Most map-mod templates have no networkable, so
    `createObjectOnAllClients` creates server-only objects. `MapModule` keeps the console `ObjectSpawner` script
    (`RconScript.AddObject`), which makes the template networkable first and needs `adminAllowConsole 1`. With
-   `adminAllowConsole 0`, map mods, noclip, freeze, gravity, TV-missile settings and `InitServer` all stop working. The
+   `adminAllowConsole 0`, map mods, freeze, gravity, TV-missile settings and `InitServer` all stop working. The
    `Welcome` capability bit is logged as a warning.
 2. **Changing a key costs up to a minute.** After a failed attempt the module backs off up to 60 s, so a key fixed
    in the edit form takes effect at the next retry.

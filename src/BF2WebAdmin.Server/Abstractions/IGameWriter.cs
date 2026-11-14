@@ -43,6 +43,13 @@ public interface IGameWriter
     /// <summary>Move the player to a team, killing it unless <paramref name="kill"/> is false.</summary>
     void SendTeam(Player player, int teamId, bool kill = true);
 
+    /// <summary>
+    /// The seat the player wants when teammates spawn into the same vehicle together: the game server spawns them in
+    /// that order, so one teammate's preference is enough. It holds until the player leaves the server. False when the
+    /// server's module takes no seat preferences or the server is not connected (nothing is sent).
+    /// </summary>
+    bool SetSeatPreference(Player player, SeatPreference preference);
+
     void SendScore(Player player, int totalScore, int teamScore, int kills, int deaths);
     void SendRank(Player player, Rank rank, bool rankEvent);
     void SendMedal(Player player, int medalNumber, int medalValue);
@@ -117,4 +124,16 @@ public interface IGameWriter
 
     /// <summary>Ping the module; the reply comes from the game thread, so it also shows the server is ticking.</summary>
     void SendHeartbeat();
+}
+
+/// <summary>A player's seat when spawning into a vehicle with teammates (<see cref="IGameWriter.SetSeatPreference"/>).</summary>
+public enum SeatPreference
+{
+    /// <summary>The first seat: a heli's pilot.</summary>
+    Pilot = CmdSeatPreference.First,
+
+    /// <summary>The second seat: a heli's gunner.</summary>
+    Gunner = CmdSeatPreference.Second,
+
+    None = CmdSeatPreference.None,
 }

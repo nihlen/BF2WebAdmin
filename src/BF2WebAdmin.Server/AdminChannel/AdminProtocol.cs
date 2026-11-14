@@ -77,6 +77,7 @@ public enum AdminMessageType : ushort
     CmdStopScript = 0x1319,
     CmdScriptMessage = 0x131A,
     CmdListScripts = 0x131B,
+    CmdSeatPreference = 0x131C,
 
     Ok = 0x1401,
     ConsoleResult = 0x1402,
@@ -237,6 +238,7 @@ public static class AdminProtocol
             AdminMessageType.CmdStopScript => new CmdStopScript(r.U32(), r.U32()),
             AdminMessageType.CmdScriptMessage => new CmdScriptMessage(r.U32(), r.U32(), r.Str()),
             AdminMessageType.CmdListScripts => new CmdListScripts(r.U32()),
+            AdminMessageType.CmdSeatPreference => new CmdSeatPreference(r.U32(), r.U8(), r.U8()),
             AdminMessageType.Ok => new OkReply(r.U32()),
             AdminMessageType.ConsoleResult => ConsoleResult.Read(ref r),
             AdminMessageType.ObjectList => ObjectList.Read(ref r),
@@ -597,6 +599,9 @@ public sealed record Welcome(
 
     /// <summary>The module runs game scripts (StartScript and the other script messages; docs/scripts.md).</summary>
     public const byte CapScripts = 8;
+
+    /// <summary>The module takes seat preferences (<see cref="CmdSeatPreference"/>).</summary>
+    public const byte CapSeats = 16;
 
     public override AdminMessageType Type => AdminMessageType.Welcome;
 
@@ -1316,6 +1321,18 @@ public sealed record CmdListScripts(uint RequestId) : AdminCommand(RequestId)
 {
     public override AdminMessageType Type => AdminMessageType.CmdListScripts;
     public override void Write(AdminWriter w) => w.U32(RequestId);
+}
+
+/// <summary>
+/// The seat a player wants when teammates spawn into the same vehicle together: the module spawns them in that order
+/// (0 the first seat, a heli's pilot; 1 the second, its gunner; <see cref="None"/> clears it). Kept by the module until
+/// the player disconnects. Only sent to a module with <see cref="Welcome.CapSeats"/>.
+/// </summary>
+public sealed record CmdSeatPreference(uint RequestId, byte Player, byte Seat) : AdminCommand(RequestId)
+{
+    public const byte First = 0, Second = 1, None = 255;
+    public override AdminMessageType Type => AdminMessageType.CmdSeatPreference;
+    public override void Write(AdminWriter w) => w.U32(RequestId).Byte(Player).Byte(Seat);
 }
 
 // ---------------------------------------------------------------- replies and keepalive

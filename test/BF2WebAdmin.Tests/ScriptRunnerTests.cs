@@ -126,6 +126,21 @@ public class ScriptRunnerTests
     }
 
     [Fact]
+    public async Task ASeatPreferenceIsSentOnlyToAModuleThatTakesThem()
+    {
+        var player = new BF2WebAdmin.Common.Entities.Game.Player { Index = 3, Name = "pilot" };
+
+        var without = await ConnectAsync();
+        Assert.False(new AdminGameWriter(without.Server, NullLogger<AdminGameWriter>.Instance).SetSeatPreference(player, SeatPreference.Pilot));
+
+        var with = await ConnectAsync(AllCapabilities | Welcome.CapSeats);
+        var writer = new AdminGameWriter(with.Server, NullLogger<AdminGameWriter>.Instance);
+        Assert.True(writer.SetSeatPreference(player, SeatPreference.Gunner));
+        var sent = await with.Module.ReadAsync<CmdSeatPreference>();
+        Assert.Equal(((byte)3, CmdSeatPreference.Second), (sent.Player, sent.Seat));
+    }
+
+    [Fact]
     public async Task AScriptIsStarted_ToldThings_AndItsOutputAndEndReachTheModules()
     {
         var link = await ConnectAsync();

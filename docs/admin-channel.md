@@ -108,6 +108,16 @@ after the next `Welcome`. `ScriptList`, the reply to `ListScripts`, goes through
 read after every `ScriptFinished` the module sent before it; WebAdmin asks for it after a resync snapshot.
 [scripts.md](scripts.md) has the rest.
 
+### Seat preferences
+
+A module with capability bit 4 takes `SeatPreference` (openbf2-server-ext `docs/admin-channel-draft.md`): when
+teammates spawn into the same vehicle together (died together, the same spawn selected), it spawns them a pass apart in
+the order of their preferences, so the one who wants the first seat (a heli's pilot) gets it. Without preferences the
+engine spawns them in join order and the longest-connected player is pilot. Heli2v2's `SeatModule` sends it for
+`.pilot`/`.fly` and `.gunner`/`.gun` (an admin can add a player's name). One teammate's preference is enough; the
+latest one wins (a teammate with the same preference is cleared). The module keeps a preference until the player
+disconnects, across admin-link reconnects; WebAdmin's copy is only for that clearing and starts empty after a restart.
+
 ## Setup
 
 1. **Certificate and pin.** Two sources:

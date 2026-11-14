@@ -55,6 +55,22 @@ public abstract class BaseModule : IModule
         GameServer.GameWriter.SendTeam(player, player.Team.Id == 1 ? 2 : 1, kill: true);
     }
 
+    /// <summary>Stops a game script this module started, if it still runs. Never throws: a failure is logged.</summary>
+    protected async Task StopScriptAsync(IScriptRun? script)
+    {
+        if (script is not { IsRunning: true })
+            return;
+
+        try
+        {
+            await script.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Stopping script {Script} on {ServerId} failed", script.Name, GameServer.Id);
+        }
+    }
+
     /// <summary>An answer with the IP addresses removed, for chat and Discord.</summary>
     public static string GetObfuscatedResponse(string text)
     {

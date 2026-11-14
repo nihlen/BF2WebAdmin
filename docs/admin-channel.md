@@ -26,6 +26,7 @@ modules ── IGameWriter (AdminGameWriter) ── typed commands / Console, in
 | `ViewerFeed.cs` | The 3D viewer: `ViewerRegistry` (which hub connections watch which server), the 30 Hz stream frames to the hub group `viewer:<serverId>` (sent from its own task, so a slow browser never holds up the link), and the last 20 traced TV missiles (`ProjectileTrace` with its `ProjectileCollision`s); every trace also goes to `MissileArchive`, ten minutes of every server's missiles for the export API |
 | `AdminGameWriter.cs` | `IGameWriter` on the current session: typed commands, `Console` lines in order with them, `ListObjects`, `SpawnObject`, `SetObjectActive`, `Subscribe` |
 | `GameServerRegistry.cs` | `IGameServerRegistry`: configured servers (DB + config), the `GameServer` per server id, key lookup |
+| `ScriptRunner.cs` | `IScriptRunner` (`GameServer.Scripts`): starts, messages and stops game scripts on the current session, and follows them to their end ([scripts.md](scripts.md)) |
 
 Modules see `IGameServer`, the `GameEvents.cs` records and `IGameWriter`. `GameServer`'s mutators are not on
 `IGameServer`; only the applier calls them. The game classes (`Player`, `Vehicle`, `Team`, `Map` in
@@ -96,6 +97,16 @@ TV launcher, the chase, front chase, nose and fly-by views computed from the veh
 values. The map and helicopter models are BF2v2's (`public/viewer/`, only `dalian_2_v_2` has a 3D map); the hitboxes
 (`public/viewer/models/heli-hitboxes.json`) are built by `tools/viewer/build_heli_hitboxes.py` from the server's
 collision meshes.
+
+### Game scripts
+
+A module with capability bit 3 in its `Welcome` runs game scripts: TypeScript from
+`src/BF2WebAdmin.Server/GameScripts`, which WebAdmin sends with `StartScript` and the module runs on every tick.
+`.nasa` and dance use them, and keep their older way for servers without the capability. A script belongs to the link
+it was started on: when the session closes, WebAdmin ends its record of it, and the modules start what they need again
+after the next `Welcome`. `ScriptList`, the reply to `ListScripts`, goes through the apply loop like an event, so it is
+read after every `ScriptFinished` the module sent before it; WebAdmin asks for it after a resync snapshot.
+[scripts.md](scripts.md) has the rest.
 
 ## Setup
 

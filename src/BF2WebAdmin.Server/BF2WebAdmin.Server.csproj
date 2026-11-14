@@ -49,6 +49,36 @@
     </ItemGroup>
   </Target>
 
+  <!-- The game scripts (GameScripts/src/*.ts, docs/scripts.md): TypeScript that WebAdmin pushes to a game server's
+       module. "npm run build" type checks them and writes GameScripts/dist/<name>.js with the types blanked out; the
+       build embeds those as resources named GameScripts/<name>.js. Needs Node (the version pinned in
+       GameScripts/package.json) when a script or its build files changed since the last build;
+       -p:SkipGameScripts=true embeds what dist already holds. -->
+  <PropertyGroup>
+    <GameScriptsRoot>$(MSBuildProjectDirectory)\GameScripts\</GameScriptsRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Not content of the web app: nothing of the npm project is published as a file -->
+    <Content Remove="GameScripts\**" />
+    <None Remove="GameScripts\**" />
+    <GameScriptInput Include="$(GameScriptsRoot)src\**\*.ts;$(GameScriptsRoot)game.d.ts;$(GameScriptsRoot)build.mjs;$(GameScriptsRoot)tsconfig.json;$(GameScriptsRoot)package.json;$(GameScriptsRoot)package-lock.json" />
+  </ItemGroup>
+
+  <Target Name="BuildGameScripts" Inputs="@(GameScriptInput)" Outputs="$(GameScriptsRoot)dist\.built" Condition="'$(SkipGameScripts)' != 'true'">
+    <Exec WorkingDirectory="$(GameScriptsRoot)" Command="npm ci" Condition="!Exists('$(GameScriptsRoot)node_modules')" />
+    <Exec WorkingDirectory="$(GameScriptsRoot)" Command="npm run build" />
+    <Touch Files="$(GameScriptsRoot)dist\.built" AlwaysCreate="true" />
+  </Target>
+
+  <Target Name="EmbedGameScripts" BeforeTargets="AssignTargetPaths" DependsOnTargets="BuildGameScripts">
+    <ItemGroup>
+      <GameScriptOutput Include="$(GameScriptsRoot)dist\*.js" />
+      <EmbeddedResource Include="@(GameScriptOutput)" LogicalName="GameScripts/%(Filename)%(Extension)" />
+    </ItemGroup>
+    <Error Condition="'@(GameScriptOutput)' == ''" Text="No game scripts in $(GameScriptsRoot)dist: build them with 'npm run build' in GameScripts (needs Node), or build without -p:SkipGameScripts=true." />
+  </Target>
+
   <!-- Fix for publish error detected package downgrade -->
   <PropertyGroup>
     <WarningsAsErrors>

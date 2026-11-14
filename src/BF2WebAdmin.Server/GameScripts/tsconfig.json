@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    /* What the module's engine (QuickJS-NG) runs as written: no down-levelling */
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": [],
+    "module": "esnext",
+    /* Every script is its own program on the game server: one script's top-level names are not another's */
+    "moduleDetection": "force",
+    "noEmit": true,
+    "skipLibCheck": true,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    /* Only syntax that goes away when the types are removed, so build.mjs keeps every line and column */
+    "erasableSyntaxOnly": true
+  },
+  "include": ["game.d.ts", "src"]
+}

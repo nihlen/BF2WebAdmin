@@ -54,6 +54,12 @@ public class AdminStateApplier : IAdminSessionHandler
                 break;
             case Snapshot snapshot:
                 await ApplySnapshotAsync(snapshot, time);
+                // A snapshot WebAdmin asked for follows lost events, and a script's end may be among them
+                if (snapshot.RequestId != 0 && session != null)
+                    _server.ScriptRunner.RequestList(session);
+                break;
+            case ScriptList list:
+                await _server.ScriptRunner.OnListAsync(session, list, time);
                 break;
             case PlayerStream stream:
                 _server.Viewer.OnPlayers(stream);
@@ -85,6 +91,7 @@ public class AdminStateApplier : IAdminSessionHandler
     public async ValueTask OnClosedAsync(AdminSession session)
     {
         _server.DetachSession(session);
+        await _server.ScriptRunner.OnSessionClosedAsync(session, DateTimeOffset.UtcNow);
         if (_server.Session == null)
             await _server.UpdateSocketStateAsync(SocketState.Disconnected, DateTimeOffset.UtcNow);
     }
@@ -101,6 +108,8 @@ public class AdminStateApplier : IAdminSessionHandler
             _logger.LogWarning("Admin channel {ServerId}: the server withholds IPs and CD-key hashes (adminSendIdentity 0); players get no key", _server.Id);
         if ((welcome.Capabilities & Welcome.CapConsole) == 0)
             _logger.LogWarning("Admin channel {ServerId}: raw console disabled (adminAllowConsole 0); module scripts will be refused", _server.Id);
+        if ((welcome.Capabilities & Welcome.CapScripts) == 0)
+            _logger.LogInformation("Admin channel {ServerId}: the module runs no game scripts; .nasa and dance use WebAdmin's own slower way", _server.Id);
 
         _server.ResetStartTime();
         await _server.UpdateSocketStateAsync(SocketState.Connected, time);
@@ -593,6 +602,14 @@ public class AdminStateApplier : IAdminSessionHandler
 
             case EvProjectileTrace ev:
                 _server.Viewer.OnTrace(ev, time);
+                break;
+
+            case EvScriptFinished ev:
+                await _server.ScriptRunner.OnFinishedAsync(ev, time);
+                break;
+
+            case EvScriptEvent ev:
+                await _server.ScriptRunner.OnEventAsync(ev, time);
                 break;
 
             case EvDamage or EvProjectileFired or EvProjectileHit:

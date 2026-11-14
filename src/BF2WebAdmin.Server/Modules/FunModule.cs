@@ -1,6 +1,7 @@
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
+using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Commands.BF2;
 
@@ -8,7 +9,8 @@ namespace BF2WebAdmin.Server.Modules;
 
 /// <summary>
 /// What admins do to players: dance, freeze, blur (ended by .stop), flip, repair, teleport, rank and score. Loaded on
-/// every server with <see cref="BF2Module"/>.
+/// every server with <see cref="BF2Module"/>. The dance is the game script "dance" where the server runs scripts (a
+/// smooth turn, every tick), and else a random rotation sent every 25 ms.
 /// </summary>
 [LoadedWith(typeof(BF2Module))]
 public class FunModule : BaseModule,
@@ -27,6 +29,8 @@ public class FunModule : BaseModule,
     IHandleCommandAsync<FreezeAllCommand>,
     IHandleCommandAsync<BlurCommand>
 {
+    public const string DanceScript = "dance";
+
     private const int DefaultDelay = 25; // 1000/35 fps ~ 28.5
     private static readonly TimeSpan FreezeDuration = TimeSpan.FromHours(1);
 
@@ -151,8 +155,11 @@ public class FunModule : BaseModule,
     private async Task DanceAsync(long duration, params Player[] players)
     {
         var snapshots = players.Select(PlayerSnapshot.Save).ToList();
-        var startTime = DateTime.UtcNow;
         var stop = StopToken;
+        if (GameServer.Scripts.Available && await DanceScriptAsync(duration, snapshots, stop))
+            return;
+
+        var startTime = DateTime.UtcNow;
         while (IsActive(duration, startTime, stop))
         {
             foreach (var playerSnapshot in snapshots)
@@ -167,6 +174,37 @@ public class FunModule : BaseModule,
         {
             GameServer.GameWriter.SendTeleport(playerSnapshot.Player, playerSnapshot.Position, new Rotation(playerSnapshot.Rotation.Yaw, 0, 0));
         }
+    }
+
+    /// <summary>
+    /// The dance as a game script on the server, until it finishes, .stop or a module reload. False when the script could
+    /// not be started (the caller dances the old way).
+    /// </summary>
+    private async Task<bool> DanceScriptAsync(long duration, List<PlayerSnapshot> snapshots, CancellationToken stop)
+    {
+        IScriptRun script;
+        try
+        {
+            var ids = snapshots.Select(s => s.Player.Index).Where(i => i is >= 0 and <= 255).ToArray();
+            script = await GameServer.Scripts.StartAsync(DanceScript, new { players = ids, seconds = duration / 1000.0 });
+        }
+        catch (AdminCommandException ex)
+        {
+            Logger.LogWarning("Dance script on {ServerId}: {Error}; dancing without it", GameServer.Id, ex.Message);
+            return false;
+        }
+
+        using var stopping = stop.Register(() => _ = StopScriptAsync(script));
+        var result = await script.Finished;
+        if (result.Failed)
+        {
+            // A failed script puts nobody back
+            GameServer.GameWriter.SendText("Dance script failed");
+            foreach (var snapshot in snapshots.Where(s => s.Position != null))
+                GameServer.GameWriter.SendTeleport(snapshot.Player, snapshot.Position, new Rotation(snapshot.Rotation?.Yaw ?? 0, 0, 0));
+        }
+
+        return true;
     }
 
     public async ValueTask HandleAsync(FreezeCommand command)

@@ -357,7 +357,9 @@ public sealed class AdminSession
                     _inbound.Writer.TryWrite(null);
                 break;
 
-            case Welcome or Snapshot or AdminEvent:
+            case Welcome or Snapshot or AdminEvent or ScriptList:
+                // ScriptList goes through the apply loop, not to a waiting request: it must be read after every script
+                // event the module sent before it
                 if (message is Welcome welcome)
                 {
                     SessionNumber = welcome.Session;

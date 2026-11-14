@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Abstractions;
+using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Commands;
 using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Constants;
@@ -12,6 +13,8 @@ namespace BF2WebAdmin.Server.Modules.Heli2v2;
 /// Heli2v2's practice and admin tools, apart from the matches: back to the pad (.pad, .autopad), an altitude limit
 /// (.nasa), no collisions (.noclip), following a player (.stalk), the heli MG (.helimg) and removing fences (.nofences).
 /// Loaded with <see cref="Heli2v2Module"/>; the commands that are about 2v2 rounds work while its 2v2 mode is on.
+/// The altitude limit is the game script "nasa" where the server runs scripts (a soft ceiling, checked every tick), and
+/// else a teleport back to the limit when a position update shows a player above it.
 /// </summary>
 [LoadedWith(typeof(Heli2v2Module))]
 public class PracticeModule : BaseModule,
@@ -19,6 +22,8 @@ public class PracticeModule : BaseModule,
     IHandleEventAsync<PlayerPositionEvent>,
     IHandleEventAsync<PlayerVehicleEvent>,
     IHandleEventAsync<RoundEndEvent>,
+    IHandleEventAsync<SocketStateChangedEvent>,
+    IHandleEventAsync<ScriptFinishedEvent>,
     IHandleCommand<HeliMgCommand>,
     IHandleCommand<NoclipCommand>,
     IHandleCommand<StalkCommand>,
@@ -32,9 +37,16 @@ public class PracticeModule : BaseModule,
     private readonly IDelayProvider _delayProvider;
     private readonly ITaskRunner _taskRunner;
 
+    public const string NasaScript = "nasa";
+
     private int _antiNasaAltitude;
     private bool _antiNasaActive;
     private string? _mapName;
+    // The altitude limit as a game script, while one runs; without it the position updates enforce the limit
+    private IScriptRun? _nasaScript;
+    private int _nasaScriptAltitude;
+    private bool _nasaScriptStarting;
+    private bool _nasaScriptFailed;
 
     private Player? _stalker;
     private Player? _stalked;
@@ -47,6 +59,9 @@ public class PracticeModule : BaseModule,
     {
         _delayProvider = delayProvider;
         _taskRunner = taskRunner;
+
+        // A module reload: the script is this module's, and the new module starts without a limit
+        ModuleCancellationToken.Register(() => _ = StopScriptAsync(_nasaScript));
     }
 
     private bool Is2v2Active => GameServer.ModManager?.GetModule<Heli2v2Module>()?.RoundsActive ?? false;
@@ -64,7 +79,89 @@ public class PracticeModule : BaseModule,
         }
 
         _mapName = e.Map.Name;
+
+        // A level unload ends the script; on the same map the limit stays, so the script starts again
+        SyncNasaScript();
         return ValueTask.CompletedTask;
+    }
+
+    public ValueTask HandleAsync(SocketStateChangedEvent e)
+    {
+        // Scripts do not outlive their link: after a reconnect it starts again
+        if (e.SocketState == Communication.SocketState.Connected)
+            SyncNasaScript();
+
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask HandleAsync(ScriptFinishedEvent e)
+    {
+        if (e.Script != _nasaScript)
+            return ValueTask.CompletedTask;
+
+        _nasaScript = null;
+        if (e.Result.Failed && _antiNasaActive)
+        {
+            // Not started again until .nasa is used again; the position updates enforce the limit meanwhile
+            _nasaScriptFailed = true;
+            GameServer.GameWriter.SendText("Anti NASA script failed, using the slower altitude limit");
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>Starts, updates or stops the script off the event handler, which the admin channel waits for.</summary>
+    private void SyncNasaScript() =>
+        _taskRunner.RunBackgroundTask("Anti NASA script", ApplyNasaScriptAsync, ModuleCancellationToken);
+
+    /// <summary>Makes the script match the limit: running with the current altitude, or stopped. Does nothing on a server without scripts.</summary>
+    private async Task ApplyNasaScriptAsync()
+    {
+        if (!_antiNasaActive)
+        {
+            var stopped = _nasaScript;
+            _nasaScript = null;
+            await StopScriptAsync(stopped);
+            return;
+        }
+
+        if (_nasaScriptStarting || _nasaScriptFailed || !GameServer.Scripts.Available)
+            return;
+
+        var altitude = _antiNasaAltitude;
+        try
+        {
+            if (_nasaScript is { IsRunning: true } running)
+            {
+                if (_nasaScriptAltitude != altitude)
+                {
+                    _nasaScriptAltitude = altitude;
+                    await running.SendAsync(new { altitude });
+                }
+
+                return;
+            }
+
+            _nasaScriptStarting = true;
+            try
+            {
+                _nasaScript = await GameServer.Scripts.StartAsync(NasaScript, new { altitude });
+                _nasaScriptAltitude = altitude;
+            }
+            finally
+            {
+                _nasaScriptStarting = false;
+            }
+        }
+        catch (AdminCommandException ex)
+        {
+            Logger.LogWarning("Anti NASA script on {ServerId}: {Error}; using the position updates", GameServer.Id, ex.Message);
+            return;
+        }
+
+        // .nasa was used again while the script started
+        if (!_antiNasaActive || _antiNasaAltitude != altitude)
+            await ApplyNasaScriptAsync();
     }
 
     public ValueTask HandleAsync(PlayerPositionEvent e)
@@ -78,7 +175,7 @@ public class PracticeModule : BaseModule,
             }
         }
 
-        if (_antiNasaActive)
+        if (_antiNasaActive && _nasaScript is not { IsRunning: true })
         {
             if (e.Position.Height >= _antiNasaAltitude)
             {
@@ -252,20 +349,21 @@ public class PracticeModule : BaseModule,
         throw new NotImplementedException();
     }
 
-    public ValueTask HandleAsync(NasaCommand command)
+    public async ValueTask HandleAsync(NasaCommand command)
     {
+        _nasaScriptFailed = false;
         if (command.Value == 0)
         {
             _antiNasaActive = false;
             GameServer.GameWriter.SendText("Anti NASA inactive");
-            return ValueTask.CompletedTask;
+            await ApplyNasaScriptAsync();
+            return;
         }
 
         _antiNasaAltitude = command.Value + MatchStatistics.AltitudeOffset;
         _antiNasaActive = true;
         GameServer.GameWriter.SendText($"Anti NASA active ({_antiNasaAltitude - MatchStatistics.AltitudeOffset} m)");
-
-        return ValueTask.CompletedTask;
+        await ApplyNasaScriptAsync();
     }
 
     public async ValueTask HandleAsync(NoFencesCommand command)

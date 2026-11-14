@@ -13,6 +13,8 @@ namespace BF2WebAdmin.Tests;
 /// (openbf2-server-ext tests/fixtures/admin-v1-golden.txt at cbf435c, written by
 /// tools/adminclient/adminclient.py golden_samples). Every frame is encoded from the same sample
 /// values and compared byte for byte, then decoded and re-encoded.
+/// The file here holds the messages WebAdmin has: the module's votes and R7 commands are not among them, and the
+/// seven script frames (cmd_start_script to ev_script_event) were added on 2026-11-14 from the contract's layouts.
 /// </summary>
 public class AdminProtocolTests
 {
@@ -125,12 +127,19 @@ public class AdminProtocolTests
         ["cmd_ping"] = new Ping(24, 99),
         ["cmd_subscribe_fire"] = new Subscribe(25, AdminStream.WeaponFire, 0, ["ahe_z10_FlareLauncher"]),
         ["cmd_subscribe_replay"] = new Subscribe(26, AdminStream.Replay, 0, ["agm114_hellfire_tv"]),
+        ["cmd_start_script"] = new CmdStartScript(30, 7, CmdStartScript.Api, 0, "nasa", "{\"altitude\":300}", "script.onTick(() => {});"),
+        ["cmd_stop_script"] = new CmdStopScript(31, 7),
+        ["cmd_script_message"] = new CmdScriptMessage(32, 7, "{\"altitude\":250}"),
+        ["cmd_list_scripts"] = new CmdListScripts(33),
+        ["script_list"] = new ScriptList(33, [(7, "nasa"), (9, "dance")]),
+        ["ev_script_finished"] = new EvScriptFinished(28, 10, 7, "nasa", EvScriptFinished.ReasonFinished, "{\"ticks\":90}", 90, 1234, 56),
+        ["ev_script_event"] = new EvScriptEvent(29, 10, 7, EvScriptEvent.KindData, "{\"player\":3,\"y\":301.5}"),
     };
 
     [Fact]
     public void GoldenFileHasEveryFrame()
     {
-        Assert.Equal(67, Golden.Count);
+        Assert.Equal(74, Golden.Count);
         Assert.Equal(Golden.Keys.OrderBy(k => k), SampleMessages().Keys.OrderBy(k => k));
     }
 
@@ -181,6 +190,17 @@ public class AdminProtocolTests
         Assert.Equal([((byte)254, 2)], kill.Assists);
 
         Assert.Equal(["a", "", "§"], ((ConsoleResult)Decode("console_result")).Lines);
+
+        var start = (CmdStartScript)Decode("cmd_start_script");
+        Assert.Equal((7u, (byte)1, (byte)0, "nasa", "{\"altitude\":300}", "script.onTick(() => {});"),
+            (start.Instance, start.ApiVersion, start.Flags, start.Name, start.Arguments, start.Source));
+        Assert.Equal([(7u, "nasa"), (9u, "dance")], ((ScriptList)Decode("script_list")).Scripts);
+        var finished = (EvScriptFinished)Decode("ev_script_finished");
+        Assert.Equal((28u, 10u, 7u, "nasa", EvScriptFinished.ReasonFinished, "{\"ticks\":90}", 90u, 1234u, 56u),
+            (finished.Seq, finished.Tick, finished.Instance, finished.Name, finished.Reason, finished.Result, finished.Calls,
+                finished.CpuMicroseconds, finished.MaxCallMicroseconds));
+        var emitted = (EvScriptEvent)Decode("ev_script_event");
+        Assert.Equal((7u, EvScriptEvent.KindData, "{\"player\":3,\"y\":301.5}"), (emitted.Instance, emitted.Kind, emitted.Payload));
         Assert.Equal((short)-1, ((EvChat)Decode("ev_chat")).Sender);
     }
 

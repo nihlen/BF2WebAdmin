@@ -28,6 +28,10 @@ public class GameServer : IGameServer
     private readonly CancellationToken _cancellationToken;
     public ServerInfo ServerInfo { get; private set; }
     public IGameWriter GameWriter => _gameWriter;
+    public IScriptRunner Scripts => ScriptRunner;
+
+    /// <summary>The game scripts that run on this server (docs/scripts.md).</summary>
+    public ScriptRunner ScriptRunner { get; }
     public IModManager? ModManager { get; private set; }
 
     public string Id => ServerInfo.ServerId;
@@ -82,6 +86,7 @@ public class GameServer : IGameServer
         _cancellationToken = _lifetime.Token;
         _gameWriter = new AdminGameWriter(this, _globalServices.GetRequiredService<ILogger<AdminGameWriter>>(),
             _globalServices.GetService<IConfiguration>()?["ServerSettings:ChatPrefix"] ?? AdminGameWriter.DefaultChatPrefix);
+        ScriptRunner = new ScriptRunner(this, _globalServices.GetRequiredService<ILogger<ScriptRunner>>());
         Applier = new AdminStateApplier(this, _globalServices.GetRequiredService<ILogger<AdminStateApplier>>(), _globalServices.GetService<IJoinHistoryWriter>(),
             _globalServices.GetService<ICountryResolver>());
 
@@ -200,6 +205,9 @@ public class GameServer : IGameServer
     {
         return ModManager?.Mediator?.PublishAsync(e) ?? ValueTask.CompletedTask;
     }
+
+    /// <summary>Hands an event to the modules, on their thread (for <see cref="ScriptRunner"/>'s script events).</summary>
+    public ValueTask PublishAsync(IEvent e) => PublishEventAsync(e);
 
     public ValueTask UpdateGameStateAsync(GameState state, DateTimeOffset time)
     {

@@ -18,14 +18,17 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # The publish builds the web UI (npm ci and npm run build in src/BF2WebAdmin.Web) into wwwroot. setup-node reads
-      # the Node version from the volta pin in its package.json
+      # The publish builds the web UI (npm ci and npm run build in src/BF2WebAdmin.Web) into wwwroot, and every build
+      # of the server builds the game scripts (src/BF2WebAdmin.Server/GameScripts, the same Node version). setup-node
+      # reads the Node version from the volta pin in the web UI's package.json
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
           node-version-file: src/BF2WebAdmin.Web/package.json
           cache: npm
-          cache-dependency-path: src/BF2WebAdmin.Web/package-lock.json
+          cache-dependency-path: |
+            src/BF2WebAdmin.Web/package-lock.json
+            src/BF2WebAdmin.Server/GameScripts/package-lock.json
 
       # The unit tests
       - name: Run tests

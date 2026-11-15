@@ -83,7 +83,7 @@ public class ServerInfo
     /// <summary>The admin channel key (hex), as serverext.cfg's adminKey.</summary>
     public string? AdminKey { get; set; }
 
-    /// <summary>Players without a CD-key hash are keyed by name (decision B6).</summary>
+    /// <summary>Players without a CD-key hash are keyed by name.</summary>
     public bool IsTestServer { get; set; }
 
     public string IpAddress { get; set; }

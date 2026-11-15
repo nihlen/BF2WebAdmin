@@ -24,7 +24,7 @@ public class Server
     /// <summary>The admin channel key shared with the server's serverext.cfg (adminKey), 32-128 hex digits. No key: the server cannot connect.</summary>
     public string AdminKey { get; set; }
 
-    /// <summary>A test server accepts players without a CD-key hash, keyed by name instead (decision B6).</summary>
+    /// <summary>A test server accepts players without a CD-key hash, keyed by name instead.</summary>
     public bool IsTestServer { get; set; }
 }
 

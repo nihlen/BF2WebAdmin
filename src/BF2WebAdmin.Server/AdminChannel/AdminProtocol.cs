@@ -5,7 +5,7 @@ using System.Text;
 namespace BF2WebAdmin.Server.AdminChannel;
 
 // The OpenBF2 serverext admin channel, protocol version 1. The byte layouts are the approved
-// "Wire format (admin protocol version 1)" in openbf2-server-ext docs/admin-channel-draft.md.
+// "Wire format" in openbf2-server-ext docs/admin-channel.md.
 // Frame: u32 payload length, u16 type, u16 reserved (0), payload. Little-endian. Strings are
 // u16 byte length plus UTF-8. The module dials WebAdmin; WebAdmin is the listener.
 

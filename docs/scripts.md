@@ -7,7 +7,7 @@ stays in the C# modules.
 
 A script changes without restarting the game server: WebAdmin sends the source every time it starts one.
 
-The wire messages, the limits and the host API are defined in openbf2-server-ext `docs/admin-channel-draft.md`,
+The wire messages, the limits and the host API are defined in [openbf2-server-ext](https://github.com/nihlen/openbf2-server-ext) `docs/admin-channel.md`,
 section "Scripts". This document covers WebAdmin's side.
 
 ## How it fits together
@@ -195,8 +195,7 @@ npm test          # builds, then runs test/*.test.mjs with node:test
 ## What was tested on a game server
 
 On 2026-11-14, with this WebAdmin (`f2ca979`) and the module of openbf2-server-ext `a0ba53b` on a WSL test server with
-a bot helicopter hovering at 213.9 m (the setup and all numbers are in openbf2-server-ext `docs/findings/scripts.md`,
-"End to end with BF2WebAdmin"):
+a bot helicopter hovering at 213.9 m:
 
 | Command | What happened |
 |---|---|

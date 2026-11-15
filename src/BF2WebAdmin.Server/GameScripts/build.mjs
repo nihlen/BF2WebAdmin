@@ -10,7 +10,7 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 const src = join(root, 'src');
 const dist = join(root, 'dist');
 
-// StartScript's limit for the source (openbf2-server-ext docs/admin-channel-draft.md)
+// StartScript's limit for the source (openbf2-server-ext docs/admin-channel.md)
 const maxBytes = 60000;
 
 // What the module's engine does not have. A script that names one of these would only fail on the game server.

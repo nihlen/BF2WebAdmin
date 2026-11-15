@@ -263,3 +263,6 @@ Logs/
 # Examples
 !examples/*/appsecrets.*
 examples/docker-compose/bf2
+
+# Local agent instructions
+CLAUDE.local.md

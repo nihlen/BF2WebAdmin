@@ -1,5 +1,5 @@
 // The host API a game script sees on the game server, version 1: the two global objects `script` and `game`.
-// The definition is the "Scripts" section of openbf2-server-ext docs/admin-channel-draft.md; docs/scripts.md explains it.
+// The definition is the "Scripts" section of openbf2-server-ext docs/admin-channel.md; docs/scripts.md explains it.
 //
 // A script is one file of strict global code. The engine has the base objects, JSON, Map/Set, typed arrays and
 // promises. It has no Date, no regular expressions, no eval or Function constructor, no Proxy, no timers, no console

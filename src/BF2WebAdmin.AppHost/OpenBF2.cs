@@ -14,7 +14,7 @@ namespace BF2WebAdmin.AppHost;
 /// </summary>
 public static class OpenBF2
 {
-    // Must not be 16567 (reserved for the author's sessions) or the localtest's ports (openbf2-server-ext docs/system.md)
+    // Must not be 16567 (reserved for the author's sessions) or the localtest's ports
     private const int DefaultGamePort = 16575;
     private const int DefaultQueryPort = 29907;
     private const int DefaultBotPort = 16708;

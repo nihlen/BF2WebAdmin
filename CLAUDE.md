@@ -7,20 +7,20 @@ such as Heli2v2. [README.md](README.md) describes the product.
 
 - `admin-channel` (checked out here): the game-server backend is the native admin channel of the OpenBF2 module
   `libserverext.so` (openbf2-server-ext), not `mm_webadmin.py`. **Production runs it since 2026-11-08** (release 0.1.0;
-  the migration runbook and scripts are in the author's private vps-setup repo, `C:\Data\Projects\VPS\openbf2-migration`).
+  the migration runbook and scripts are in the author's private vps-setup repo).
   It is **not merged into `master`** and stays a separate branch for now. The backend is described in [docs/admin-channel.md](docs/admin-channel.md). The wire contract is
-  openbf2-server-ext `docs/admin-channel-draft.md`; code follows it.
+  [openbf2-server-ext](https://github.com/nihlen/openbf2-server-ext) `docs/admin-channel.md`; code follows it.
 - `master`: the `mm_webadmin.py` text-socket version (port 4300, release 0.0.2), which production ran until 2026-11-08
   and is the rollback.
   `src/BF2WebAdmin.Server/README.md` on that branch documents that old protocol.
 
 ## The whole system
 
-`C:\Data\Projects\openbf2-server-ext\docs\system.md` explains how WebAdmin fits with the module, the OpenBF2 engine,
-the bf2-bots sidecar and the BF2WebAdmin localtest (`C:\Data\Projects\DotNet\BF2WebAdmin-localtest`). It covers how
-to publish this repo into the localtest (`setup.ps1 -OpenBF2`), how to test on a separate instance with its own
-database (`test-instance.ps1`, database `bf2test`), the ports, the logs and the working rules. Read it before you
-deploy or test against a game server.
+WebAdmin works with the module (openbf2-server-ext), the OpenBF2 engine it loads into, a bot sidecar and the
+localtest, the author's local Docker setup of a game server with this WebAdmin, where the end-to-end tests run. The
+guide to all of it (how to publish this repo into the localtest with `setup.ps1 -OpenBF2`, how to test on a separate
+instance with its own database, the ports, the logs and the working rules) is on the author's machine;
+`CLAUDE.local.md`, which is not in git, says where. Read it before you deploy or test against a game server.
 
 ## Layout
 
@@ -82,7 +82,7 @@ Configuration section `OpenBF2` in the AppHost (`Image`, `GamePort`, `QueryPort`
 `ServerGroup`, `ServerName`, `CertificatePath`). Do not save that server in the edit form: a database row wins over the
 configured entry and keeps a key from an earlier run.
 
-End-to-end tests run in the localtest; see `system.md`. `setup.ps1` publishes this working tree, so uncommitted changes
+End-to-end tests run in the localtest; see the system guide named in `CLAUDE.local.md`. `setup.ps1` publishes this working tree, so uncommitted changes
 are included; it records the commit and the changed paths in its `app\source.txt`.
 
 ## Rules

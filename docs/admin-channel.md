@@ -3,8 +3,9 @@
 BF2WebAdmin's game-server backend is the native admin channel of the OpenBF2 engine module `libserverext.so`
 (openbf2-server-ext): the game server dials WebAdmin over TLS 1.3, so it needs no open port of its own.
 
-The wire format is admin protocol version 1, "Wire format (admin protocol version 1)" in openbf2-server-ext
-`docs/admin-channel-draft.md`, with decisions B1-B6. This document covers the C# side.
+The wire format is admin protocol version 1, defined in
+[openbf2-server-ext](https://github.com/nihlen/openbf2-server-ext) `docs/admin-channel.md`. This document covers the
+C# side.
 
 ## Design
 
@@ -55,7 +56,7 @@ repositories, retry policies and Discord webhooks are shared. A module reload di
 - `Server.AdminKey` holds the key as hex (32-128 digits, 16-64 bytes), the same text as `adminKey` in
   `serverext.cfg`. No key, or a malformed one: the server cannot connect. Changing it in the edit form closes the
   current link; the module redials and must match the new key.
-- `Server.IsTestServer` (decision B6): players are keyed (`Player.Hash`) by the CD-key hash when the module sends one.
+- `Server.IsTestServer`: players are keyed (`Player.Hash`) by the CD-key hash when the module sends one.
   Without a hash (every player on a LAN server, bots, `adminSendIdentity 0`) a test server keys them by name as
   `name:<name>`, which cannot collide with a 32-digit hash. On other servers such a player has an empty key: no auth
   level, and it is logged. A player without a CD-key hash is banned by address.
@@ -110,7 +111,7 @@ read after every `ScriptFinished` the module sent before it; WebAdmin asks for i
 
 ### Seat preferences
 
-A module with capability bit 4 takes `SeatPreference` (openbf2-server-ext `docs/admin-channel-draft.md`): when
+A module with capability bit 4 takes `SeatPreference` (openbf2-server-ext `docs/admin-channel.md`, "Seat preferences"): when
 teammates spawn into the same vehicle together (died together, the same spawn selected), it spawns them a pass apart in
 the order of their preferences, so the one who wants the first seat (a heli's pilot) gets it. Without preferences the
 engine spawns them in join order and the longest-connected player is pilot. Heli2v2's `SeatModule` sends it for

@@ -959,6 +959,46 @@
         }
       }
     },
+    "/api/servers/{serverId}/health/connections": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minutes",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ServerConnectionsDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/servers/{serverId}/missiles": {
       "get": {
         "tags": [
@@ -2645,6 +2685,117 @@
           }
         }
       },
+      "PlayerConnectionDto": {
+        "required": [
+          "playerId",
+          "name",
+          "status",
+          "reasons",
+          "partial",
+          "readings",
+          "ping",
+          "pingMin",
+          "pingMax",
+          "packetsToPlayer",
+          "packetsFromPlayer",
+          "bytesToPlayer",
+          "bytesFromPlayer",
+          "lostToPlayer",
+          "lostToPlayerPeak",
+          "lostFromPlayer",
+          "lostFromPlayerPeak",
+          "lossToPlayerPercent",
+          "lossFromPlayerPercent"
+        ],
+        "type": "object",
+        "properties": {
+          "playerId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlayerConnectionStatus"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "readings": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ping": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pingMin": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pingMax": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "packetsToPlayer": {
+            "type": "number",
+            "format": "float"
+          },
+          "packetsFromPlayer": {
+            "type": "number",
+            "format": "float"
+          },
+          "bytesToPlayer": {
+            "type": "number",
+            "format": "float"
+          },
+          "bytesFromPlayer": {
+            "type": "number",
+            "format": "float"
+          },
+          "lostToPlayer": {
+            "type": "number",
+            "format": "float"
+          },
+          "lostToPlayerPeak": {
+            "type": "number",
+            "format": "float"
+          },
+          "lostFromPlayer": {
+            "type": "number",
+            "format": "float"
+          },
+          "lostFromPlayerPeak": {
+            "type": "number",
+            "format": "float"
+          },
+          "lossToPlayerPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "lossFromPlayerPercent": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "PlayerConnectionStatus": {
+        "enum": [
+          "Good",
+          "Warn",
+          "Bad"
+        ]
+      },
       "PlayerDto": {
         "type": "object",
         "properties": {
@@ -2740,6 +2891,30 @@
           }
         }
       },
+      "ServerConnectionsDto": {
+        "required": [
+          "time",
+          "tick",
+          "players"
+        ],
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "tick": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "players": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlayerConnectionDto"
+            }
+          }
+        }
+      },
       "ServerDataDto": {
         "type": "object",
         "properties": {
@@ -2831,7 +3006,8 @@
       "ServerHealthDto": {
         "required": [
           "latest",
-          "history"
+          "history",
+          "connections"
         ],
         "type": "object",
         "properties": {
@@ -2850,6 +3026,16 @@
             "items": {
               "$ref": "#/components/schemas/ServerHealthWindowDto"
             }
+          },
+          "connections": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ServerConnectionsDto"
+              }
+            ]
           }
         }
       },

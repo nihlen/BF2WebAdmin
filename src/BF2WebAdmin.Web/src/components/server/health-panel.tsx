@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import type { ServerHealthStatus, ServerHealthWindow } from '@/api/client'
+import type { PlayerConnection, ServerConnections, ServerHealthStatus, ServerHealthWindow } from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { healthQuery } from '@/hooks/use-server-live'
 import { cn } from '@/lib/utils'
 
@@ -48,6 +49,19 @@ function reasonText(reason: string, w: ServerHealthWindow) {
 
 const reasonsText = (w: ServerHealthWindow) => w.reasons.map((r) => reasonText(r, w)).join(', ')
 
+/** A reason of a Warn or Bad connection (PlayerConnectionRules on the server) in words; the row has the figures. */
+const connectionReasons: Record<string, string> = {
+  lossToPlayer: 'loss to the player',
+  lossFromPlayer: 'loss from the player',
+  pingSpread: 'unsteady ping',
+  lowSendRate: 'sends at the low rate',
+}
+
+const connectionRank: Record<PlayerConnection['status'], number> = { Bad: 0, Warn: 1, Good: 2 }
+
+// The connections come right after their window; older ones are of a module that stopped sending them
+const connectionsMaxAgeMs = 15_000
+
 /**
  * How the server process runs, from the ServerHealth windows its module sends every 10 s: the latest window's status
  * and figures, and the last hour. WebAdmin rates the windows; this only shows the rating. A server whose module sends
@@ -62,6 +76,9 @@ export function HealthPanel({ serverId, connected }: { serverId: string; connect
 
   // A window of a server that has gone offline is not its state now
   const status = connected && latest ? latest.status : null
+  const connections = health.data?.connections ?? null
+  const showConnections =
+    connected && latest && connections && Date.parse(latest.time) - Date.parse(connections.time) < connectionsMaxAgeMs
 
   return (
     <Card>
@@ -114,6 +131,8 @@ export function HealthPanel({ serverId, connected }: { serverId: string; connect
             <Figure label="Resident memory">{Math.round(latest.residentKib / 1024)} MiB</Figure>
           </dl>
 
+          {showConnections && <Connections connections={connections} />}
+
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span className="font-medium">Last hour</span>
@@ -156,6 +175,106 @@ export function HealthPanel({ serverId, connected }: { serverId: string; connect
         </CardContent>
       )}
     </Card>
+  )
+}
+
+/**
+ * The players' connections over the latest window, the worst first: ping, the packets a second in both directions
+ * and what was lost of them. Bots have no connection and no row.
+ */
+function Connections({ connections }: { connections: ServerConnections }) {
+  const players = useMemo(
+    () =>
+      [...connections.players].sort(
+        (a, b) => connectionRank[a.status] - connectionRank[b.status] || (a.name ?? '').localeCompare(b.name ?? '') || a.playerId - b.playerId,
+      ),
+    [connections],
+  )
+
+  return (
+    <div className="space-y-2">
+      <div className="font-medium">Connections</div>
+      <div className="rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right" title="The last ping, and the lowest and highest of the window">
+                Ping
+              </TableHead>
+              <TableHead className="hidden text-right md:table-cell" title="Packets a second sent to the player / received from the player">
+                Packets/s to / from
+              </TableHead>
+              <TableHead className="text-right" title="Packets lost on the way to the player / from the player, of the packets of that direction">
+                Loss to / from
+              </TableHead>
+              <TableHead className="hidden text-right md:table-cell" title="Kilobytes a second sent to the player / received from the player">
+                kB/s to / from
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {players.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  No players connected
+                </TableCell>
+              </TableRow>
+            )}
+            {players.map((c) => (
+              <TableRow key={c.playerId}>
+                <TableCell className="max-w-48">
+                  <div className="flex items-center gap-2">
+                    <span className={cn('truncate', c.name === null && 'text-muted-foreground')}>{c.name ?? `Player ${c.playerId} (left)`}</span>
+                    {c.partial && (
+                      <Badge variant="outline" className="shrink-0" title="The player joined during this window, so the figures are too low">
+                        partial
+                      </Badge>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <Badge variant={c.status === 'Bad' ? 'destructive' : 'secondary'}>
+                      <span className={cn('inline-block size-2 shrink-0 rounded-full', statusColors[c.status])} />
+                      {c.status}
+                    </Badge>
+                    {c.reasons.length > 0 && (
+                      <span className="text-xs whitespace-normal text-muted-foreground">
+                        {c.reasons.map((r) => connectionReasons[r] ?? r).join(', ')}
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right font-mono tabular-nums">
+                  {c.ping} ms
+                  <div className="text-xs text-muted-foreground">
+                    {c.pingMin}–{c.pingMax}
+                  </div>
+                </TableCell>
+                <TableCell className="hidden text-right font-mono tabular-nums md:table-cell">
+                  {c.packetsToPlayer.toFixed(1)} / {c.packetsFromPlayer.toFixed(1)}
+                </TableCell>
+                <TableCell className="text-right font-mono tabular-nums">
+                  {c.lossToPlayerPercent.toFixed(2)} / {c.lossFromPlayerPercent.toFixed(2)} %
+                  <div className="text-xs text-muted-foreground" title="Packets a second lost in the worse reading of the window, to / from the player">
+                    peak {c.lostToPlayerPeak.toFixed(1)} / {c.lostFromPlayerPeak.toFixed(1)} /s
+                  </div>
+                </TableCell>
+                <TableCell className="hidden text-right font-mono tabular-nums md:table-cell">
+                  {(c.bytesToPlayer / 1000).toFixed(1)} / {(c.bytesFromPlayer / 1000).toFixed(1)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        A client sends 10 or 30 packets a second and is sent 4 to 20, depending on its connection setting; loss is what did not arrive, in each
+        direction.
+      </p>
+    </div>
   )
 }
 

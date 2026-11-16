@@ -1116,6 +1116,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{serverId}/health/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    minutes?: number;
+                };
+                header?: never;
+                path: {
+                    serverId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ServerConnectionsDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{serverId}/missiles": {
         parameters: {
             query?: never;
@@ -1901,6 +1940,44 @@ export interface components {
             name: null | string;
             serverId: null | string;
         };
+        PlayerConnectionDto: {
+            /** Format: int32 */
+            playerId: number;
+            name: null | string;
+            status: components["schemas"]["PlayerConnectionStatus"];
+            reasons: string[];
+            partial: boolean;
+            /** Format: int32 */
+            readings: number;
+            /** Format: int32 */
+            ping: number;
+            /** Format: int32 */
+            pingMin: number;
+            /** Format: int32 */
+            pingMax: number;
+            /** Format: float */
+            packetsToPlayer: number;
+            /** Format: float */
+            packetsFromPlayer: number;
+            /** Format: float */
+            bytesToPlayer: number;
+            /** Format: float */
+            bytesFromPlayer: number;
+            /** Format: float */
+            lostToPlayer: number;
+            /** Format: float */
+            lostToPlayerPeak: number;
+            /** Format: float */
+            lostFromPlayer: number;
+            /** Format: float */
+            lostFromPlayerPeak: number;
+            /** Format: double */
+            lossToPlayerPercent: number;
+            /** Format: double */
+            lossFromPlayerPercent: number;
+        };
+        /** @enum {unknown} */
+        PlayerConnectionStatus: "Good" | "Warn" | "Bad";
         PlayerDto: {
             name: string;
             /** Format: int32 */
@@ -1932,6 +2009,13 @@ export interface components {
             deaths: number;
             /** Format: int32 */
             ping: number;
+        };
+        ServerConnectionsDto: {
+            /** Format: date-time */
+            time: string;
+            /** Format: uint32 */
+            tick: number;
+            players: components["schemas"]["PlayerConnectionDto"][];
         };
         ServerDataDto: {
             serverId: string;
@@ -1968,6 +2052,7 @@ export interface components {
         ServerHealthDto: {
             latest: null | components["schemas"]["ServerHealthWindowDto"];
             history: components["schemas"]["ServerHealthWindowDto"][];
+            connections: null | components["schemas"]["ServerConnectionsDto"];
         };
         /** @enum {unknown} */
         ServerHealthStatus: "Good" | "Warn" | "Bad" | "Loading" | "Stepped";

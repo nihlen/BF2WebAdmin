@@ -24,7 +24,10 @@ export const commandLogQuery = (serverId: string) => api.queryOptions('get', '/a
 /** The part of a server's health windows the server page shows (WebAdmin keeps six hours). */
 export const healthMinutes = 60
 
-/** How the server process runs: its latest health window (one per 10 s) and those of the last hour, oldest first. */
+/**
+ * How the server process runs: its latest health window (one per 10 s), those of the last hour, oldest first, and the
+ * players' connections over the latest window.
+ */
 export const healthQuery = (serverId: string) =>
   api.queryOptions('get', '/api/servers/{serverId}/health', { params: { path: { serverId }, query: { minutes: healthMinutes } } })
 
@@ -41,7 +44,7 @@ export function useServerLive(serverId: string) {
   // Kept current by CommandLogEvent, like the snapshot
   useQuery({ ...logQuery, enabled: subscribed, staleTime: Infinity })
   const health = healthQuery(serverId)
-  // Kept current by ServerHealthEvent
+  // Kept current by ServerHealthEvent and ServerConnectionsEvent
   useQuery({ ...health, enabled: subscribed, staleTime: Infinity })
   const positions = useRef(new Map<number, PlayerPosition>())
 
@@ -146,9 +149,14 @@ export function useServerLive(serverId: string) {
     const from = Date.parse(e.window.time) - healthMinutes * 60_000
     queryClient.setQueryData<ServerHealth>(health.queryKey, (current) =>
       current && !current.history.some((w) => w.time === e.window.time && w.tick === e.window.tick)
-        ? { latest: e.window, history: [...current.history, e.window].filter((w) => Date.parse(w.time) >= from) }
+        ? { ...current, latest: e.window, history: [...current.history, e.window].filter((w) => Date.parse(w.time) >= from) }
         : current,
     )
+  })
+
+  useHubEvent('ServerConnectionsEvent', (e) => {
+    if (e.serverId !== serverId) return
+    queryClient.setQueryData<ServerHealth>(health.queryKey, (current) => (current ? { ...current, connections: e.connections } : current))
   })
 
   useHubEvent('PlayerScoreEvent', (e) => {

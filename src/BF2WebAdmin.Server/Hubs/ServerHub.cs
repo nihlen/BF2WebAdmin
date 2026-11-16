@@ -37,6 +37,9 @@ public interface IServerHubClient
     /// <summary>The server's module reported a ServerHealth window (<see cref="ServerHealthStore"/>).</summary>
     Task ServerHealthEvent(Events.ServerHealthEvent e);
 
+    /// <summary>The players' connections over that window; it follows the window's ServerHealthEvent.</summary>
+    Task ServerConnectionsEvent(Events.ServerConnectionsEvent e);
+
     // Clients with the 3D viewer open on the server (SubscribeViewer)
     Task ViewerFrame(ViewerFrameDto e);
     Task MissileEvent(MissileSummaryDto e);

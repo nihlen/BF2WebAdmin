@@ -88,6 +88,7 @@ public static class ApiEndpoints
         servers.MapPost("/{serverId}/players/{index:int}/kick", KickPlayerAsync);
         servers.MapPost("/{serverId}/players/{index:int}/ban", BanPlayerAsync);
         servers.MapGet("/{serverId}/health", GetHealth);
+        servers.MapGet("/{serverId}/health/connections", GetHealthConnections);
         servers.MapGet("/{serverId}/missiles", GetMissiles);
         servers.MapGet("/{serverId}/missiles/{key:int}", GetMissile);
 
@@ -160,11 +161,21 @@ public static class ApiEndpoints
 
     /// <summary>
     /// How the server process runs (the module's ServerHealth windows of 10 s, rated): the latest window and the windows
-    /// of the last <paramref name="minutes"/> minutes, oldest first; without it all that are kept (six hours). Empty for a
-    /// server whose module sends none. The hub's ServerHealthEvent brings each new window.
+    /// of the last <paramref name="minutes"/> minutes, oldest first; without it all that are kept (six hours). With them
+    /// the players' connections over the latest window. Empty for a server whose module sends none. The hub's
+    /// ServerHealthEvent brings each new window, and its ServerConnectionsEvent the connections.
     /// </summary>
     private static ServerHealthDto GetHealth(string serverId, ServerHealthStore health, int? minutes = null) =>
-        health.Get(serverId, minutes is { } m ? DateTimeOffset.UtcNow.AddMinutes(-Math.Max(m, 0)) : null);
+        health.Get(serverId, Since(minutes));
+
+    /// <summary>
+    /// The players' connections per window of the last <paramref name="minutes"/> minutes, oldest first; without it all
+    /// that are kept (six hours). A window's connections have its tick.
+    /// </summary>
+    private static IReadOnlyList<ServerConnectionsDto> GetHealthConnections(string serverId, ServerHealthStore health, int? minutes = null) =>
+        health.GetConnections(serverId, Since(minutes));
+
+    private static DateTimeOffset? Since(int? minutes) => minutes is { } m ? DateTimeOffset.UtcNow.AddMinutes(-Math.Max(m, 0)) : null;
 
     /// <summary>The last traced TV missiles of a connected server, newest first (the 3D viewer's list).</summary>
     private static Results<Ok<IReadOnlyList<MissileSummaryDto>>, NotFound> GetMissiles(string serverId, IGameServerRegistry registry) =>

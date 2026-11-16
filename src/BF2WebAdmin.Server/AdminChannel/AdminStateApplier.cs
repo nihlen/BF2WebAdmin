@@ -140,7 +140,8 @@ public class AdminStateApplier : IAdminSessionHandler
 
     /// <summary>
     /// What a new link is subscribed to, after its Welcome: the position streams, the game state, the hit/miss replay and,
-    /// for a module with <see cref="Welcome.CapHealth"/>, the server health. Public for the tests.
+    /// for a module with <see cref="Welcome.CapHealth"/>, the server health with the players' connections. Public for the
+    /// tests.
     /// </summary>
     public void Subscribe(AdminSession session, byte capabilities)
     {
@@ -628,6 +629,12 @@ public class AdminStateApplier : IAdminSessionHandler
             case EvServerHealth ev:
                 if (_health != null)
                     await _health.AddAsync(_server.Id, ev, time);
+                break;
+
+            case EvPlayerConnections ev:
+                // The names as they are now: a player id is given to the next player who joins
+                if (_health != null)
+                    await _health.AddConnectionsAsync(_server.Id, ev, id => FindPlayer(id)?.Name, time);
                 break;
 
             case EvDamage or EvProjectileFired or EvProjectileHit:

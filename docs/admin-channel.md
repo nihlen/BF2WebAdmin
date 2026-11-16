@@ -28,7 +28,7 @@ modules ── IGameWriter (AdminGameWriter) ── typed commands / Console, in
 | `AdminGameWriter.cs` | `IGameWriter` on the current session: typed commands, `Console` lines in order with them, `ListObjects`, `SpawnObject`, `SetObjectActive`, `Subscribe` |
 | `GameServerRegistry.cs` | `IGameServerRegistry`: configured servers (DB + config), the `GameServer` per server id, key lookup |
 | `ScriptRunner.cs` | `IScriptRunner` (`GameServer.Scripts`): starts, messages and stops game scripts on the current session, and follows them to their end ([scripts.md](scripts.md)) |
-| `ServerHealth.cs` | `ServerHealthRules` rates a `ServerHealth` window; `ServerHealthStore` keeps six hours of every server's windows and sends each new one to the hub ([Server health](#server-health)) |
+| `ServerHealth.cs` | `ServerHealthRules` rates a `ServerHealth` window and `PlayerConnectionRules` a player's entry of `PlayerConnections`; `ServerHealthStore` keeps six hours of every server's windows and connections and sends each new one to the hub ([Server health](#server-health)) |
 
 Modules see `IGameServer`, the `GameEvents.cs` records and `IGameWriter`. `GameServer`'s mutators are not on
 `IGameServer`; only the applier calls them. The game classes (`Player`, `Vehicle`, `Team`, `Map` in
@@ -75,7 +75,7 @@ repositories, retry policies and Discord webhooks are shared. A module reload di
   queued. Subscriptions are made again after every
   `Welcome`: players and `agm114_hellfire_tv` projectiles at the module's tracker interval (default 0.25 s, Heli2v2's
   `.interval`), vehicles and game state at 1 Hz, the hit/miss replay (stream 20) for `agm114_hellfire_tv`, and the
-  server health (stream 21) when the module has capability bit 6.
+  server health with the players' connections (stream 21) when the module has capability bit 6.
   While a 3D viewer is open on the server, players, vehicles, projectiles and aim (stream 5) run at 30 Hz; the
   applier still hands the modules players and projectiles at the tracker rate and vehicles at 1 Hz.
 - A player's team, alive state and vehicle come from events and snapshots. The player stream reports them too, and
@@ -133,7 +133,8 @@ only per template, so noclip no longer changes them. Collision comes back when t
 A module with capability bit 6 has `ServerHealth` (openbf2-server-ext `docs/admin-channel.md`, "Server health"): every
 10 s one window of figures on how the server process ran (the real time between ticks, the main thread's CPU time per
 tick, the host's CPU). WebAdmin subscribes to it (stream 21) after every `Welcome` of such a module, and never sends
-the subscription to a module without the bit.
+the subscription to a module without the bit. The same stream brings `PlayerConnections` after each window
+([below](#player-connections)).
 
 - **Kept in memory.** `ServerHealthStore` (a host singleton) keeps each server's last 2160 windows (six hours), with
   the time WebAdmin received each (UTC). They outlive admin links and a change of the server's settings, go when the
@@ -159,6 +160,40 @@ the subscription to a module without the bit.
 - **Web UI.** The "Server health" panel of the server page shows the latest window, a summary of the last hour and
   one cell per window. The engine runs frames of 28.3 ms against ticks of 33.3 ms, so a median interval of one frame
   and a longest interval of two (56.7 ms) are normal.
+
+#### Player connections
+
+After each `ServerHealth` the module sends `PlayerConnections` for the same window (the next sequence number, the same
+tick): one entry per connected human player with its ping, the packets and bytes a second in both directions and the
+packets lost in each, from the engine's own statistics. Bots have no entry, and a window without players has none.
+
+- **Kept in memory.** `ServerHealthStore` keeps each server's last 2160 of them beside the windows, with the time
+  WebAdmin received each; a window and its connections have the same `tick`. They come and go with the windows.
+- **Names.** An entry has the player's id and the name the player had when WebAdmin applied the event, because ids are
+  reused. The name is null when the player had left by then.
+- **Status.** `PlayerConnectionRules.Rate` gives each entry a status. The loss of a direction is its mean lost packets
+  a second divided by its packets a second (0 without packets); the peak is the higher of the window's two readings.
+
+  | Status | When |
+  |---|---|
+  | `Bad` | a loss of 5 % or more in either direction, or a highest ping 100 ms or more above the lowest |
+  | `Warn` | a loss of 1 % or more in either direction, a peak of 1 lost packet a second or more in either direction, a highest ping 40 ms or more above the lowest, or fewer than 12 packets a second from the player (the client sends 10 a second instead of 30) |
+  | `Good` | none of these |
+
+  A `Warn` or `Bad` entry names its reasons, the `Bad` ones first: `lossToPlayer`, `lossFromPlayer`, `pingSpread`,
+  `lowSendRate`. An entry from fewer than two readings is rated the same and has `partial: true`: the player joined
+  during the window, so its figures are too low (and usually give `lowSendRate`). A rate that is not a finite number of
+  0 or more counts as 0.
+- **Web API.** `GET /api/servers/{id}/health` has them as `connections`: the latest `{ time, tick, players }`, or null
+  when the module has sent none. `GET /api/servers/{id}/health/connections` returns the kept ones, oldest first, with
+  the same `?minutes=`. A player has `playerId`, `name`, `status`, `reasons`, `partial`, `readings`, `ping`, `pingMin`,
+  `pingMax` (ms), `packetsToPlayer`, `packetsFromPlayer`, `bytesToPlayer`, `bytesFromPlayer`, `lostToPlayer`,
+  `lostToPlayerPeak`, `lostFromPlayer`, `lostFromPlayerPeak` (a second) and `lossToPlayerPercent`,
+  `lossFromPlayerPercent`.
+- **Hub.** `ServerConnectionsEvent` (`serverId`, `connections`) follows each window's `ServerHealthEvent`. The window's
+  event is not held back for it, and a module that sends only `ServerHealth` gets no second event.
+- **Web UI.** The panel's "Connections" table has a row per player of the latest window, the worst first. It is not
+  shown when the connections are more than 15 s older than the latest window.
 
 ## Setup
 

@@ -20,8 +20,9 @@ using Xunit;
 namespace BF2WebAdmin.Tests;
 
 /// <summary>
-/// ServerHealth (openbf2-server-ext docs/admin-channel.md, "Server health") from WebAdmin's side: how a window is rated
-/// (<see cref="ServerHealthRules"/>), the windows kept per server (<see cref="ServerHealthStore"/>), and the
+/// ServerHealth and PlayerConnections (openbf2-server-ext docs/admin-channel.md, "Server health") from WebAdmin's side:
+/// how a window and a player's connection are rated (<see cref="ServerHealthRules"/>,
+/// <see cref="PlayerConnectionRules"/>), what is kept per server (<see cref="ServerHealthStore"/>), and the
 /// subscription to stream 21, which only a module with capability bit 6 gets.
 /// </summary>
 public class ServerHealthTests
@@ -208,15 +209,204 @@ public class ServerHealthTests
         var store = services.GetRequiredService<ServerHealthStore>();
         const string other = "127.0.0.1:16571";
         await store.AddAsync(ServerId, Window(), Noon);
+        await store.AddConnectionsAsync(ServerId, new EvPlayerConnections(2, 300, [Connection()]), _ => "pilot", Noon);
         await store.AddAsync(other, Window(), Noon);
+        await store.AddConnectionsAsync(other, new EvPlayerConnections(2, 300, [Connection()]), _ => "pilot", Noon);
 
         await registry.AddOrUpdateServerAsync(new BF2WebAdmin.Data.Entities.Server { ServerId = ServerId });
         Assert.Single(store.Get(ServerId).History);
+        Assert.Single(store.GetConnections(ServerId));
 
         await registry.RemoveServerAsync(ServerId);
         Assert.Null(store.Get(ServerId).Latest);
         Assert.Empty(store.Get(ServerId).History);
+        Assert.Null(store.Get(ServerId).Connections);
+        Assert.Empty(store.GetConnections(ServerId));
         Assert.Single(store.Get(other).History);
+        Assert.Single(store.GetConnections(other));
+    }
+
+    // ---------------------------------------------------------------- the players' connections
+
+    /// <summary>A connection that runs well: 20 packets a second to the player and 30 from it, nothing lost, a steady ping.</summary>
+    private static AdminPlayerConnection Connection(byte player = 3, byte readings = 2, ushort pingMin = 38, ushort pingMax = 44, float packetsTo = 20,
+        float packetsFrom = 30, float lostTo = 0, float lostToPeak = 0, float lostFrom = 0, float lostFromPeak = 0) =>
+        new(player, readings, 41, pingMin, pingMax, packetsTo, packetsFrom, 2400.5f, 1100.25f, lostTo, lostToPeak, lostFrom, lostFromPeak);
+
+    [Fact]
+    public void AConnectionWithoutLossAndWithASteadyPingIsGood()
+    {
+        var (status, reasons) = PlayerConnectionRules.Rate(Connection());
+        Assert.Equal(PlayerConnectionStatus.Good, status);
+        Assert.Empty(reasons);
+    }
+
+    [Theory]
+    // Mean loss to the player, of 20 packets a second: 1 % warns, 5 % is Bad
+    [InlineData(0.19f, 0.19f, 0f, 0f, 38, 44, 30f, PlayerConnectionStatus.Good, "")]
+    [InlineData(0.2f, 0.2f, 0f, 0f, 38, 44, 30f, PlayerConnectionStatus.Warn, "lossToPlayer")]
+    [InlineData(0.99f, 0.99f, 0f, 0f, 38, 44, 30f, PlayerConnectionStatus.Warn, "lossToPlayer")]
+    [InlineData(1f, 1f, 0f, 0f, 38, 44, 30f, PlayerConnectionStatus.Bad, "lossToPlayer")]
+    // Mean loss from the player, of 30 packets a second
+    [InlineData(0f, 0f, 0.29f, 0.29f, 38, 44, 30f, PlayerConnectionStatus.Good, "")]
+    [InlineData(0f, 0f, 0.3f, 0.3f, 38, 44, 30f, PlayerConnectionStatus.Warn, "lossFromPlayer")]
+    [InlineData(0f, 0f, 1.49f, 1.49f, 38, 44, 30f, PlayerConnectionStatus.Warn, "lossFromPlayer")]
+    [InlineData(0f, 0f, 1.5f, 1.5f, 38, 44, 30f, PlayerConnectionStatus.Bad, "lossFromPlayer")]
+    // A reading with a packet a second lost warns, whatever the mean is
+    [InlineData(0.1f, 0.99f, 0f, 0f, 38, 44, 30f, PlayerConnectionStatus.Good, "")]
+    [InlineData(0.1f, 1f, 0f, 0f, 38, 44, 30f, PlayerConnectionStatus.Warn, "lossToPlayer")]
+    [InlineData(0f, 0f, 0.1f, 0.99f, 38, 44, 30f, PlayerConnectionStatus.Good, "")]
+    [InlineData(0f, 0f, 0.1f, 1f, 38, 44, 30f, PlayerConnectionStatus.Warn, "lossFromPlayer")]
+    // The highest ping above the lowest: 40 ms warns, 100 ms is Bad
+    [InlineData(0f, 0f, 0f, 0f, 38, 77, 30f, PlayerConnectionStatus.Good, "")]
+    [InlineData(0f, 0f, 0f, 0f, 38, 78, 30f, PlayerConnectionStatus.Warn, "pingSpread")]
+    [InlineData(0f, 0f, 0f, 0f, 38, 137, 30f, PlayerConnectionStatus.Warn, "pingSpread")]
+    [InlineData(0f, 0f, 0f, 0f, 38, 138, 30f, PlayerConnectionStatus.Bad, "pingSpread")]
+    [InlineData(0f, 0f, 0f, 0f, 300, 300, 30f, PlayerConnectionStatus.Good, "")]
+    // A client that sends at the low rate (10 a second) only warns
+    [InlineData(0f, 0f, 0f, 0f, 38, 44, 12f, PlayerConnectionStatus.Good, "")]
+    [InlineData(0f, 0f, 0f, 0f, 38, 44, 11.99f, PlayerConnectionStatus.Warn, "lowSendRate")]
+    [InlineData(0f, 0f, 0f, 0f, 38, 44, 10f, PlayerConnectionStatus.Warn, "lowSendRate")]
+    // Several at once: what is Bad comes first, then what only warns
+    [InlineData(0.2f, 0.4f, 2f, 3f, 38, 88, 30f, PlayerConnectionStatus.Bad, "lossFromPlayer,lossToPlayer,pingSpread")]
+    [InlineData(0f, 0f, 1f, 1f, 38, 44, 10f, PlayerConnectionStatus.Bad, "lossFromPlayer,lowSendRate")]
+    [InlineData(0.2f, 0.2f, 0f, 0f, 38, 78, 10f, PlayerConnectionStatus.Warn, "lossToPlayer,pingSpread,lowSendRate")]
+    public void EveryConnectionRuleAndItsThreshold(float lostTo, float lostToPeak, float lostFrom, float lostFromPeak, int pingMin, int pingMax,
+        float packetsFrom, PlayerConnectionStatus expected, string expectedReasons)
+    {
+        var (status, reasons) = PlayerConnectionRules.Rate(Connection(pingMin: (ushort)pingMin, pingMax: (ushort)pingMax, packetsFrom: packetsFrom,
+            lostTo: lostTo, lostToPeak: lostToPeak, lostFrom: lostFrom, lostFromPeak: lostFromPeak));
+        Assert.Equal(expected, status);
+        Assert.Equal(expectedReasons, string.Join(',', reasons));
+    }
+
+    [Fact]
+    public void ADirectionWithoutPacketsHasNoLossRatio()
+    {
+        Assert.Equal(0, PlayerConnectionRules.LossRatio(5, 0));
+        Assert.Equal(0, PlayerConnectionRules.LossRatio(0, 0));
+        Assert.Equal(0.05, PlayerConnectionRules.LossRatio(1, 20));
+
+        // Lost packets without a packet rate are not a ratio; the reading with a packet a second lost still warns
+        Assert.Equal(PlayerConnectionStatus.Good, PlayerConnectionRules.Rate(Connection(packetsTo: 0, lostTo: 0.9f, lostToPeak: 0.9f)).Status);
+        var (status, reasons) = PlayerConnectionRules.Rate(Connection(packetsTo: 0, lostTo: 5, lostToPeak: 5));
+        Assert.Equal(PlayerConnectionStatus.Warn, status);
+        Assert.Equal(["lossToPlayer"], reasons);
+
+        // Nothing from the player at all is the low send rate, not loss
+        (status, reasons) = PlayerConnectionRules.Rate(Connection(packetsFrom: 0, lostFrom: 0.5f, lostFromPeak: 0.5f));
+        Assert.Equal(PlayerConnectionStatus.Warn, status);
+        Assert.Equal(["lowSendRate"], reasons);
+    }
+
+    [Fact]
+    public void AnEntryWithOneReadingIsRatedAndFlaggedPartial()
+    {
+        // The module's sample frame: player 0 over the whole window, player 3 joined during it
+        var whole = PlayerConnectionRules.ToDto(new AdminPlayerConnection(0, 2, 41, 38, 44, 20.0f, 30.0f, 2400.5f, 1100.25f, 0.0f, 0.0f, 0.25f, 0.5f), "pilot");
+        Assert.Equal((0, "pilot", PlayerConnectionStatus.Good, false, 2), (whole.PlayerId, whole.Name, whole.Status, whole.Partial, whole.Readings));
+        Assert.Empty(whole.Reasons);
+        Assert.Equal((41, 38, 44), (whole.Ping, whole.PingMin, whole.PingMax));
+        Assert.Equal((20.0f, 30.0f, 2400.5f, 1100.25f), (whole.PacketsToPlayer, whole.PacketsFromPlayer, whole.BytesToPlayer, whole.BytesFromPlayer));
+        Assert.Equal((0.0f, 0.0f, 0.25f, 0.5f), (whole.LostToPlayer, whole.LostToPlayerPeak, whole.LostFromPlayer, whole.LostFromPlayerPeak));
+        // 0.25 of 30 packets a second, in percent
+        Assert.Equal((0.0, 0.83), (whole.LossToPlayerPercent, whole.LossFromPlayerPercent));
+
+        var joined = PlayerConnectionRules.ToDto(new AdminPlayerConnection(3, 1, 120, 120, 120, 10.0f, 10.0f, 900.0f, 400.0f, 1.5f, 1.5f, 0.0f, 0.0f), null);
+        Assert.Equal((3, null, PlayerConnectionStatus.Bad, true, 1), (joined.PlayerId, joined.Name, joined.Status, joined.Partial, joined.Readings));
+        Assert.Equal(["lossToPlayer", "lowSendRate"], joined.Reasons);
+        Assert.Equal((15.0, 0.0), (joined.LossToPlayerPercent, joined.LossFromPlayerPercent));
+
+        Assert.True(PlayerConnectionRules.ToDto(Connection(readings: 0), null).Partial);
+        Assert.False(PlayerConnectionRules.ToDto(Connection(readings: 3), null).Partial);
+    }
+
+    [Fact]
+    public void RatesThatAreNotNumbersCountAsZeroAndCanBeSentAsJson()
+    {
+        // The module sends none; a broken one must not stop the web API's answer or the hub's event
+        var entry = PlayerConnectionRules.ToDto(new AdminPlayerConnection(3, 2, 41, 38, 44, float.NaN, float.PositiveInfinity, -5, float.NegativeInfinity,
+            float.NaN, float.PositiveInfinity, float.NaN, -1), "pilot");
+
+        Assert.Equal((0f, 0f, 0f, 0f), (entry.PacketsToPlayer, entry.PacketsFromPlayer, entry.BytesToPlayer, entry.BytesFromPlayer));
+        Assert.Equal((0f, 0f, 0f, 0f), (entry.LostToPlayer, entry.LostToPlayerPeak, entry.LostFromPlayer, entry.LostFromPlayerPeak));
+        Assert.Equal((0.0, 0.0), (entry.LossToPlayerPercent, entry.LossFromPlayerPercent));
+        Assert.Equal(["lowSendRate"], entry.Reasons);
+        Assert.Contains("\"Name\":\"pilot\"", System.Text.Json.JsonSerializer.Serialize(entry));
+    }
+
+    [Fact]
+    public async Task TheConnectionsOfTheLastSixHoursAreKeptByTheirWindowsTick()
+    {
+        var store = new ServerHealthStore();
+        Assert.Null(store.Get(ServerId).Connections);
+        Assert.Empty(store.GetConnections(ServerId));
+
+        for (var i = 1; i <= ServerHealthStore.MaxWindows + 5; i++)
+        {
+            var time = Noon.AddSeconds(10 * i);
+            await store.AddAsync(ServerId, Window(seq: (uint)(2 * i - 1), tick: (uint)i * 300), time);
+            await store.AddConnectionsAsync(ServerId, new EvPlayerConnections((uint)(2 * i), (uint)i * 300, [Connection(), Connection(player: 4)]),
+                id => $"player {id}", time);
+        }
+
+        var kept = store.GetConnections(ServerId);
+        Assert.Equal(ServerHealthStore.MaxWindows, kept.Count);
+        Assert.Equal(6u * 300, kept[0].Tick);
+        Assert.Equal(["player 3", "player 4"], kept[0].Players.Select(p => p.Name));
+
+        // A window and its connections have the same tick, and the latest of each is the same window's
+        var health = store.Get(ServerId);
+        Assert.Equal(health.History.Select(w => w.Tick), kept.Select(c => c.Tick));
+        Assert.Same(kept[^1], health.Connections);
+        Assert.Equal(health.Latest!.Tick, health.Connections!.Tick);
+        Assert.Equal(Noon.AddSeconds(10 * (ServerHealthStore.MaxWindows + 5)), health.Connections.Time);
+
+        // A part of them is cut by the time they were received, like the windows
+        var lastMinute = store.GetConnections(ServerId, health.Connections.Time.AddSeconds(-50));
+        Assert.Equal(6, lastMinute.Count);
+        Assert.Same(kept[^1], lastMinute[^1]);
+        Assert.Empty(store.GetConnections("127.0.0.1:16571"));
+    }
+
+    [Fact]
+    public async Task AWindowWithoutPlayersHasEmptyConnections()
+    {
+        var store = new ServerHealthStore();
+        await store.AddConnectionsAsync(ServerId, new EvPlayerConnections(2, 300, []), _ => null, Noon);
+
+        var connections = store.Get(ServerId).Connections;
+        Assert.NotNull(connections);
+        Assert.Empty(connections.Players);
+        Assert.Equal((300u, Noon), (connections.Tick, connections.Time));
+    }
+
+    [Fact]
+    public async Task AnEntryKeepsTheNameThePlayerHadWhenItWasReceived()
+    {
+        var server = Server(out var store);
+        AdminPlayerInfo Player(byte id, string name) => new(id, name, AdminPlayerInfo.FlagConnected, 0, "", "", new AdminPlayerScore(0, 0, 0, 0, 0, -1),
+            new AdminPlayerState(1, 0, AdminPlayerState.LifeDead, 0, 50, 0, AdminProtocol.NoConsoleId, 255, default, default, default, 0,
+                AdminPlayerState.ViewUnknown, 0));
+        await server.Applier.OnMessageAsync(null!, new Snapshot(1, 10, 900, 30, Game, [Player(3, "pilot")], [], [], []));
+
+        // Player 7 left before the window's connections arrived
+        await server.Applier.OnMessageAsync(null!, Window(seq: 11, tick: 1200));
+        await server.Applier.OnMessageAsync(null!, new EvPlayerConnections(12, 1200, [Connection(player: 3), Connection(player: 7, lostTo: 1, lostToPeak: 1)]));
+
+        // The id goes to the next player who joins
+        await server.Applier.OnMessageAsync(null!, new EvPlayerDisconnect(13, 1300, 3, 0, 0));
+        await server.Applier.OnMessageAsync(null!, new EvPlayerConnect(14, 1400, Player(3, "gunner")));
+        await server.Applier.OnMessageAsync(null!, Window(seq: 15, tick: 1500));
+        await server.Applier.OnMessageAsync(null!, new EvPlayerConnections(16, 1500, [Connection(player: 3)]));
+
+        var kept = store.GetConnections(ServerId);
+        Assert.Equal([1200u, 1500u], kept.Select(c => c.Tick));
+        Assert.Equal([(3, "pilot"), (7, null)], kept[0].Players.Select(p => (p.PlayerId, p.Name)));
+        Assert.Equal([PlayerConnectionStatus.Good, PlayerConnectionStatus.Bad], kept[0].Players.Select(p => p.Status));
+        Assert.Equal([(3, "gunner")], kept[1].Players.Select(p => (p.PlayerId, p.Name)));
+        Assert.Equal([1200u, 1500u], store.Get(ServerId).History.Select(w => w.Tick));
+        Assert.Same(kept[1], store.Get(ServerId).Connections);
     }
 
     // ---------------------------------------------------------------- the link
@@ -339,14 +529,16 @@ public class ServerHealthTests
 
         var first = await ConnectAsync(server, BaseCapabilities | Welcome.CapHealth);
         await first.Module.SendAsync(Window(seq: 1, tick: 600, late: 1));
-        await WaitAsync(() => store.Get(ServerId).History.Count == 1);
+        await first.Module.SendAsync(new EvPlayerConnections(2, 600, [Connection()]));
+        await WaitAsync(() => store.GetConnections(ServerId).Count == 1);
         first.Session.Close("test");
         await first.Run;
 
         // A new link numbers its events from 1 again
         var second = await ConnectAsync(server, BaseCapabilities | Welcome.CapHealth, sessionNumber: 2);
         await second.Module.SendAsync(Window(seq: 1, tick: 900));
-        await WaitAsync(() => store.Get(ServerId).History.Count == 2);
+        await second.Module.SendAsync(new EvPlayerConnections(2, 900, []));
+        await WaitAsync(() => store.GetConnections(ServerId).Count == 2);
         second.Session.Close("test");
         await second.Run;
 
@@ -354,6 +546,9 @@ public class ServerHealthTests
         Assert.Equal([600u, 900u], health.History.Select(w => w.Tick));
         Assert.Equal([ServerHealthStatus.Warn, ServerHealthStatus.Good], health.History.Select(w => w.Status));
         Assert.Equal(900u, health.Latest!.Tick);
+        Assert.Equal([600u, 900u], store.GetConnections(ServerId).Select(c => c.Tick));
+        Assert.Equal([1, 0], store.GetConnections(ServerId).Select(c => c.Players.Count));
+        Assert.Equal(900u, health.Connections!.Tick);
 
         // Received now, in UTC
         Assert.All(health.History, w => Assert.Equal(TimeSpan.Zero, w.Time.Offset));

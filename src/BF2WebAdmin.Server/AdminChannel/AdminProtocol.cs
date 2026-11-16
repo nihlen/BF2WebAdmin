@@ -55,6 +55,7 @@ public enum AdminMessageType : ushort
     EvScriptFinished = 0x121C,
     EvScriptEvent = 0x121D,
     EvServerHealth = 0x121E,
+    EvPlayerConnections = 0x121F,
 
     CmdConsole = 0x1301,
     CmdSay = 0x1302,
@@ -119,7 +120,10 @@ public enum AdminStream : byte
     Weapons = 19,
     /// <summary>The hit/miss replay: ProjectileCollision and ProjectileTrace; needs projectile template filters.</summary>
     Replay = 20,
-    /// <summary>ServerHealth events, one per window of 300 ticks; only for a module with <see cref="Welcome.CapHealth"/>.</summary>
+    /// <summary>
+    /// ServerHealth and PlayerConnections events, one of each per window of 300 ticks; only for a module with
+    /// <see cref="Welcome.CapHealth"/>.
+    /// </summary>
     Health = 21,
 }
 
@@ -222,6 +226,7 @@ public static class AdminProtocol
             AdminMessageType.EvScriptEvent => new EvScriptEvent(r.U32(), r.U32(), r.U32(), r.U8(), r.Str()),
             AdminMessageType.EvServerHealth => new EvServerHealth(r.U32(), r.U32(), r.U16(), r.U32(), r.U8(), r.U32(), r.U32(), r.U32(),
                 r.U16(), r.U16(), r.U32(), r.U32(), r.U32(), r.U32(), r.U32(), r.U32(), r.U32(), r.U16(), r.U16(), r.U16(), r.U16(), r.U32()),
+            AdminMessageType.EvPlayerConnections => EvPlayerConnections.Read(ref r),
             AdminMessageType.CmdConsole => new CmdConsole(r.U32(), r.Str()),
             AdminMessageType.CmdSay => new CmdSay(r.U32(), r.U8(), r.U8(), r.Str()),
             AdminMessageType.CmdTeleport => new CmdTeleport(r.U32(), ObjectRef.Read(ref r), r.U8(), r.Vec(), r.Vec()),
@@ -613,7 +618,7 @@ public sealed record Welcome(
     /// <summary>The module switches an object's collision (<see cref="CmdSetCollision"/>).</summary>
     public const byte CapCollision = 32;
 
-    /// <summary>The module has stream 21 (<see cref="EvServerHealth"/>).</summary>
+    /// <summary>The module has stream 21 (<see cref="EvServerHealth"/> and <see cref="EvPlayerConnections"/>).</summary>
     public const byte CapHealth = 64;
 
     public override AdminMessageType Type => AdminMessageType.Welcome;
@@ -1180,6 +1185,48 @@ public sealed record EvServerHealth(uint Seq, uint Tick, ushort Ticks, uint Wall
         w.U16(Ticks).U32(WallMicroseconds).Byte(Flags).U32(IntervalMedian).U32(IntervalP99).U32(IntervalMax).U16(LateTicks).U16(ShortTicks)
             .U32(CpuMedian).U32(CpuP99).U32(CpuMax).U32(HandlerP99).U32(HandlerMax).U32(InvoluntarySwitches).U32(MajorFaults)
             .U16(HostCpus).U16(HostBusy).U16(HostSteal).U16(HostIoWait).U32(ResidentKib);
+}
+
+/// <summary>
+/// A human player's connection over one ServerHealth window, from the engine's own statistics, which it reads twice a
+/// window (<see cref="Readings"/>; one for a player who joined during it, and those figures are too low). Pings are in
+/// milliseconds, the rates per second; "sent" is from the server to the player. The lost packets are the mean of the
+/// readings and the highest one.
+/// </summary>
+public sealed record AdminPlayerConnection(byte Player, byte Readings, ushort Ping, ushort PingMin, ushort PingMax, float PacketsSent,
+    float PacketsReceived, float BytesSent, float BytesReceived, float LostSent, float LostSentPeak, float LostReceived, float LostReceivedPeak)
+{
+    public static AdminPlayerConnection Read(ref AdminReader r) =>
+        new(r.U8(), r.U8(), r.U16(), r.U16(), r.U16(), r.F32(), r.F32(), r.F32(), r.F32(), r.F32(), r.F32(), r.F32(), r.F32());
+
+    public void Write(AdminWriter w) =>
+        w.Byte(Player).Byte(Readings).U16(Ping).U16(PingMin).U16(PingMax).F32(PacketsSent).F32(PacketsReceived).F32(BytesSent)
+            .F32(BytesReceived).F32(LostSent).F32(LostSentPeak).F32(LostReceived).F32(LostReceivedPeak);
+}
+
+/// <summary>
+/// The connections of the human players over the window of the <see cref="EvServerHealth"/> before it (stream 21): the
+/// next sequence number and the same tick. Bots and players who left during the window have no entry.
+/// </summary>
+public sealed record EvPlayerConnections(uint Seq, uint Tick, IReadOnlyList<AdminPlayerConnection> Players) : AdminEvent(Seq, Tick)
+{
+    public override AdminMessageType Type => AdminMessageType.EvPlayerConnections;
+
+    public static EvPlayerConnections Read(ref AdminReader r)
+    {
+        var seq = r.U32();
+        var tick = r.U32();
+        var players = new AdminPlayerConnection[r.U8()];
+        for (var i = 0; i < players.Length; i++)
+            players[i] = AdminPlayerConnection.Read(ref r);
+        return new EvPlayerConnections(seq, tick, players);
+    }
+
+    protected override void WriteFields(AdminWriter w)
+    {
+        w.Byte((byte)Players.Count);
+        foreach (var p in Players) p.Write(w);
+    }
 }
 
 // ---------------------------------------------------------------- commands (WebAdmin -> module)

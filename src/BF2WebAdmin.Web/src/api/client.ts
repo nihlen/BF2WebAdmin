@@ -30,6 +30,8 @@ export type TestServerResult = Schemas['TestServerResult']
 export type ServerHealth = Schemas['ServerHealthDto']
 export type ServerHealthWindow = Schemas['ServerHealthWindowDto']
 export type ServerHealthStatus = Schemas['ServerHealthStatus']
+export type ServerConnections = Schemas['ServerConnectionsDto']
+export type PlayerConnection = Schemas['PlayerConnectionDto']
 
 /** A failed API request. React Query receives it as the error of the query or mutation. */
 export class ApiError extends Error {

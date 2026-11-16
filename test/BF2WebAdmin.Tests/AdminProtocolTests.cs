@@ -15,7 +15,7 @@ namespace BF2WebAdmin.Tests;
 /// values and compared byte for byte, then decoded and re-encoded.
 /// The file here holds the messages WebAdmin has: the module's votes and R7 commands are not among them, and the
 /// seven script frames (cmd_start_script to ev_script_event) were added on 2026-11-14 from the contract's layouts.
-/// cmd_subscribe_health and ev_server_health are the module's frames at 8396330.
+/// cmd_subscribe_health and ev_server_health are the module's frames at 8396330, ev_player_connections at dc50dbd.
 /// </summary>
 public class AdminProtocolTests
 {
@@ -142,12 +142,17 @@ public class AdminProtocolTests
         ["cmd_subscribe_health"] = new Subscribe(38, AdminStream.Health, 0, []),
         ["ev_server_health"] = new EvServerHealth(30, 10, 300, 10000123, EvServerHealth.FlagHostValid, 33334, 34100, 61234, 1, 1, 310, 1250,
             4800, 350, 900, 12, 0, 1, 412, 278, 3, 159744),
+        ["ev_player_connections"] = new EvPlayerConnections(31, 10,
+        [
+            new AdminPlayerConnection(0, 2, 41, 38, 44, 20.0f, 30.0f, 2400.5f, 1100.25f, 0.0f, 0.0f, 0.25f, 0.5f),
+            new AdminPlayerConnection(3, 1, 120, 120, 120, 10.0f, 10.0f, 900.0f, 400.0f, 1.5f, 1.5f, 0.0f, 0.0f),
+        ]),
     };
 
     [Fact]
     public void GoldenFileHasEveryFrame()
     {
-        Assert.Equal(80, Golden.Count);
+        Assert.Equal(81, Golden.Count);
         Assert.Equal(Golden.Keys.OrderBy(k => k), SampleMessages().Keys.OrderBy(k => k));
     }
 
@@ -222,6 +227,14 @@ public class AdminProtocolTests
         Assert.Equal((310u, 1250u, 4800u, 350u, 900u), (health.CpuMedian, health.CpuP99, health.CpuMax, health.HandlerP99, health.HandlerMax));
         Assert.Equal((12u, 0u, (ushort)1, (ushort)412, (ushort)278, (ushort)3, 159744u),
             (health.InvoluntarySwitches, health.MajorFaults, health.HostCpus, health.HostBusy, health.HostSteal, health.HostIoWait, health.ResidentKib));
+
+        var connections = (EvPlayerConnections)Decode("ev_player_connections");
+        Assert.Equal(((ushort)0x121F, 31u, 10u, 2), ((ushort)connections.Type, connections.Seq, connections.Tick, connections.Players.Count));
+        Assert.Equal(new AdminPlayerConnection(0, 2, 41, 38, 44, 20.0f, 30.0f, 2400.5f, 1100.25f, 0.0f, 0.0f, 0.25f, 0.5f), connections.Players[0]);
+        Assert.Equal(new AdminPlayerConnection(3, 1, 120, 120, 120, 10.0f, 10.0f, 900.0f, 400.0f, 1.5f, 1.5f, 0.0f, 0.0f), connections.Players[1]);
+        // No players is a valid event; an entry is 40 bytes
+        Assert.Empty(((EvPlayerConnections)AdminProtocol.Decode(AdminMessageType.EvPlayerConnections, [1, 0, 0, 0, 2, 0, 0, 0, 0])).Players);
+        Assert.Equal(8 + 9 + 2 * 40, Golden["ev_player_connections"].Frame.Length);
     }
 
     private static AdminMessage Decode(string name)

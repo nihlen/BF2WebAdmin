@@ -172,7 +172,8 @@ public class ModuleResolver : IModuleResolver
                 {
                     var matchedCommand = (TCommand)command;
                     // TODO: add GameServer to command context so we can add the serverid to metrics
-                    var startTime = DateTimeOffset.UtcNow;
+                    var startTime = Stopwatch.GetTimestamp();
+                    var failed = false;
                     var moduleName = syncHandler.GetType().Name;
                     using var activity = Telemetry.ActivitySource.StartActivity("SyncCommandHandler:" + moduleName);
                     activity?.SetTag("bf2wa.command-type", commandType.Name);
@@ -185,10 +186,11 @@ public class ModuleResolver : IModuleResolver
                     catch (Exception e)
                     {
                         _logger.LogError(e, "Command handling failed for {Message} (sync)", matchedCommand.Message.Text);
+                        failed = true;
                         activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text}");
                     }
 
-                    AppDiagnostics.TrackCommand(commandType.Name, moduleName, startTime);
+                    AppDiagnostics.TrackCommand(commandType.Name, moduleName, startTime, failed);
                     return ValueTask.CompletedTask;
                 });
             }
@@ -197,7 +199,8 @@ public class ModuleResolver : IModuleResolver
                 list.Add(async command =>
                 {
                     var matchedCommand = (TCommand)command;
-                    var startTime = DateTimeOffset.UtcNow;
+                    var startTime = Stopwatch.GetTimestamp();
+                    var failed = false;
                     var moduleName = asyncHandler.GetType().Name;
                     using var activity = Telemetry.ActivitySource.StartActivity("AsyncCommandHandler:" + moduleName);
                     activity?.SetTag("bf2wa.command-type", commandType.Name);
@@ -210,10 +213,11 @@ public class ModuleResolver : IModuleResolver
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Command handling failed for {Message} (async)", matchedCommand.Message.Text);
+                        failed = true;
                         activity?.SetStatus(ActivityStatusCode.Error, $"Command failed: {matchedCommand.Message.Text} {ex.Message}");
                     }
 
-                    AppDiagnostics.TrackCommand(commandType.Name, moduleName, startTime);
+                    AppDiagnostics.TrackCommand(commandType.Name, moduleName, startTime, failed);
                 });
             }
         }
@@ -244,7 +248,8 @@ public class ModuleResolver : IModuleResolver
             list.Add(async gameEvent =>
             {
                 var matchedEvent = (TEvent)gameEvent;
-                var startTime = DateTimeOffset.UtcNow;
+                var startTime = Stopwatch.GetTimestamp();
+                var failed = false;
                 var moduleName = asyncHandler.GetType().Name;
                 using var activity = traced ? Telemetry.ActivitySource.StartActivity("AsyncEventHandler:" + moduleName) : null;
                 activity?.SetTag("bf2wa.event-type", eventType.Name);
@@ -257,10 +262,11 @@ public class ModuleResolver : IModuleResolver
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Event handling failed for {Event} (async)", matchedEvent);
+                    failed = true;
                     activity?.SetStatus(ActivityStatusCode.Error, $"Event failed: {eventType.Name}, {ex.Message}");
                 }
 
-                AppDiagnostics.TrackEvent(eventType.Name, moduleName, startTime);
+                AppDiagnostics.TrackEvent(eventType.Name, moduleName, startTime, failed);
             });
         }
 

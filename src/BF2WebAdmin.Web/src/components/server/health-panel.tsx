@@ -1,14 +1,23 @@
 import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
-import type { PlayerConnection, ServerConnections, ServerHealthStatus, ServerHealthWindow } from '@/api/client'
+import { useMemo, useState } from 'react'
+import type { HealthRound, PlayerConnection, ServerConnections, ServerHealthStatus, ServerHealthWindow } from '@/api/client'
+import { type Band, type Series, StatusStrip, TimeChart, type TimeRange } from '@/components/server/health-charts'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { healthQuery } from '@/hooks/use-server-live'
+import { healthConnectionsQuery, healthMinutes, healthQuery, healthRoundsQuery } from '@/hooks/use-server-live'
+import { nearestIndex } from '@/lib/nearest-index'
 import { cn } from '@/lib/utils'
 
 // A tick is 1/30 s
 const tickUs = 1_000_000 / 30
+
+/** The parts of the history the panel shows; WebAdmin keeps six hours. */
+const ranges = [
+  { minutes: 60, label: 'Last hour' },
+  { minutes: 360, label: 'Last 6 hours' },
+]
 
 const statusColors: Record<ServerHealthStatus, string> = {
   Good: 'bg-emerald-500',
@@ -63,13 +72,27 @@ const connectionRank: Record<PlayerConnection['status'], number> = { Bad: 0, War
 const connectionsMaxAgeMs = 15_000
 
 /**
+ * While another part of the history loads, the part shown before stays: of the same server only. The health queries'
+ * keys hold the server id in their params.
+ */
+const sameServer =
+  (serverId: string) =>
+  <T,>(previous: T | undefined, query: { queryKey: readonly unknown[] } | undefined) =>
+    (query?.queryKey[2] as { params?: { path?: { serverId?: string } } } | undefined)?.params?.path?.serverId === serverId ? previous : undefined
+
+/**
  * How the server process runs, from the ServerHealth windows its module sends every 10 s: the latest window's status
- * and figures, and the last hour. WebAdmin rates the windows; this only shows the rating. A server whose module sends
- * none has no data.
+ * and figures, and the last hour or six hours as charts. WebAdmin rates the windows; this only shows the rating. A
+ * server whose module sends none has no data.
  */
 export function HealthPanel({ serverId, connected }: { serverId: string; connected: boolean }) {
-  // Fetched and kept current by useServerLive
-  const health = useQuery({ ...healthQuery(serverId), staleTime: Infinity })
+  const [minutes, setMinutes] = useState(healthMinutes)
+  const keep = sameServer(serverId)
+  // Kept current by useServerLive's hub events, whichever part of the history it is
+  const health = useQuery({ ...healthQuery(serverId, minutes), staleTime: Infinity, placeholderData: keep })
+  const connectionsHistory = useQuery({ ...healthConnectionsQuery(serverId, minutes), staleTime: Infinity, placeholderData: keep })
+  // No event brings a round: fetched again now and then
+  const rounds = useQuery({ ...healthRoundsQuery(serverId, minutes), refetchInterval: 15_000, placeholderData: keep })
   const latest = health.data?.latest ?? null
   const history = health.data?.history
   const summary = useMemo(() => summarize(history ?? []), [history])
@@ -133,9 +156,21 @@ export function HealthPanel({ serverId, connected }: { serverId: string; connect
 
           {showConnections && <Connections connections={connections} />}
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span className="font-medium">Last hour</span>
+              <div className="flex items-center gap-1" role="group" aria-label="Part of the history">
+                {ranges.map((r) => (
+                  <Button
+                    key={r.minutes}
+                    size="xs"
+                    variant={minutes === r.minutes ? 'secondary' : 'ghost'}
+                    aria-pressed={minutes === r.minutes}
+                    onClick={() => setMinutes(r.minutes)}
+                  >
+                    {r.label}
+                  </Button>
+                ))}
+              </div>
               {summary.windows === 0 && <span className="text-muted-foreground">No windows</span>}
               {(['Good', 'Warn', 'Bad', 'Loading', 'Stepped'] as const).map(
                 (s) =>
@@ -155,22 +190,22 @@ export function HealthPanel({ serverId, connected }: { serverId: string; connect
             </div>
 
             {history && history.length > 0 && (
-              <div
-                role="img"
-                aria-label={`The health windows of the last hour, oldest first: ${summary.counts.Good} good, ${summary.counts.Warn} warn, ${summary.counts.Bad} bad`}
-                className="flex flex-wrap gap-px"
-              >
-                {history.map((w) => (
-                  <span key={`${w.time} ${w.tick}`} title={windowTitle(w)} className={cn('h-5 w-1.5 rounded-[1px]', statusColors[w.status])} />
-                ))}
-              </div>
+              <HealthCharts
+                history={history}
+                connections={connectionsHistory.data ?? []}
+                rounds={rounds.data ?? []}
+                minutes={minutes}
+                latestTime={Date.parse(latest.time)}
+              />
             )}
           </div>
 
           <p className="text-xs text-muted-foreground">
             The server runs frames of 28.3 ms against ticks of 33.3 ms, so a median interval of about 28 ms and a longest interval of about 57 ms
             are normal. Late ticks (an interval over 66.7 ms) and short ticks (two ticks in one frame) are not.
-            {history && history.length > 0 && ' One cell per 10 s window, oldest first; loading and stepped windows are left out of the figures.'}
+            {history &&
+              history.length > 0 &&
+              ' One status cell per 10 s window; loading and stepped windows are left out of the figures and the tick charts. Shaded: the 2v2 rounds (WebAdmin knows those since it started).'}
           </p>
         </CardContent>
       )}
@@ -309,4 +344,119 @@ function windowTitle(w: ServerHealthWindow) {
   lines.push(`Longest tick interval ${ms(w.intervalMaxUs, 1)} ms, CPU p99 ${ms(w.cpuP99Us, 2)} ms`)
   lines.push(`Late ${w.lateTicks}, short ${w.shortTicks}, lost ${w.lostTicks}, steal ${w.hostValid ? `${w.hostStealPercent.toFixed(2)} %` : 'n/a'}`)
   return lines.join('\n')
+}
+
+const isRated = (w: ServerHealthWindow) => w.status !== 'Loading' && w.status !== 'Stepped'
+const fixed = (digits: number) => (v: number) => v.toFixed(digits)
+const auto = (v: number) => v.toFixed(v !== 0 && v < 10 ? 1 : 0)
+
+/** A median of numbers; null when there are none. */
+function median(values: number[]) {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = sorted.length >> 1
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
+}
+
+/**
+ * The history as charts on one time axis: the windows' statuses, the tick timings, the host's CPU, the memory, and the
+ * players' ping and loss, with the 2v2 rounds shaded behind. Pointing at a time shows that window in every chart.
+ */
+function HealthCharts({
+  history,
+  connections,
+  rounds,
+  minutes,
+  latestTime,
+}: {
+  history: ServerHealthWindow[]
+  connections: ServerConnections[]
+  rounds: HealthRound[]
+  minutes: number
+  latestTime: number
+}) {
+  const [hover, setHover] = useState<number | null>(null)
+  const range: TimeRange = { from: latestTime - minutes * 60_000, to: latestTime }
+
+  const windows = useMemo(() => {
+    const times = history.map((w) => Date.parse(w.time))
+    const rated = (f: (w: ServerHealthWindow) => number) => history.map((w) => (isRated(w) ? f(w) : null))
+    const host = (f: (w: ServerHealthWindow) => number) => history.map((w) => (w.hostValid ? f(w) : null))
+    return {
+      times,
+      statuses: history.map((w) => w.status),
+      interval: [
+        { name: 'longest', stroke: 'stroke-red-500', dot: 'bg-red-500', values: rated((w) => w.intervalMaxUs / 1000) },
+        { name: 'p99', stroke: 'stroke-amber-500', dot: 'bg-amber-500', values: rated((w) => w.intervalP99Us / 1000) },
+        { name: 'median', stroke: 'stroke-sky-500', dot: 'bg-sky-500', values: rated((w) => w.intervalMedianUs / 1000) },
+      ] satisfies Series[],
+      cpu: [
+        { name: 'largest', stroke: 'stroke-red-500', dot: 'bg-red-500', values: rated((w) => w.cpuMaxUs / 1000) },
+        { name: 'p99', stroke: 'stroke-amber-500', dot: 'bg-amber-500', values: rated((w) => w.cpuP99Us / 1000) },
+        { name: 'median', stroke: 'stroke-sky-500', dot: 'bg-sky-500', values: rated((w) => w.cpuMedianUs / 1000) },
+      ] satisfies Series[],
+      host: [
+        { name: 'busy', stroke: 'stroke-sky-500', dot: 'bg-sky-500', values: host((w) => w.hostBusyPercent) },
+        { name: 'steal', stroke: 'stroke-red-500', dot: 'bg-red-500', values: host((w) => w.hostStealPercent) },
+        { name: 'I/O wait', stroke: 'stroke-violet-500', dot: 'bg-violet-500', values: host((w) => w.hostIoWaitPercent) },
+      ] satisfies Series[],
+      memory: [
+        { name: 'resident', stroke: 'stroke-emerald-500', dot: 'bg-emerald-500', values: history.map((w) => w.residentKib / 1024) },
+      ] satisfies Series[],
+    }
+  }, [history])
+
+  // Players who joined during a window have too low figures and are left out
+  const players = useMemo(() => {
+    const full = connections.map((c) => c.players.filter((p) => !p.partial))
+    const of = (f: (players: PlayerConnection[]) => number | null) => full.map((p) => (p.length > 0 ? f(p) : null))
+    return {
+      times: connections.map((c) => Date.parse(c.time)),
+      ping: [
+        { name: 'highest', stroke: 'stroke-red-500', dot: 'bg-red-500', values: of((p) => Math.max(...p.map((x) => x.pingMax))) },
+        { name: 'median', stroke: 'stroke-sky-500', dot: 'bg-sky-500', values: of((p) => median(p.map((x) => x.ping))) },
+      ] satisfies Series[],
+      loss: [
+        { name: 'worst to a player', stroke: 'stroke-red-500', dot: 'bg-red-500', values: of((p) => Math.max(...p.map((x) => x.lossToPlayerPercent))) },
+        { name: 'worst from a player', stroke: 'stroke-amber-500', dot: 'bg-amber-500', values: of((p) => Math.max(...p.map((x) => x.lossFromPlayerPercent))) },
+      ] satisfies Series[],
+    }
+  }, [connections])
+
+  // A match's rounds have one shade, the next match's the other
+  const bands = useMemo(() => {
+    const result: Band[] = []
+    let alternate = false
+    rounds.forEach((r, i) => {
+      if (i > 0 && r.matchId !== rounds[i - 1].matchId) alternate = !alternate
+      result.push({ key: r.roundId, from: Date.parse(r.start), to: r.end ? Date.parse(r.end) : latestTime, label: `R${r.number}`, alternate })
+    })
+    return result
+  }, [rounds, latestTime])
+
+  const shared = { range, hover, onHover: setHover, bands }
+  const index = hover !== null ? nearestIndex(windows.times, hover) : -1
+  const pointed = index >= 0 && Math.abs(windows.times[index] - hover!) <= 25_000 ? history[index] : null
+  const round = pointed ? bands.find((b) => b.from <= Date.parse(pointed.time) - 10_000 && Date.parse(pointed.time) - 10_000 <= b.to) : undefined
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <StatusStrip times={windows.times} statuses={windows.statuses} {...shared} />
+        <div className="min-h-10 text-xs whitespace-pre-line text-muted-foreground">
+          {pointed
+            ? `${windowTitle(pointed)}${round ? `\nIn round ${round.label.slice(1)}` : ''}`
+            : 'Point at a time to see its window. The legends show the latest window, or the one pointed at.'}
+        </div>
+      </div>
+      <div className="grid gap-x-6 gap-y-4 lg:grid-cols-2">
+        <TimeChart title="Tick interval, ms" format={auto} times={windows.times} series={windows.interval} minMax={70} cap={250} limits={[{ value: 1000 / 15, label: 'late' }]} {...shared} />
+        <TimeChart title="CPU per tick, ms" format={auto} times={windows.times} series={windows.cpu} minMax={5} cap={100} limits={[{ value: 1000 / 30, label: 'one tick' }]} {...shared} />
+        <TimeChart title="Host CPU, %" format={auto} times={windows.times} series={windows.host} minMax={5} {...shared} empty="The host's figures are not valid" />
+        <TimeChart title="Resident memory, MiB" format={fixed(0)} times={windows.times} series={windows.memory} minMax={100} {...shared} />
+        <TimeChart title="Players' ping, ms" format={fixed(0)} times={players.times} series={players.ping} minMax={100} cap={500} {...shared} empty="No players' connections" />
+        <TimeChart title="Packet loss, %" format={auto} times={players.times} series={players.loss} minMax={2} cap={50} limits={[{ value: 5, label: 'bad' }]} {...shared} empty="No players' connections" />
+      </div>
+    </div>
+  )
 }

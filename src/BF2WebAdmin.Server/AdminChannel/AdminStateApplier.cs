@@ -3,6 +3,7 @@ using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Communication;
+using BF2WebAdmin.Server.Metrics;
 
 namespace BF2WebAdmin.Server.AdminChannel;
 
@@ -493,6 +494,7 @@ public class AdminStateApplier : IAdminSessionHandler
 
             case EvRoundStart ev:
                 _server.AddEventLog($"RoundStart {ev.Map} {ev.Mode} tickets {ev.Tickets1}/{ev.Tickets2}", time);
+                GameMetrics.MapLoaded(_server, ev.Map);
                 var teams = _server.Teams.ToList();
                 await _server.UpdateMapAsync(FindMap(ev.Map, ev.Mode, 0, -1),
                     teams.FirstOrDefault(t => t.Id == 1)?.Name ?? "", teams.FirstOrDefault(t => t.Id == 2)?.Name ?? "", time);
@@ -508,8 +510,11 @@ public class AdminStateApplier : IAdminSessionHandler
                 if (stale != null)
                     await _server.RemovePlayerAsync(stale, time);
 
-                await _server.AddPlayerAsync(CreatePlayer(ev.Player), time);
+                var joined = CreatePlayer(ev.Player);
+                await _server.AddPlayerAsync(joined, time);
                 RecordJoin(ev.Player, time);
+                if (!ev.Player.IsAi && (ev.Player.Flags & AdminPlayerInfo.FlagBotChannel) == 0)
+                    GameMetrics.Join(_server, joined.Country.Code);
                 break;
             }
 
@@ -598,9 +603,11 @@ public class AdminStateApplier : IAdminSessionHandler
 
             case EvKick ev:
                 _server.AddEventLog($"Kick {ev.Player} {ev.Name}", time);
+                GameMetrics.AdminAction(_server, "kick");
                 break;
 
             case EvBan ev:
+                GameMetrics.AdminAction(_server, "ban");
                 _server.AddEventLog($"Ban {ev.Player} {ev.Name} type {ev.BanType} expiry {ev.Expiry}", time);
                 break;
 
@@ -628,7 +635,7 @@ public class AdminStateApplier : IAdminSessionHandler
 
             case EvServerHealth ev:
                 if (_health != null)
-                    await _health.AddAsync(_server.Id, ev, time);
+                    await _health.AddAsync(_server.Id, ev, time, _server.Name);
                 break;
 
             case EvPlayerConnections ev:
@@ -666,6 +673,16 @@ public class AdminStateApplier : IAdminSessionHandler
     private async ValueTask ApplyKillAsync(EvKill ev, DateTimeOffset time)
     {
         _lastKillKind[ev.Victim] = ev.Kind;
+        GameMetrics.Kill(_server, ev.Kind switch
+        {
+            KillKind.Kill => "kill",
+            KillKind.RoadKill => "roadkill",
+            KillKind.TeamKill => "teamkill",
+            KillKind.Suicide => "suicide",
+            KillKind.NoAttacker => "no_attacker",
+            _ => "other",
+        }, ev.Kind is KillKind.Kill or KillKind.RoadKill ? ev.Weapon : null);
+
         var victim = FindPlayer(ev.Victim);
         if (victim == null)
             return;
@@ -695,6 +712,9 @@ public class AdminStateApplier : IAdminSessionHandler
         var sender = ev.Sender >= 0 ? FindPlayer(ev.Sender) : null;
         if (ev.Sender >= 0 && sender == null)
             return;
+
+        if (sender is { IsBot: false })
+            GameMetrics.ChatMessage(_server, ev.ChannelName);
 
         var message = new Message
         {

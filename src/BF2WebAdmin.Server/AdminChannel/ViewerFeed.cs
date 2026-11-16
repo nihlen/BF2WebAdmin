@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Hubs;
+using BF2WebAdmin.Server.Metrics;
 using BF2WebAdmin.Server.Modules.Heli2v2;
 using Microsoft.AspNetCore.SignalR;
 
@@ -282,6 +283,7 @@ public class ViewerFeed
         }
 
         _archive?.Add(replay, context);
+        GameMetrics.TvMissile(_server, replay.Summary.Outcome);
         Post(replay.Summary);
     }
 

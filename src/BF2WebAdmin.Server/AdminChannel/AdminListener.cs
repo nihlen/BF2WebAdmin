@@ -3,6 +3,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using BF2WebAdmin.Server.Metrics;
 
 namespace BF2WebAdmin.Server.AdminChannel;
 
@@ -94,7 +95,6 @@ public class AdminListener
             while (!cancellationToken.IsCancellationRequested)
             {
                 var client = await listener.AcceptTcpClientAsync(cancellationToken);
-                AppDiagnostics.ConnectedClientsCounter.Add(1);
                 _ = Task.Run(() => HandleConnectionAsync(client, tls, cancellationToken), CancellationToken.None);
             }
         }
@@ -143,7 +143,7 @@ public class AdminListener
             session = new AdminSession(result.ServerId, remote, stream, decoder, server.Applier, _loggerFactory.CreateLogger<AdminSession>(), cancellationToken);
             var previous = server.Session;
             server.AttachSession(session);
-            AppDiagnostics.AcceptedClientsCounter.Add(1);
+            AdminChannelMetrics.Accepted();
             _logger.LogInformation("Admin channel: {ServerId} authenticated from {Remote} ({Build})", result.ServerId, remote, result.Hello.Build);
 
             if (previous != null)
@@ -159,7 +159,15 @@ public class AdminListener
         }
         catch (Exception ex) when (session == null)
         {
-            AppDiagnostics.RejectedClientsCounter.Add(1);
+            AdminChannelMetrics.Refused(ex switch
+            {
+                OperationCanceledException when !cancellationToken.IsCancellationRequested => "timeout",
+                OperationCanceledException => "shutdown",
+                AuthenticationException => "tls",
+                AdminHandshakeException or AdminProtocolException => "handshake",
+                IOException => "io_error",
+                _ => "other",
+            });
             var reason = ex switch
             {
                 OperationCanceledException when !cancellationToken.IsCancellationRequested => $"no handshake within {HandshakeTimeout.TotalSeconds:0} s",

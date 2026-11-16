@@ -29,6 +29,7 @@ modules ── IGameWriter (AdminGameWriter) ── typed commands / Console, in
 | `GameServerRegistry.cs` | `IGameServerRegistry`: configured servers (DB + config), the `GameServer` per server id, key lookup |
 | `ScriptRunner.cs` | `IScriptRunner` (`GameServer.Scripts`): starts, messages and stops game scripts on the current session, and follows them to their end ([scripts.md](scripts.md)) |
 | `ServerHealth.cs` | `ServerHealthRules` rates a `ServerHealth` window and `PlayerConnectionRules` a player's entry of `PlayerConnections`; `ServerHealthStore` keeps six hours of every server's windows and connections and sends each new one to the hub ([Server health](#server-health)) |
+| `ServerHealthMetrics.cs` | the windows and connections as OpenTelemetry metrics ([Metrics](#metrics)) |
 
 Modules see `IGameServer`, the `GameEvents.cs` records and `IGameWriter`. `GameServer`'s mutators are not on
 `IGameServer`; only the applier calls them. The game classes (`Player`, `Vehicle`, `Team`, `Map` in
@@ -157,9 +158,16 @@ the subscription to a module without the bit. The same stream brings `PlayerConn
   `?minutes=60` returns only the windows received in the last hour. A server without windows has `latest: null` and an
   empty history. Times are in microseconds (`...Us`), the host figures in percent of all CPUs, the memory in KiB.
 - **Hub.** `ServerHealthEvent` (`serverId`, `window`) brings each new window to the clients subscribed to the server.
-- **Web UI.** The "Server health" panel of the server page shows the latest window, a summary of the last hour and
-  one cell per window. The engine runs frames of 28.3 ms against ticks of 33.3 ms, so a median interval of one frame
-  and a longest interval of two (56.7 ms) are normal.
+- **Web UI.** The "Server health" panel of the server page shows the latest window and the last hour or six hours: a
+  summary, a strip of one status cell per window and charts on the same time axis (tick interval, CPU per tick, host
+  CPU, resident memory, the players' ping and loss). Pointing at a time shows that window in every chart. The engine
+  runs frames of 28.3 ms against ticks of 33.3 ms, so a median interval of one frame and a longest interval of two
+  (56.7 ms) are normal.
+- **Rounds.** The charts shade the 2v2 rounds (Heli2v2). `GET /api/servers/{id}/health/rounds` (same `?minutes=`)
+  returns the server's rounds that went on in that time, in start order: `matchId`, `roundId`, `number` (in its
+  match, from 1), `start`, `end` (null while it is played). `MatchTracker` keeps the started rounds of the last six
+  hours in memory, so there are none from before WebAdmin started, and a round goes when a player leaves it. A server
+  without the Heli2v2 module, or not connected, has none. No event brings them: the panel fetches them every 15 s.
 
 #### Player connections
 
@@ -193,7 +201,13 @@ packets lost in each, from the engine's own statistics. Bots have no entry, and 
 - **Hub.** `ServerConnectionsEvent` (`serverId`, `connections`) follows each window's `ServerHealthEvent`. The window's
   event is not held back for it, and a module that sends only `ServerHealth` gets no second event.
 - **Web UI.** The panel's "Connections" table has a row per player of the latest window, the worst first. It is not
-  shown when the connections are more than 15 s older than the latest window.
+  shown when the connections are more than 15 s older than the latest window. The panel's ping and loss charts are of
+  the players with a full window (not `partial`).
+
+#### Metrics
+
+`ServerHealthMetrics` exports the windows and connections as OpenTelemetry metrics, for a longer history than six
+hours; [metrics.md](metrics.md) lists them with the rest of WebAdmin's metrics.
 
 ## Setup
 

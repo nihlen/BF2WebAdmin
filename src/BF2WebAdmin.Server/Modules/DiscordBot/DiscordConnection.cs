@@ -52,11 +52,11 @@ public sealed class DiscordConnection : IAsyncDisposable
         _onMessage = onMessage;
 
         // The meter is static: the gauge holds the connection weakly and reports nothing once it is disposed
-        var tagList = new TagList { { "serverid", game.Id } };
+        var tagList = new TagList { { Metrics.GameMetrics.ServerIdTag, game.Id } };
         var connection = new WeakReference<DiscordConnection>(this);
-        _ = Telemetry.Meter.CreateObservableGauge("bf2wa.discord.queue.count",
+        _ = Telemetry.Meter.CreateObservableGauge("bf2wa.discord.queue",
             () => connection.TryGetTarget(out var c) && !c._disposed ? [new Measurement<int>(c._queue.Reader.Count, tagList)] : Array.Empty<Measurement<int>>(),
-            description: "Length of the discord channel queue");
+            "{message}", "Messages waiting to be sent to the server's Discord channel");
     }
 
     private ServerInfo.DiscordBotConfig Config => _game.ServerInfo.DiscordBot;
@@ -92,9 +92,11 @@ public sealed class DiscordConnection : IAsyncDisposable
             try
             {
                 await channel.SendMessageAsync(text: text, embed: embed);
+                AppDiagnostics.DiscordMessage(_game.Id, true);
             }
             catch (Exception ex)
             {
+                AppDiagnostics.DiscordMessage(_game.Id, false);
                 _logger.LogError(ex, "Failed to send Discord message {Message}", text);
             }
         }

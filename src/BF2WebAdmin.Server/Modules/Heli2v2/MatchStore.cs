@@ -22,23 +22,37 @@ public sealed class MatchStore(IMatchRepository repository, IReadOnlyPolicyRegis
     public Task InsertMatch(Match match)
     {
         var entity = ToEntity(match);
-        return Queue($"Save new match {match.Id}", () => repository.InsertMatchAsync(entity));
+        return Queue("match", $"Save new match {match.Id}", () => repository.InsertMatchAsync(entity));
     }
 
     public Task UpdateMatch(Match match)
     {
         var entity = ToEntity(match);
-        return Queue($"Save match end {match.Id}", () => repository.UpdateMatchAsync(entity));
+        return Queue("match_end", $"Save match end {match.Id}", () => repository.UpdateMatchAsync(entity));
     }
 
     public Task InsertRound(Round round)
     {
         var entity = ToEntity(round);
-        return Queue($"Save round {round.Id} of match {round.MatchId}", () => repository.InsertRoundAsync(entity));
+        return Queue("round", $"Save round {round.Id} of match {round.MatchId}", () => repository.InsertRoundAsync(entity));
     }
 
-    private Task Queue(string description, Func<Task> save) =>
-        _saves.Enqueue(description, () => policies.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(save));
+    /// <summary>Queues a save with its retries; its time and result go to the metrics as <paramref name="kind"/>.</summary>
+    private Task Queue(string kind, string description, Func<Task> save) =>
+        _saves.Enqueue(description, async () =>
+        {
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            var ok = false;
+            try
+            {
+                await policies.Get<IAsyncPolicy>(PolicyNames.RetryPolicyLongAsync).ExecuteAsync(save);
+                ok = true;
+            }
+            finally
+            {
+                AppDiagnostics.MatchSave(kind, ok, System.Diagnostics.Stopwatch.GetElapsedTime(started));
+            }
+        });
 
     /// <summary>The newest match if it has not ended, with its rounds; its players from <paramref name="getPlayer"/>.</summary>
     public async Task<Match?> GetOpenMatchAsync(Func<string, Player?> getPlayer)

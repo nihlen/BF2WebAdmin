@@ -12,6 +12,7 @@ using BF2WebAdmin.Server.Controllers;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Modules;
+using BF2WebAdmin.Server.Modules.Heli2v2;
 using BF2WebAdmin.Server.Services;
 using BF2WebAdmin.Server.Communication;
 using BF2WebAdmin.Server.Communication.DTOs;
@@ -89,6 +90,7 @@ public static class ApiEndpoints
         servers.MapPost("/{serverId}/players/{index:int}/ban", BanPlayerAsync);
         servers.MapGet("/{serverId}/health", GetHealth);
         servers.MapGet("/{serverId}/health/connections", GetHealthConnections);
+        servers.MapGet("/{serverId}/health/rounds", GetHealthRounds);
         servers.MapGet("/{serverId}/missiles", GetMissiles);
         servers.MapGet("/{serverId}/missiles/{key:int}", GetMissile);
 
@@ -174,6 +176,24 @@ public static class ApiEndpoints
     /// </summary>
     private static IReadOnlyList<ServerConnectionsDto> GetHealthConnections(string serverId, ServerHealthStore health, int? minutes = null) =>
         health.GetConnections(serverId, Since(minutes));
+
+    /// <summary>
+    /// The server's 2v2 rounds (Heli2v2) that went on in the last <paramref name="minutes"/> minutes, in start order;
+    /// without it all that are kept (six hours, like the health windows). Kept in memory: none from before WebAdmin
+    /// started, and none for a server without the Heli2v2 module or one that is not connected.
+    /// </summary>
+    private static IReadOnlyList<HealthRoundDto> GetHealthRounds(string serverId, IGameServerRegistry registry, int? minutes = null)
+    {
+        var heli2v2 = (registry.GetGameServer(serverId) as GameServer)?.ModManager?.GetModule<Heli2v2Module>();
+        if (heli2v2 == null)
+            return [];
+
+        return heli2v2.GetRounds(Since(minutes)?.UtcDateTime)
+            .Select(r => new HealthRoundDto(r.MatchId, r.RoundId, r.Number, Utc(r.Start), r.End is { } end ? Utc(end) : null))
+            .ToArray();
+
+        static DateTimeOffset Utc(DateTime time) => new(DateTime.SpecifyKind(time, DateTimeKind.Utc));
+    }
 
     private static DateTimeOffset? Since(int? minutes) => minutes is { } m ? DateTimeOffset.UtcNow.AddMinutes(-Math.Max(m, 0)) : null;
 

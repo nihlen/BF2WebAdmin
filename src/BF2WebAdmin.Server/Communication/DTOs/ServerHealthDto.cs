@@ -94,3 +94,9 @@ public record ServerConnectionsDto(DateTimeOffset Time, uint Tick, IReadOnlyList
 /// players' connections of the latest window that came with them (null when its module has sent none).
 /// </summary>
 public record ServerHealthDto(ServerHealthWindowDto? Latest, IReadOnlyList<ServerHealthWindowDto> History, ServerConnectionsDto? Connections);
+
+/// <summary>
+/// A started 2v2 round of the server (Heli2v2), for the health panel to mark: its match, its number in the match from 1,
+/// and when it started and ended (UTC); no end while it is played.
+/// </summary>
+public record HealthRoundDto(Guid MatchId, Guid RoundId, int Number, DateTimeOffset Start, DateTimeOffset? End);

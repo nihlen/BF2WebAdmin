@@ -4,6 +4,7 @@ using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Commands.BF2;
 using BF2WebAdmin.Server.Constants;
+using BF2WebAdmin.Server.Metrics;
 using Discord;
 using Humanizer;
 using Polly.Registry;
@@ -57,6 +58,9 @@ public class Heli2v2Module : BaseModule,
 
     /// <summary>The round of this server that was being played at <paramref name="utc"/> (start to end), or null.</summary>
     public LiveRound? FindRound(DateTime utc) => _tracker.FindRound(utc);
+
+    /// <summary>This server's started rounds of the last six hours that went on at or after <paramref name="since"/>, in start order.</summary>
+    public IReadOnlyList<LiveRound> GetRounds(DateTime? since = null) => _tracker.GetRounds(since);
 
     private async void SetRoundsActive(bool active)
     {
@@ -153,6 +157,7 @@ public class Heli2v2Module : BaseModule,
 
         Logger.LogInformation("Saving match end results for {MatchId}", e.Match.Id);
         _ = _store.UpdateMatch(e.Match);
+        GameMetrics.Heli2v2Match(GameServer, e.Match.Map ?? "");
 
         var duration = e.Match.MatchEnd!.Value - e.Match.MatchStart!.Value;
         GameServer.GameWriter.SendText($"2v2 match ended after {duration.Humanize()}.");
@@ -200,6 +205,8 @@ public class Heli2v2Module : BaseModule,
     {
         if (!_roundsActive)
             return;
+
+        GameMetrics.Heli2v2Round(GameServer, GameServer.Map?.Name ?? "", e.Round.WinningTeamId == -1, e.Round.RoundEnd!.Value - e.Round.RoundStart!.Value);
 
         try
         {

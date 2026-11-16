@@ -10,7 +10,9 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using BF2WebAdmin.Server.AdminChannel;
+using BF2WebAdmin.Server.Metrics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -579,6 +581,55 @@ public class AdminChannelTests
         Assert.True(session.IsOpen);
         session.Close("test");
         await run;
+    }
+
+    [Fact]
+    public async Task ASessionIsMeasured()
+    {
+        // A server id of its own: the meter is static, and other tests run sessions at the same time
+        const string serverId = "127.0.0.1:16999";
+        using var metrics = new MetricsRecorder(m => Equals(m.Tags.GetValueOrDefault(AdminChannelMetrics.ServerIdTag), serverId));
+
+        var (webAdmin, moduleStream, endPoint) = await ConnectAsync();
+        var module = new FakeModule(moduleStream, Key, serverId);
+        var decoder = new AdminFrameDecoder();
+        var handshake = AdminHandshake.RunAsync(webAdmin, decoder, id => ValueTask.FromResult(id == serverId ? Key : null), CancellationToken.None);
+        Assert.True(await module.HandshakeAsync());
+        await handshake;
+        var handler = new RecordingHandler();
+        var session = new AdminSession(serverId, endPoint, webAdmin, decoder, handler, NullLogger.Instance, CancellationToken.None);
+        var run = session.RunAsync();
+        Assert.IsType<Welcome>(handler.Next());
+        Assert.IsType<Snapshot>(handler.Next());
+
+        await module.SendAsync(new EvRevive(1, 101, 3, -1));
+        Assert.IsType<EvRevive>(handler.Next());
+        var console = session.RequestAsync(id => new CmdConsole(id, "sv.serverName"));
+        var cmd = Assert.IsType<CmdConsole>(await module.ReadAsync());
+        await module.SendAsync(new ConsoleResult(cmd.RequestId, 0, ["fake"]));
+        await console;
+
+        // While it is open the session is counted
+        var observed = metrics.Observe();
+        Assert.Equal(1, observed.Single(m => m.Name == "bf2wa.admin.sessions").Value);
+        Assert.Contains(observed, m => m.Name == "bf2wa.admin.queue" && Equals(m.Tags["direction"], "inbound"));
+
+        session.Close("nothing received for 46 s");
+        await run;
+
+        Assert.Equal(1, metrics.Sum("bf2wa.admin.frames", ("direction", "received"), ("type", nameof(AdminMessageType.Welcome))));
+        Assert.Equal(1, metrics.Sum("bf2wa.admin.frames", ("direction", "received"), ("type", nameof(AdminMessageType.EvRevive))));
+        Assert.Equal(1, metrics.Sum("bf2wa.admin.frames", ("direction", "sent"), ("type", nameof(AdminMessageType.CmdConsole))));
+        Assert.True(metrics.Sum("bf2wa.admin.bytes", ("direction", "received")) > 0);
+        Assert.True(metrics.Sum("bf2wa.admin.bytes", ("direction", "sent")) > 0);
+        Assert.Single(metrics.All("bf2wa.admin.request.duration", ("type", nameof(AdminMessageType.CmdConsole)), ("result", "ok")));
+        Assert.Single(metrics.All("bf2wa.admin.apply.duration", ("kind", "snapshot")));
+        Assert.Single(metrics.All("bf2wa.admin.apply.duration", ("kind", "event")));
+        Assert.Equal(1, metrics.Sum("bf2wa.admin.session.closes", ("reason", "timeout")));
+        Assert.Single(metrics.All("bf2wa.admin.session.duration"));
+
+        // A closed session is no longer counted
+        Assert.DoesNotContain(metrics.Observe(), m => m.Name == "bf2wa.admin.sessions");
     }
 }
 

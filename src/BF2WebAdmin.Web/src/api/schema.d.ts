@@ -1155,6 +1155,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{serverId}/health/rounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    minutes?: number;
+                };
+                header?: never;
+                path: {
+                    serverId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HealthRoundDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{serverId}/missiles": {
         parameters: {
             query?: never;
@@ -1815,6 +1854,18 @@ export interface components {
         };
         /** @enum {unknown} */
         GameState: "PreGame" | "Playing" | "EndGame" | "Paused" | "Restart" | "NotConnected";
+        HealthRoundDto: {
+            /** Format: uuid */
+            matchId: string;
+            /** Format: uuid */
+            roundId: string;
+            /** Format: int32 */
+            number: number;
+            /** Format: date-time */
+            start: string;
+            /** Format: date-time */
+            end: null | string;
+        };
         JsonElement: unknown;
         LoginRequest: {
             username: string;

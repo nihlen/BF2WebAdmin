@@ -15,8 +15,16 @@ namespace BF2WebAdmin.Common.External;
 
 public static class Telemetry
 {
+    /// <summary>The name of <see cref="Meter"/>, which the metrics pipeline exports (AddMeter).</summary>
+    public const string MeterName = "BF2WebAdmin";
+
     public static ActivitySource ActivitySource = new("Unknown Application", "1.0.0");
-    public static Meter Meter = new("Unknown Application", "1.0.0");
+
+    /// <summary>
+    /// The application's meter. Its name is fixed from the start, so instruments created before the telemetry is set up
+    /// (static fields) are on the meter that is exported.
+    /// </summary>
+    public static readonly Meter Meter = new(MeterName);
 
     internal static ResourceBuilder GetResourceBuilder(ref string? serviceName, ref string? serviceVersion, ref string? otlpEndpoint)
     {
@@ -26,7 +34,6 @@ public static class Telemetry
         otlpEndpoint ??= "http://localhost:4317";
 
         ActivitySource = new ActivitySource(serviceName, serviceVersion);
-        Meter = new Meter(serviceName, serviceVersion);
 
         var resourceBuilder = ResourceBuilder.CreateDefault()
             .AddService(

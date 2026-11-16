@@ -98,6 +98,26 @@ public class Heli2v2MatchTrackerTests
     }
 
     [Fact]
+    public async Task AStartedRound_IsListedForTheHealthPanel_UntilAPlayerLeavesIt()
+    {
+        Assert.Empty(_tracker.GetRounds());
+        await StartRoundAsync();
+
+        var round = Assert.Single(_tracker.GetRounds());
+        Assert.Equal(_tracker.ActiveMatch!.Id, round.MatchId);
+        Assert.Equal(1, round.Number);
+        Assert.Equal(_start.UtcDateTime, round.Start);
+        Assert.Null(round.End);
+        // A round that has not ended goes on at any time after its start
+        Assert.Single(_tracker.GetRounds(_start.UtcDateTime.AddHours(1)));
+
+        // The active round goes with a player who leaves
+        _server.Players.Returns(_players.Take(3).ToArray());
+        await _tracker.OnPlayerLeftAsync(_players[3].Hash);
+        Assert.Empty(_tracker.GetRounds());
+    }
+
+    [Fact]
     public async Task TheSameMap_KeepsTheMatch_AnotherMapEndsIt()
     {
         await StartRoundAsync();

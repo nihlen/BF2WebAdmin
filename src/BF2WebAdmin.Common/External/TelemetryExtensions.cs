@@ -15,6 +15,12 @@ namespace BF2WebAdmin.Common.External;
 public static class TelemetryExtensions
 {
     /// <summary>
+    /// How often the metrics are exported. The game servers' health windows come every 10 s, and their gauges show the
+    /// latest window, so a longer interval would skip windows.
+    /// </summary>
+    public const int MetricExportIntervalMilliseconds = 10_000;
+
+    /// <summary>
     /// Setup OpenTelemetry tracing and metrics to the specified endpoint for ASP.NET Core projects.
     /// </summary>
     /// <param name="services">The service collection</param>
@@ -27,22 +33,28 @@ public static class TelemetryExtensions
         if (services is null)
             return null;
 
+        // Fills in the defaults (and names the activity source) before anything below reads them
+        var resourceBuilder = Telemetry.GetResourceBuilder(ref serviceName, ref serviceVersion, ref otlpEndpoint);
+        var endpoint = new Uri(otlpEndpoint!);
+
         services.AddOpenTelemetry()
-            .ConfigureResource(r => r.AddService(serviceName, serviceVersion, otlpEndpoint))
+            .ConfigureResource(r => r.AddService(serviceName!, serviceVersion: serviceVersion))
             .WithTracing(b => b
                 .AddOtlpExporter(o =>
                 {
-                    o.Endpoint = new Uri(otlpEndpoint);
+                    o.Endpoint = endpoint;
                     o.Protocol = OtlpExportProtocol.Grpc;
                 })
                 .AddAspNetCoreInstrumentation(o => { o.RecordException = true; })
                 .AddHttpClientInstrumentation(o => { o.RecordException = true; })
                 .AddEntityFrameworkCoreInstrumentation())
             .WithMetrics(b => b
-                .AddOtlpExporter(o =>
+                .AddMeter(Telemetry.MeterName)
+                .AddOtlpExporter((o, reader) =>
                 {
-                    o.Endpoint = new Uri(otlpEndpoint);
+                    o.Endpoint = endpoint;
                     o.Protocol = OtlpExportProtocol.Grpc;
+                    reader.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = MetricExportIntervalMilliseconds;
                 })
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
@@ -56,8 +68,6 @@ public static class TelemetryExtensions
             logging.AddFilter("Microsoft.AspNetCore.*", LogLevel.Warning);
             logging.AddConsole();
 
-            var resourceBuilder = Telemetry.GetResourceBuilder(ref serviceName, ref serviceVersion, ref otlpEndpoint);
-
             logging.AddOpenTelemetry(options =>
             {
                 options.IncludeScopes = true;
@@ -67,7 +77,7 @@ public static class TelemetryExtensions
                 options.SetResourceBuilder(resourceBuilder);
                 options.AddOtlpExporter(o =>
                 {
-                    o.Endpoint = new Uri(otlpEndpoint);
+                    o.Endpoint = endpoint;
                     o.Protocol = OtlpExportProtocol.Grpc;
                 });
             });

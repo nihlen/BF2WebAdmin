@@ -5,6 +5,7 @@ using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Extensions;
+using BF2WebAdmin.Server.Metrics;
 using BF2WebAdmin.Server.Communication;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -44,9 +45,8 @@ public class GameServerRegistry : IGameServerRegistry
         _cache = globalServices.GetRequiredService<IMemoryCache>();
         _logger = globalServices.GetRequiredService<ILogger<GameServerRegistry>>();
 
-        // TODO: Move to BF2WebAdminMeter.cs? How to access servers?
-        _ = Telemetry.Meter.CreateObservableGauge("bf2wa.server.connected.count", () => _servers.Values.Count(s => s.SocketState == SocketState.Connected), description: "Connected game servers");
-        _ = Telemetry.Meter.CreateObservableGauge("bf2wa.player.count", () => _servers.Values.Sum(s => s.Players.Count()), description: "Players on all servers");
+        // The players per server (bf2.players); the connected servers are the admin channel's sessions (bf2wa.admin.sessions)
+        GameMetrics.ObserveServers(() => _servers.Values);
     }
 
     public IGameServer? GetGameServer(string serverId) => _servers.TryGetValue(serverId, out var server) ? server : null;

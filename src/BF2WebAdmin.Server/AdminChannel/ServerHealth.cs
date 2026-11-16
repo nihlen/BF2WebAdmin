@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.Metrics;
 using BF2WebAdmin.Server.Communication.DTOs;
 using BF2WebAdmin.Server.Communication.Events;
 using BF2WebAdmin.Server.Hubs;
@@ -161,9 +162,10 @@ public static class PlayerConnectionRules
 /// The ServerHealth windows of every game server from the last six hours (<see cref="MaxWindows"/> windows of 10 s)
 /// and the players' connections that come with each (PlayerConnections), by server id. Kept in memory only: a restart
 /// of WebAdmin empties it. A server's windows outlive its admin links and a change of its settings, and go when the
-/// server is removed. Every new window, and its connections after it, is also sent to the server's hub group.
+/// server is removed. Every new window, and its connections after it, is also sent to the server's hub group, and
+/// counted in the metrics (<see cref="ServerHealthMetrics"/>; only with a meter factory, which the host has).
 /// </summary>
-public sealed class ServerHealthStore(IHubContext<ServerHub, IServerHubClient>? hub = null, ILogger<ServerHealthStore>? logger = null)
+public sealed class ServerHealthStore
 {
     public const int MaxWindows = 2160;
 
@@ -171,18 +173,41 @@ public sealed class ServerHealthStore(IHubContext<ServerHub, IServerHubClient>? 
     {
         public readonly Queue<ServerHealthWindowDto> Windows = new();
         public readonly Queue<ServerConnectionsDto> Connections = new();
+        public string? Name;
     }
 
-    private readonly ConcurrentDictionary<string, History> _servers = new();
+    /// <summary>A server's latest window and connections, with its name as it was then; for the metrics.</summary>
+    public sealed record LatestHealth(string ServerId, string? Name, ServerHealthWindowDto? Window, ServerConnectionsDto? Connections);
 
-    /// <summary>Rates and keeps a window, received at <paramref name="time"/>. Called from the session's apply loop.</summary>
-    public async ValueTask<ServerHealthWindowDto> AddAsync(string serverId, EvServerHealth e, DateTimeOffset time)
+    private readonly ConcurrentDictionary<string, History> _servers = new();
+    private readonly IHubContext<ServerHub, IServerHubClient>? _hub;
+    private readonly ILogger<ServerHealthStore>? _logger;
+    private readonly ServerHealthMetrics? _metrics;
+
+    public ServerHealthStore(IHubContext<ServerHub, IServerHubClient>? hub = null, ILogger<ServerHealthStore>? logger = null,
+        IMeterFactory? meterFactory = null, TimeProvider? timeProvider = null)
+    {
+        _hub = hub;
+        _logger = logger;
+        _metrics = meterFactory != null ? new ServerHealthMetrics(meterFactory, this, timeProvider ?? TimeProvider.System) : null;
+    }
+
+    /// <summary>
+    /// Rates and keeps a window, received at <paramref name="time"/>, of the server named <paramref name="serverName"/>.
+    /// Called from the session's apply loop.
+    /// </summary>
+    public async ValueTask<ServerHealthWindowDto> AddAsync(string serverId, EvServerHealth e, DateTimeOffset time, string? serverName = null)
     {
         var window = ServerHealthRules.ToWindow(e, time);
         var history = _servers.GetOrAdd(serverId, _ => new History());
+        string? name;
         lock (history)
+        {
             Keep(history.Windows, window);
+            name = history.Name = serverName ?? history.Name;
+        }
 
+        _metrics?.OnWindow(serverId, name, window);
         await SendAsync(serverId, clients => clients.ServerHealthEvent(new ServerHealthEvent { ServerId = serverId, Window = window }));
         return window;
     }
@@ -197,9 +222,14 @@ public sealed class ServerHealthStore(IHubContext<ServerHub, IServerHubClient>? 
     {
         var connections = new ServerConnectionsDto(time, e.Tick, e.Players.Select(p => PlayerConnectionRules.ToDto(p, nameOf(p.Player))).ToArray());
         var history = _servers.GetOrAdd(serverId, _ => new History());
+        string? name;
         lock (history)
+        {
             Keep(history.Connections, connections);
+            name = history.Name;
+        }
 
+        _metrics?.OnConnections(serverId, name, connections);
         await SendAsync(serverId, clients => clients.ServerConnectionsEvent(new ServerConnectionsEvent { ServerId = serverId, Connections = connections }));
         return connections;
     }
@@ -213,16 +243,16 @@ public sealed class ServerHealthStore(IHubContext<ServerHub, IServerHubClient>? 
 
     private async ValueTask SendAsync(string serverId, Func<IServerHubClient, Task> send)
     {
-        if (hub == null)
+        if (_hub == null)
             return;
 
         try
         {
-            await send(hub.Clients.Group(serverId));
+            await send(_hub.Clients.Group(serverId));
         }
         catch (Exception ex)
         {
-            logger?.LogWarning(ex, "Server health {ServerId}: send failed", serverId);
+            _logger?.LogWarning(ex, "Server health {ServerId}: send failed", serverId);
         }
     }
 
@@ -261,6 +291,19 @@ public sealed class ServerHealthStore(IHubContext<ServerHub, IServerHubClient>? 
             all = history.Connections.ToArray();
 
         return since is { } from ? Array.FindAll(all, c => c.Time >= from) : all;
+    }
+
+    /// <summary>Every server's latest window and connections (null when it has none), with its name.</summary>
+    public IReadOnlyList<LatestHealth> GetLatest()
+    {
+        var result = new List<LatestHealth>();
+        foreach (var (serverId, history) in _servers)
+        {
+            lock (history)
+                result.Add(new LatestHealth(serverId, history.Name, history.Windows.LastOrDefault(), history.Connections.LastOrDefault()));
+        }
+
+        return result;
     }
 
     public void Remove(string serverId) => _servers.TryRemove(serverId, out _);

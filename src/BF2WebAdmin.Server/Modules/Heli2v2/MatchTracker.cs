@@ -29,8 +29,9 @@ public sealed class MatchTracker(
     private List<Match> _matches = new();
     private Round? _pendingRound;
 
-    // The started rounds of the last hour, for ViewerFeed to place a traced TV missile in its round. Read from the admin
-    // channel's apply loop, so a copy under its own lock instead of _matches
+    // The started rounds of the last six hours, for ViewerFeed to place a traced TV missile in its round and for the
+    // server health panel to mark the rounds (as long as ServerHealthStore keeps windows). Read from the admin channel's
+    // apply loop and the web API, so a copy under its own lock instead of _matches
     private readonly object _liveRoundsLock = new();
     private readonly List<LiveRound> _liveRounds = new();
 
@@ -43,6 +44,19 @@ public sealed class MatchTracker(
     {
         lock (_liveRoundsLock)
             return _liveRounds.LastOrDefault(r => r.Start <= utc && (r.End is null || utc <= r.End));
+    }
+
+    /// <summary>How long the started rounds are kept for <see cref="FindRound"/> and <see cref="GetRounds"/>.</summary>
+    public static readonly TimeSpan LiveRoundsKeptFor = TimeSpan.FromHours(6);
+
+    /// <summary>
+    /// This server's started rounds that were still being played at or after <paramref name="since"/> (all that are
+    /// kept without it), in start order. A round that has not ended has no end.
+    /// </summary>
+    public IReadOnlyList<LiveRound> GetRounds(DateTime? since = null)
+    {
+        lock (_liveRoundsLock)
+            return _liveRounds.Where(r => since is not { } from || (r.End ?? DateTime.MaxValue) >= from).OrderBy(r => r.Start).ToArray();
     }
 
     /// <summary>
@@ -409,7 +423,7 @@ public sealed class MatchTracker(
         var number = match.Rounds.IndexOf(round) + 1;
         lock (_liveRoundsLock)
         {
-            _liveRounds.RemoveAll(r => r.Start < start.AddHours(-1));
+            _liveRounds.RemoveAll(r => r.Start < start - LiveRoundsKeptFor);
             _liveRounds.Add(new LiveRound(match.Id, round.Id, number, start));
         }
     }

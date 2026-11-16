@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { api, type CommandLogEntry, type Player, type ServerHealth, type ServerSnapshot, type Vector3 } from '@/api/client'
+import { api, type CommandLogEntry, type Player, type ServerConnections, type ServerHealth, type ServerSnapshot, type Vector3 } from '@/api/client'
 import { onHubReconnected, useHubEvent, useServerSubscription } from '@/api/hub'
 import { reportGameUpdate } from '@/lib/pending-actions'
 
@@ -21,15 +21,45 @@ export const snapshotQuery = (serverId: string) => api.queryOptions('get', '/api
 /** The commands web users sent to the server (kept by WebAdmin in memory), oldest first. */
 export const commandLogQuery = (serverId: string) => api.queryOptions('get', '/api/servers/{serverId}/log', { params: { path: { serverId } } })
 
-/** The part of a server's health windows the server page shows (WebAdmin keeps six hours). */
+/** The part of a server's health windows the server page shows first (WebAdmin keeps six hours). */
 export const healthMinutes = 60
 
 /**
- * How the server process runs: its latest health window (one per 10 s), those of the last hour, oldest first, and the
- * players' connections over the latest window.
+ * How the server process runs: its latest health window (one per 10 s), those of the last <minutes>, oldest first, and
+ * the players' connections over the latest window.
  */
-export const healthQuery = (serverId: string) =>
-  api.queryOptions('get', '/api/servers/{serverId}/health', { params: { path: { serverId }, query: { minutes: healthMinutes } } })
+export const healthQuery = (serverId: string, minutes = healthMinutes) =>
+  api.queryOptions('get', '/api/servers/{serverId}/health', { params: { path: { serverId }, query: { minutes } } })
+
+/** The players' connections per health window of the last <minutes>, oldest first. */
+export const healthConnectionsQuery = (serverId: string, minutes = healthMinutes) =>
+  api.queryOptions('get', '/api/servers/{serverId}/health/connections', { params: { path: { serverId }, query: { minutes } } })
+
+/** The server's 2v2 rounds of the last <minutes> (kept in memory by WebAdmin), in start order. */
+export const healthRoundsQuery = (serverId: string, minutes = healthMinutes) =>
+  api.queryOptions('get', '/api/servers/{serverId}/health/rounds', { params: { path: { serverId }, query: { minutes } } })
+
+type HealthKey = readonly [string, string, { params: { path: { serverId: string }; query: { minutes: number } } }]
+
+/**
+ * Updates every cached query of the server at <path> (one per part of the history the panel has shown) with <recipe>,
+ * given the query's minutes. Queries not fetched yet are left alone.
+ */
+function updateHealthQueries<T>(
+  queryClient: ReturnType<typeof useQueryClient>,
+  path: string,
+  serverId: string,
+  recipe: (current: T, minutes: number) => T,
+) {
+  queryClient
+    .getQueryCache()
+    .findAll({ queryKey: ['get', path] })
+    .forEach((query) => {
+      const key = query.queryKey as unknown as HealthKey
+      if (key[2]?.params.path.serverId !== serverId) return
+      queryClient.setQueryData<T>(query.queryKey, (current) => (current === undefined ? current : recipe(current, key[2].params.query.minutes)))
+    })
+}
 
 /**
  * A server's state: the snapshot from the API, kept current by the hub's game events. Positions arrive several times
@@ -72,7 +102,12 @@ export function useServerLive(serverId: string) {
         positions.current.clear()
         void queryClient.invalidateQueries({ queryKey: snapshotQuery(serverId).queryKey })
         void queryClient.invalidateQueries({ queryKey: commandLogQuery(serverId).queryKey })
-        void queryClient.invalidateQueries({ queryKey: healthQuery(serverId).queryKey })
+        // Every part of the history the panel has shown
+        for (const path of ['/api/servers/{serverId}/health', '/api/servers/{serverId}/health/connections', '/api/servers/{serverId}/health/rounds'])
+          void queryClient.invalidateQueries({
+            queryKey: ['get', path],
+            predicate: (q) => (q.queryKey as unknown as HealthKey)[2]?.params.path.serverId === serverId,
+          })
       }),
     [queryClient, serverId],
   )
@@ -145,18 +180,25 @@ export function useServerLive(serverId: string) {
 
   useHubEvent('ServerHealthEvent', (e) => {
     if (e.serverId !== serverId) return
-    // The last hour by the server's clock, which the windows' times are from
-    const from = Date.parse(e.window.time) - healthMinutes * 60_000
-    queryClient.setQueryData<ServerHealth>(health.queryKey, (current) =>
-      current && !current.history.some((w) => w.time === e.window.time && w.tick === e.window.tick)
-        ? { ...current, latest: e.window, history: [...current.history, e.window].filter((w) => Date.parse(w.time) >= from) }
-        : current,
-    )
+    updateHealthQueries<ServerHealth>(queryClient, '/api/servers/{serverId}/health', serverId, (current, minutes) => {
+      if (current.history.some((w) => w.time === e.window.time && w.tick === e.window.tick)) return current
+      // The query's part of the history by WebAdmin's clock, which the windows' times are from
+      const from = Date.parse(e.window.time) - minutes * 60_000
+      return { ...current, latest: e.window, history: [...current.history, e.window].filter((w) => Date.parse(w.time) >= from) }
+    })
   })
 
   useHubEvent('ServerConnectionsEvent', (e) => {
     if (e.serverId !== serverId) return
-    queryClient.setQueryData<ServerHealth>(health.queryKey, (current) => (current ? { ...current, connections: e.connections } : current))
+    updateHealthQueries<ServerHealth>(queryClient, '/api/servers/{serverId}/health', serverId, (current) => ({
+      ...current,
+      connections: e.connections,
+    }))
+    updateHealthQueries<ServerConnections[]>(queryClient, '/api/servers/{serverId}/health/connections', serverId, (current, minutes) => {
+      if (current.some((c) => c.time === e.connections.time && c.tick === e.connections.tick)) return current
+      const from = Date.parse(e.connections.time) - minutes * 60_000
+      return [...current, e.connections].filter((c) => Date.parse(c.time) >= from)
+    })
   })
 
   useHubEvent('PlayerScoreEvent', (e) => {

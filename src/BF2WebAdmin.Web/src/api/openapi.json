@@ -999,6 +999,46 @@
         }
       }
     },
+    "/api/servers/{serverId}/health/rounds": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minutes",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HealthRoundDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/servers/{serverId}/missiles": {
       "get": {
         "tags": [
@@ -2220,6 +2260,41 @@
           "Restart",
           "NotConnected"
         ]
+      },
+      "HealthRoundDto": {
+        "required": [
+          "matchId",
+          "roundId",
+          "number",
+          "start",
+          "end"
+        ],
+        "type": "object",
+        "properties": {
+          "matchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "roundId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
       },
       "JsonElement": { },
       "LoginRequest": {

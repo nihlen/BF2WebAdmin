@@ -1,123 +1,64 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using System.Runtime.CompilerServices;
 using BF2WebAdmin.Common.External;
 
 namespace BF2WebAdmin.Server;
 
-// References:
-// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/semantic_conventions/README.md
-// https://github.com/asynkron/protoactor-dotnet/blob/e792c805baf29a50af2a1bd665e2a21ded7662f3/src/Proto.Cluster/Metrics/ClusterMetrics.cs
-// https://github.com/exceptionless/Exceptionless/blob/e8e73183d6e2ea4b5a9054ab2cb5c2e6932e7fbf/src/Exceptionless.Core/Utility/AppDiagnostics.cs
-// https://github.com/apache/pulsar-dotpulsar/blob/be7c40e39bd5afc68aefa0460ab92ca7220eeefe/src/DotPulsar/Internal/DotPulsarMeter.cs
-// https://github.com/piotrekmich79/metricsExample/blob/fc7ca2ff7a0e5ceac727a914f167d457151619ba/MetricsProvider/SharkRuntimeMeter.cs
-// TODO: make non-static helper methods Track* and inject into modules/readers/writers?
+/// <summary>
+/// How the modules handle the game's events and the players' commands, as metrics on the application's meter
+/// (<see cref="Telemetry.MeterName"/>). The runtime's figures (GC, thread pool, process CPU and memory) come from the
+/// runtime's own meter, and the admin channel's from <see cref="Metrics.AdminChannelMetrics"/>.
+/// </summary>
 public static class AppDiagnostics
 {
-    internal static readonly Counter<int> ConnectedClientsCounter = Telemetry.Meter.CreateCounter<int>("bf2wa.socket.clients.connected.count", description: "Socket server connections");
-    internal static readonly Counter<int> AcceptedClientsCounter = Telemetry.Meter.CreateCounter<int>("bf2wa.socket.clients.accepted.count", description: "Accepted socket server connections");
-    internal static readonly Counter<int> RejectedClientsCounter = Telemetry.Meter.CreateCounter<int>("bf2wa.socket.clients.rejected.count", description: "Rejected socket server connections");
-    internal static readonly Counter<long> ReceivedMessagesCounter = Telemetry.Meter.CreateCounter<long>("bf2wa.socket.messages.received.count", description: "Received message lines from all connections");
-    internal static readonly Counter<long> ErrorMessagesCounter = Telemetry.Meter.CreateCounter<long>("bf2wa.socket.messages.error.count", description: "Errors on received message lines from all connections");
-    internal static readonly Counter<int> ServerConnectRetryCounter = Telemetry.Meter.CreateCounter<int>("bf2wa.socket.clients.retry.count", description: "Reconnect retry attempts to game servers");
+    // From a few microseconds (most handlers) to seconds (a handler that waits on the database or Discord)
+    private static readonly double[] DurationBuckets = [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5];
 
-    private static readonly Counter<int> MessageSendCounter = Telemetry.Meter.CreateCounter<int>("bf2wa.socket.message.send.count", description: "Messages sent");
-    private static readonly Histogram<double> MessageSendDuration = Telemetry.Meter.CreateHistogram<double>("bf2wa.socket.message.send.duration", unit: "ms", description: "Message send duration");
-    private static readonly Counter<int> MessageReceiveCounter = Telemetry.Meter.CreateCounter<int>("bf2wa.socket.message.receive.count", description: "Messages received");
-    private static readonly Histogram<double> MessageReceiveDuration = Telemetry.Meter.CreateHistogram<double>("bf2wa.socket.message.receive.duration", unit: "ms", description: "Message receive duration");
+    private static readonly Histogram<double> EventDuration = Telemetry.Meter.CreateHistogram("bf2wa.module.event.duration", "s",
+        "Time a module took to handle a game event, by event and module",
+        advice: new InstrumentAdvice<double> { HistogramBucketBoundaries = DurationBuckets });
 
-    private static readonly Counter<int> EventHandleCounter = Telemetry.Meter.CreateCounter<int>("bf2wa.event.count", description: "Events handled");
-    private static readonly Histogram<double> EventHandleDuration = Telemetry.Meter.CreateHistogram<double>("bf2wa.event.duration", unit: "ms", description: "Event handle duration");
-    private static readonly Counter<int> CommandHandleCounter = Telemetry.Meter.CreateCounter<int>("bf2wa.command.count", description: "Commands handled");
-    private static readonly Histogram<double> CommandHandleDuration = Telemetry.Meter.CreateHistogram<double>("bf2wa.command.duration", unit: "ms", description: "Command handle duration");
+    private static readonly Histogram<double> CommandDuration = Telemetry.Meter.CreateHistogram("bf2wa.module.command.duration", "s",
+        "Time a module took to handle a player's command, by command and module",
+        advice: new InstrumentAdvice<double> { HistogramBucketBoundaries = DurationBuckets });
 
-    static AppDiagnostics()
+    private static readonly Counter<long> Failures = Telemetry.Meter.CreateCounter<long>("bf2wa.module.failures", "{failure}",
+        "Event and command handlers that threw, by kind (event, command) and module");
+
+    private static readonly Counter<long> DiscordMessages = Telemetry.Meter.CreateCounter<long>("bf2wa.discord.messages", "{message}",
+        "Messages the servers' Discord bots sent to their channels, by result (sent, failed)");
+
+    // A save retries for up to ~34 minutes while the database is away
+    private static readonly Histogram<double> MatchSaveDuration = Telemetry.Meter.CreateHistogram("bf2wa.match.save.duration", "s",
+        "Heli2v2 match writes to the database, with their retries, by kind (match, match_end, round) and result (ok, failed)",
+        advice: new InstrumentAdvice<double> { HistogramBucketBoundaries = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5, 30, 120, 600, 2400] });
+
+    internal static void DiscordMessage(string serverId, bool sent) =>
+        DiscordMessages.Add(1, new KeyValuePair<string, object?>(Metrics.GameMetrics.ServerIdTag, serverId),
+            new KeyValuePair<string, object?>("result", sent ? "sent" : "failed"));
+
+    internal static void MatchSave(string kind, bool ok, TimeSpan duration) =>
+        MatchSaveDuration.Record(duration.TotalSeconds, new KeyValuePair<string, object?>("kind", kind),
+            new KeyValuePair<string, object?>("result", ok ? "ok" : "failed"));
+
+    /// <summary>A module handled an event (since <paramref name="startTimestamp"/>, a <see cref="Stopwatch"/> timestamp).</summary>
+    internal static void TrackEvent(string eventType, string moduleType, long startTimestamp, bool failed)
     {
-        _ = Telemetry.Meter.CreateObservableGauge("bf2wa-gc.heap", () => GC.GetTotalMemory(false), "By", "GC Heap Size");
-        _ = Telemetry.Meter.CreateObservableGauge("bf2wa-gen_0-gc.count", () => GC.CollectionCount(0), description: "Gen 0 GC Count");
-        _ = Telemetry.Meter.CreateObservableGauge("bf2wa-gen_1-gc.count", () => GC.CollectionCount(1), description: "Gen 1 GC Count");
-        _ = Telemetry.Meter.CreateObservableGauge("bf2wa-gen_2-gc.count", () => GC.CollectionCount(2), description: "Gen 2 GC Count");
-        _ = Telemetry.Meter.CreateObservableCounter("bf2wa-alloc.rate", () => GC.GetTotalAllocatedBytes(), "By", "Allocation Rate");
-        _ = Telemetry.Meter.CreateObservableCounter("bf2wa-gc.fragmentation", GetFragmentation, description: "GC Fragmentation");
-        _ = Telemetry.Meter.CreateObservableGauge("bf2wa-monitor.lock.contention.count", () => Monitor.LockContentionCount, description: "Monitor Lock Contention Count");
-        _ = Telemetry.Meter.CreateObservableCounter("bf2wa-threadpool.thread.count", () => ThreadPool.ThreadCount, description: "ThreadPool Thread Count");
-        _ = Telemetry.Meter.CreateObservableGauge("bf2wa-threadpool.completed.items.count", () => ThreadPool.CompletedWorkItemCount, description: "ThreadPool Completed Work Item Count");
-        _ = Telemetry.Meter.CreateObservableCounter("bf2wa-threadpool.queue.length", () => ThreadPool.PendingWorkItemCount, description: "ThreadPool Queue Length");
-        _ = Telemetry.Meter.CreateObservableCounter("bf2wa-active.timer.count", () => Timer.ActiveCount, description: "Number of Active Timers");
-        _ = Telemetry.Meter.CreateObservableCounter("process.cpu.time", GetProcessorTimes, "s", "Processor time of this process");
-
-        // Not yet official: https://github.com/open-telemetry/opentelemetry-specification/pull/2392
-        _ = Telemetry.Meter.CreateObservableGauge("process.cpu.count", () => Environment.ProcessorCount, description: "The number of available logical CPUs");
-        _ = Telemetry.Meter.CreateObservableGauge("process.memory.usage", () => Process.GetCurrentProcess().WorkingSet64, "By", "The amount of physical memory in use");
-        _ = Telemetry.Meter.CreateObservableGauge("process.memory.virtual", () => Process.GetCurrentProcess().VirtualMemorySize64, "By", "The amount of committed virtual memory");
+        EventDuration.Record(Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds,
+            new KeyValuePair<string, object?>("event", eventType), new KeyValuePair<string, object?>("module", moduleType));
+        if (failed)
+            Failure("event", moduleType);
     }
 
-    private static double GetFragmentation()
+    /// <summary>A module handled a command (since <paramref name="startTimestamp"/>, a <see cref="Stopwatch"/> timestamp).</summary>
+    internal static void TrackCommand(string commandType, string moduleType, long startTimestamp, bool failed)
     {
-        var gcInfo = GC.GetGCMemoryInfo();
-        return gcInfo.HeapSizeBytes != 0 ? gcInfo.FragmentedBytes * 100d / gcInfo.HeapSizeBytes : 0;
+        CommandDuration.Record(Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds,
+            new KeyValuePair<string, object?>("command", commandType), new KeyValuePair<string, object?>("module", moduleType));
+        if (failed)
+            Failure("command", moduleType);
     }
 
-    private static IEnumerable<Measurement<double>> GetProcessorTimes()
-    {
-        var process = Process.GetCurrentProcess();
-        return new[]
-        {
-            new Measurement<double>(process.UserProcessorTime.TotalSeconds, new KeyValuePair<string, object?>("state", "user")),
-            new Measurement<double>(process.PrivilegedProcessorTime.TotalSeconds, new KeyValuePair<string, object?>("state", "system")),
-        };
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double GetMilliseconds(DateTimeOffset startTime) => (DateTimeOffset.UtcNow - startTime).TotalMilliseconds;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void TrackMessageReceive(DateTimeOffset startTime, string serverId)
-    {
-        var tagList = new TagList
-        {
-            { "serverid", serverId }
-        };
-
-        MessageReceiveCounter.Add(1, tagList);
-        MessageReceiveDuration.Record(GetMilliseconds(startTime), tagList);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void TrackMessageSend(DateTimeOffset startTime, string serverId)
-    {
-        var tagList = new TagList
-        {
-            { "serverid", serverId }
-        };
-
-        MessageSendCounter.Add(1, tagList);
-        MessageSendDuration.Record(GetMilliseconds(startTime), tagList);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void TrackEvent(string eventType, string moduleType, DateTimeOffset startTime)
-    {
-        var tagList = new TagList
-        {
-            { "eventtype", eventType },
-            { "moduletype", moduleType }
-        };
-
-        EventHandleCounter.Add(1, tagList);
-        EventHandleDuration.Record(GetMilliseconds(startTime), tagList);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void TrackCommand(string commandType, string moduleType, DateTimeOffset startTime)
-    {
-        var tagList = new TagList
-        {
-            { "commandtype", commandType },
-            { "moduletype", moduleType }
-        };
-
-        CommandHandleCounter.Add(1, tagList);
-        CommandHandleDuration.Record(GetMilliseconds(startTime), tagList);
-    }
+    private static void Failure(string kind, string moduleType) =>
+        Failures.Add(1, new KeyValuePair<string, object?>("kind", kind), new KeyValuePair<string, object?>("module", moduleType));
 }

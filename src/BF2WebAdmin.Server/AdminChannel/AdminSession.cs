@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Threading.Channels;
+using BF2WebAdmin.Server.Metrics;
 
 namespace BF2WebAdmin.Server.AdminChannel;
 
@@ -49,6 +50,7 @@ public sealed class AdminSession
     private uint _pendingSnapshotRequest;
     private string? _closeReason;
     private volatile bool _errorQueued;
+    private int _inboundQueued;
 
     public string ServerId { get; }
     public IPEndPoint RemoteEndPoint { get; }
@@ -72,6 +74,15 @@ public sealed class AdminSession
     public bool IsOpen => !_cts.IsCancellationRequested;
     public string? CloseReason => _closeReason;
 
+    /// <summary>Received messages (and stream markers) that wait for the apply loop.</summary>
+    public int InboundQueued => Volatile.Read(ref _inboundQueued);
+
+    /// <summary>Frames that wait for the write loop.</summary>
+    public int OutboundQueued => _outbound.Reader.Count;
+
+    /// <summary>Commands sent that wait for their reply.</summary>
+    public int PendingRequests => _pending.Count;
+
     public uint NextRequestId()
     {
         // Request id 0 is the Snapshot that follows Welcome and connection-level errors
@@ -87,12 +98,14 @@ public sealed class AdminSession
     /// <summary>Runs the link until it closes. Never throws.</summary>
     public async Task RunAsync()
     {
+        AdminChannelMetrics.SessionOpened(this);
         try
         {
             await RunLoopsAsync();
         }
         finally
         {
+            AdminChannelMetrics.SessionClosed(this, _closeReason);
             _closed.TrySetResult();
         }
     }
@@ -161,7 +174,10 @@ public sealed class AdminSession
     /// <summary>Queues a frame without waiting for a reply.</summary>
     public void Post(AdminMessage message)
     {
-        if (!_outbound.Writer.TryWrite(AdminProtocol.Encode(message)))
+        var frame = AdminProtocol.Encode(message);
+        if (_outbound.Writer.TryWrite(frame))
+            AdminChannelMetrics.Sent(ServerId, message.Type, frame.Length);
+        else
             _logger.LogDebug("Admin channel {ServerId}: dropped {Type}, the link is closed", ServerId, message.Type);
     }
 
@@ -176,16 +192,23 @@ public sealed class AdminSession
             throw new AdminCommandException("the admin channel link is closed");
 
         Post(message);
+        var started = Stopwatch.GetTimestamp();
+        var result = "closed";
         try
         {
             var reply = await tcs.Task.WaitAsync(timeout ?? DefaultRequestTimeout, _cts.Token);
             if (reply is ErrorMessage error)
+            {
+                result = "error";
                 throw new AdminCommandException($"{message.Type} refused: {error.Code} {error.Message}", error.Code);
+            }
 
+            result = "ok";
             return reply;
         }
         catch (TimeoutException)
         {
+            result = "timeout";
             throw new AdminCommandException($"{message.Type} {requestId}: no reply");
         }
         catch (OperationCanceledException)
@@ -195,6 +218,7 @@ public sealed class AdminSession
         finally
         {
             _pending.TryRemove(requestId, out _);
+            AdminChannelMetrics.Request(ServerId, message.Type, result, Stopwatch.GetElapsedTime(started));
         }
     }
 
@@ -292,6 +316,7 @@ public sealed class AdminSession
                 }
 
                 Interlocked.Exchange(ref _lastReceived, Stopwatch.GetTimestamp());
+                AdminChannelMetrics.BytesReceived(ServerId, n);
                 _decoder.Append(buffer.AsSpan(0, n));
                 DrainDecoder();
             }
@@ -324,6 +349,7 @@ public sealed class AdminSession
         while (_decoder.TryRead(out var type, out var payload))
         {
             var message = AdminProtocol.Decode(type, payload);
+            AdminChannelMetrics.Received(ServerId, message.Type);
             Record(message);
             Dispatch(message);
         }
@@ -345,7 +371,12 @@ public sealed class AdminSession
             case OkReply or ConsoleResult or ObjectList or ObjectSpawned or Pong or ErrorMessage:
                 var requestId = ((IAdminRequest)message).RequestId;
                 if (_pending.TryGetValue(requestId, out var tcs))
+                {
+                    // The keepalive's Ping carries WebAdmin's clock, which the Pong returns
+                    if (message is Pong pong)
+                        AdminChannelMetrics.Ping(ServerId, TimeSpan.FromMilliseconds(Math.Max(0, Environment.TickCount64 - (long)pong.Clock)));
                     tcs.TrySetResult(message);
+                }
                 else
                     _logger.LogDebug("Admin channel {ServerId}: reply {Type} to unknown request {RequestId}", ServerId, message.Type, requestId);
                 break;
@@ -353,8 +384,8 @@ public sealed class AdminSession
             case PlayerStream or VehicleStream or ProjectileStream or GameStream or AimStream:
                 // Latest wins: only queue a marker when the slot was empty
                 var slot = message.Type - AdminMessageType.PlayerStream;
-                if (Interlocked.Exchange(ref _latestStreams[slot], message) == null)
-                    _inbound.Writer.TryWrite(null);
+                if (Interlocked.Exchange(ref _latestStreams[slot], message) == null && _inbound.Writer.TryWrite(null))
+                    Interlocked.Increment(ref _inboundQueued);
                 break;
 
             case Welcome or Snapshot or AdminEvent or ScriptList:
@@ -366,7 +397,8 @@ public sealed class AdminSession
                     Capabilities = welcome.Capabilities;
                 }
 
-                _inbound.Writer.TryWrite(message);
+                if (_inbound.Writer.TryWrite(message))
+                    Interlocked.Increment(ref _inboundQueued);
                 break;
 
             default:
@@ -381,6 +413,8 @@ public sealed class AdminSession
         {
             await foreach (var queued in _inbound.Reader.ReadAllAsync(token))
             {
+                Interlocked.Decrement(ref _inboundQueued);
+
                 // ReadAllAsync drains what is queued without looking at the token; a closed link applies nothing more
                 // (a new link for the server may already be running)
                 if (token.IsCancellationRequested)
@@ -424,6 +458,7 @@ public sealed class AdminSession
                         if (e.Seq > _expectedSeq)
                         {
                             SequenceGaps++;
+                            AdminChannelMetrics.SequenceGap(ServerId);
                             _logger.LogWarning("Admin channel {ServerId}: sequence gap, expected {Expected}, got {Seq}; requesting a snapshot", ServerId,
                                 _expectedSeq, e.Seq);
                             RequestSnapshot();
@@ -446,6 +481,7 @@ public sealed class AdminSession
 
     private async ValueTask ApplyAsync(AdminMessage message)
     {
+        var started = Stopwatch.GetTimestamp();
         try
         {
             await _handler.OnMessageAsync(this, message);
@@ -453,6 +489,10 @@ public sealed class AdminSession
         catch (Exception ex)
         {
             _logger.LogError(ex, "Admin channel {ServerId}: failed to apply {Type}", ServerId, message.Type);
+        }
+        finally
+        {
+            AdminChannelMetrics.Applied(ServerId, message, Stopwatch.GetElapsedTime(started));
         }
     }
 

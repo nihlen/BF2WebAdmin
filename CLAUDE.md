@@ -5,14 +5,15 @@ such as Heli2v2. [README.md](README.md) describes the product.
 
 ## Branches
 
-- `admin-channel` (checked out here): the game-server backend is the native admin channel of the OpenBF2 module
-  `libserverext.so` (openbf2-server-ext), not `mm_webadmin.py`. **Production runs it since 2026-11-08** (release 0.1.0;
-  the migration runbook and scripts are in the author's private vps-setup repo).
-  The backend is described in [docs/admin-channel.md](docs/admin-channel.md). The wire contract is
+- `master` is the only branch; releases are tagged on it (`0.8.0`, ...). The game-server backend is the native admin
+  channel of the OpenBF2 module `libserverext.so` (openbf2-server-ext), not `mm_webadmin.py`. **Production runs it since
+  2026-11-08** (release 0.1.0; the migration runbook and scripts are in the author's private vps-setup repo). The
+  backend is described in [docs/admin-channel.md](docs/admin-channel.md). The wire contract is
   [openbf2-server-ext](https://github.com/nihlen/openbf2-server-ext) `docs/admin-channel.md`; code follows it.
-- `master`: the same since 2026-11-16, when `admin-channel` was merged into it (a fast-forward). Before that it was the
-  `mm_webadmin.py` text-socket version (port 4300, release 0.0.2), which production ran until 2026-11-08; that version
-  ends at commit `a869c5c`, where `src/BF2WebAdmin.Server/README.md` documents the old protocol.
+- The admin channel was built on a branch `admin-channel`, merged into `master` on 2026-11-16 (a fast-forward) and
+  deleted after release 0.8.0. Before that, `master` was the `mm_webadmin.py` text-socket version (port 4300, release
+  0.0.2), which production ran until 2026-11-08; that version ends at commit `a869c5c`, where
+  `src/BF2WebAdmin.Server/README.md` documents the old protocol.
 
 ## The whole system
 

@@ -15,6 +15,7 @@ namespace BF2WebAdmin.Tests;
 /// values and compared byte for byte, then decoded and re-encoded.
 /// The file here holds the messages WebAdmin has: the module's votes and R7 commands are not among them, and the
 /// seven script frames (cmd_start_script to ev_script_event) were added on 2026-11-14 from the contract's layouts.
+/// cmd_subscribe_health and ev_server_health are the module's frames at 8396330.
 /// </summary>
 public class AdminProtocolTests
 {
@@ -138,12 +139,15 @@ public class AdminProtocolTests
         ["script_list"] = new ScriptList(33, [(7, "nasa"), (9, "dance")]),
         ["ev_script_finished"] = new EvScriptFinished(28, 10, 7, "nasa", EvScriptFinished.ReasonFinished, "{\"ticks\":90}", 90, 1234, 56),
         ["ev_script_event"] = new EvScriptEvent(29, 10, 7, EvScriptEvent.KindData, "{\"player\":3,\"y\":301.5}"),
+        ["cmd_subscribe_health"] = new Subscribe(38, AdminStream.Health, 0, []),
+        ["ev_server_health"] = new EvServerHealth(30, 10, 300, 10000123, EvServerHealth.FlagHostValid, 33334, 34100, 61234, 1, 1, 310, 1250,
+            4800, 350, 900, 12, 0, 1, 412, 278, 3, 159744),
     };
 
     [Fact]
     public void GoldenFileHasEveryFrame()
     {
-        Assert.Equal(78, Golden.Count);
+        Assert.Equal(80, Golden.Count);
         Assert.Equal(Golden.Keys.OrderBy(k => k), SampleMessages().Keys.OrderBy(k => k));
     }
 
@@ -206,6 +210,18 @@ public class AdminProtocolTests
         var emitted = (EvScriptEvent)Decode("ev_script_event");
         Assert.Equal((7u, EvScriptEvent.KindData, "{\"player\":3,\"y\":301.5}"), (emitted.Instance, emitted.Kind, emitted.Payload));
         Assert.Equal((short)-1, ((EvChat)Decode("ev_chat")).Sender);
+
+        var subscribe = (Subscribe)Decode("cmd_subscribe_health");
+        Assert.Equal((38u, (AdminStream)21, (byte)0), (subscribe.RequestId, subscribe.Stream, subscribe.RateHz));
+        Assert.Empty(subscribe.Filters);
+        var health = (EvServerHealth)Decode("ev_server_health");
+        Assert.Equal((ushort)0x121E, (ushort)health.Type);
+        Assert.Equal((30u, 10u, (ushort)300, 10000123u, (byte)2), (health.Seq, health.Tick, health.Ticks, health.WallMicroseconds, health.Flags));
+        Assert.Equal((33334u, 34100u, 61234u, (ushort)1, (ushort)1),
+            (health.IntervalMedian, health.IntervalP99, health.IntervalMax, health.LateTicks, health.ShortTicks));
+        Assert.Equal((310u, 1250u, 4800u, 350u, 900u), (health.CpuMedian, health.CpuP99, health.CpuMax, health.HandlerP99, health.HandlerMax));
+        Assert.Equal((12u, 0u, (ushort)1, (ushort)412, (ushort)278, (ushort)3, 159744u),
+            (health.InvoluntarySwitches, health.MajorFaults, health.HostCpus, health.HostBusy, health.HostSteal, health.HostIoWait, health.ResidentKib));
     }
 
     private static AdminMessage Decode(string name)

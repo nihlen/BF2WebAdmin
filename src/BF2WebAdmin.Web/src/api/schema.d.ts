@@ -1077,6 +1077,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{serverId}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    minutes?: number;
+                };
+                header?: never;
+                path: {
+                    serverId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ServerHealthDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{serverId}/missiles": {
         parameters: {
             query?: never;
@@ -1485,6 +1524,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/export/v1/missiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    since?: number;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExportMissilePage"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1587,6 +1664,63 @@ export interface components {
             /** Format: date-time */
             matchEnd: null | string;
             rounds: components["schemas"]["ExportRound"][];
+        };
+        ExportMissile: {
+            /** Format: int64 */
+            seq: number;
+            serverId: string;
+            map: string;
+            /** Format: uuid */
+            matchId: null | string;
+            /** Format: uuid */
+            roundId: null | string;
+            /** Format: int32 */
+            roundNumber: number;
+            /** Format: date-time */
+            launchTime: string;
+            template: string;
+            shooterHash: string;
+            shooterName: string;
+            /** Format: int32 */
+            shooterTeam: number;
+            shooterVehicle: string;
+            /** Format: uint32 */
+            shooterRoot: number;
+            /** Format: uint32 */
+            firstTick: number;
+            /** Format: int32 */
+            flags: number;
+            outcome: string;
+            hitPart: null | string;
+            hitRoot: null | string;
+            hitPlayerHash: null | string;
+            hitRewound: boolean;
+            /** Format: int32 */
+            lagMs: number;
+            targets: components["schemas"]["ExportMissileTarget"][];
+            samples: components["schemas"]["MissileSampleDto"][];
+            collisions: components["schemas"]["MissileCollisionDto"][];
+        };
+        ExportMissilePage: {
+            /** Format: uuid */
+            epoch: string;
+            items: components["schemas"]["ExportMissile"][];
+            /** Format: int64 */
+            next: number;
+            hasMore: boolean;
+        };
+        ExportMissileTarget: {
+            /** Format: uint32 */
+            netId: number;
+            template: string;
+            /** Format: int32 */
+            team: number;
+            crew: components["schemas"]["MissileCrewDto"][];
+            /** Format: float */
+            closestTested: number;
+            /** Format: float */
+            closestCurrent: number;
+            moved: boolean;
         };
         ExportPageOfExportJoin: {
             items: components["schemas"]["ExportJoin"][];
@@ -1697,6 +1831,12 @@ export interface components {
             partR: number[];
             rootP: number[];
             rootR: number[];
+        };
+        MissileCrewDto: {
+            hash: string;
+            name: string;
+            /** Format: int32 */
+            team: number;
         };
         MissileReplayDto: {
             summary: components["schemas"]["MissileSummaryDto"];
@@ -1824,6 +1964,61 @@ export interface components {
             gameState: components["schemas"]["GameState"];
             socketState: components["schemas"]["SocketState"];
             serverGroup: string;
+        };
+        ServerHealthDto: {
+            latest: null | components["schemas"]["ServerHealthWindowDto"];
+            history: components["schemas"]["ServerHealthWindowDto"][];
+        };
+        /** @enum {unknown} */
+        ServerHealthStatus: "Good" | "Warn" | "Bad" | "Loading" | "Stepped";
+        ServerHealthWindowDto: {
+            /** Format: date-time */
+            time: string;
+            /** Format: uint32 */
+            tick: number;
+            status: components["schemas"]["ServerHealthStatus"];
+            reasons: string[];
+            /** Format: int32 */
+            ticks: number;
+            /** Format: uint32 */
+            wallUs: number;
+            /** Format: int32 */
+            lostTicks: number;
+            /** Format: uint32 */
+            intervalMedianUs: number;
+            /** Format: uint32 */
+            intervalP99Us: number;
+            /** Format: uint32 */
+            intervalMaxUs: number;
+            /** Format: int32 */
+            lateTicks: number;
+            /** Format: int32 */
+            shortTicks: number;
+            /** Format: uint32 */
+            cpuMedianUs: number;
+            /** Format: uint32 */
+            cpuP99Us: number;
+            /** Format: uint32 */
+            cpuMaxUs: number;
+            /** Format: uint32 */
+            handlerP99Us: number;
+            /** Format: uint32 */
+            handlerMaxUs: number;
+            /** Format: uint32 */
+            involuntarySwitches: number;
+            /** Format: uint32 */
+            majorFaults: number;
+            hostValid: boolean;
+            /** Format: int32 */
+            hostCpus: number;
+            /** Format: double */
+            hostBusyPercent: number;
+            /** Format: double */
+            hostStealPercent: number;
+            /** Format: double */
+            hostIoWaitPercent: number;
+            /** Format: uint32 */
+            residentKib: number;
         };
         ServerSnapshotDto: {
             server: components["schemas"]["ServerDto"];

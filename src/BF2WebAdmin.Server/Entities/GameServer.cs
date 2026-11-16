@@ -88,7 +88,7 @@ public class GameServer : IGameServer
             _globalServices.GetService<IConfiguration>()?["ServerSettings:ChatPrefix"] ?? AdminGameWriter.DefaultChatPrefix);
         ScriptRunner = new ScriptRunner(this, _globalServices.GetRequiredService<ILogger<ScriptRunner>>());
         Applier = new AdminStateApplier(this, _globalServices.GetRequiredService<ILogger<AdminStateApplier>>(), _globalServices.GetService<IJoinHistoryWriter>(),
-            _globalServices.GetService<ICountryResolver>());
+            _globalServices.GetService<ICountryResolver>(), _globalServices.GetService<ServerHealthStore>());
 
         _viewers = _globalServices.GetService<ViewerRegistry>();
         Viewer = new ViewerFeed(this, _viewers, _globalServices.GetService<IHubContext<ServerHub, IServerHubClient>>(), _logger, _cancellationToken,

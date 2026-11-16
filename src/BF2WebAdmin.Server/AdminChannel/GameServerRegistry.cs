@@ -191,6 +191,10 @@ public class GameServerRegistry : IGameServerRegistry
                 await server.ModManager.DisposeAsync();
             server.Retire();
         }
+
+        // The health windows outlive links and a change of settings; they go with the server
+        if (type == ServerUpdateType.Remove)
+            _globalServices.GetService<ServerHealthStore>()?.Remove(serverId);
     }
 }
 

@@ -1,4 +1,4 @@
-import type { CommandLogEntry, GameState, Message, MissileSummary, Player, Server, SocketState, Team, Vector3 } from './client'
+import type { CommandLogEntry, GameState, Message, MissileSummary, Player, Server, ServerHealthWindow, SocketState, Team, Vector3 } from './client'
 
 // The events of the server hub (/hubs/server), as sent by BF2WebAdmin.Server's IServerHubClient
 // (src/BF2WebAdmin.Server/Hubs/ServerHub.cs; the classes are in src/BF2WebAdmin.Shared/Communication/Events).
@@ -49,6 +49,9 @@ export type HubEvents = {
   SocketStateEvent: { state: SocketState } & Timed
   // A web user sent a command (CommandLog in src/BF2WebAdmin.Server/Api/CommandLog.cs); the type is in the OpenAPI document
   CommandLogEvent: CommandLogEntry
+  // The server's module reported how it ran over the last 10 s (ServerHealthStore in src/BF2WebAdmin.Server/AdminChannel/ServerHealth.cs);
+  // the window's type is in the OpenAPI document
+  ServerHealthEvent: { serverId: string; window: ServerHealthWindow }
 
   // Sent to the clients with the 3D viewer open on the server (SubscribeViewer)
   ViewerFrame: ViewerFrame

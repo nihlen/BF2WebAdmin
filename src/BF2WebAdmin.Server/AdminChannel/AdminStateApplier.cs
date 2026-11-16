@@ -19,6 +19,7 @@ public class AdminStateApplier : IAdminSessionHandler
     private readonly ILogger<AdminStateApplier> _logger;
     private readonly IJoinHistoryWriter? _joinHistory;
     private readonly ICountryResolver? _countries;
+    private readonly ServerHealthStore? _health;
     private readonly Dictionary<int, KillKind> _lastKillKind = new();
     private AdminSession? _session;
     // While a viewer is open the streams run at 30 Hz; the modules still get them at the tracker rate
@@ -36,12 +37,13 @@ public class AdminStateApplier : IAdminSessionHandler
     public int StreamCorrections { get; private set; }
 
     public AdminStateApplier(GameServer server, ILogger<AdminStateApplier> logger, IJoinHistoryWriter? joinHistory = null,
-        ICountryResolver? countries = null)
+        ICountryResolver? countries = null, ServerHealthStore? health = null)
     {
         _server = server;
         _logger = logger;
         _joinHistory = joinHistory;
         _countries = countries;
+        _health = health;
     }
 
     public async ValueTask OnMessageAsync(AdminSession session, AdminMessage message)
@@ -112,6 +114,8 @@ public class AdminStateApplier : IAdminSessionHandler
             _logger.LogInformation("Admin channel {ServerId}: the module runs no game scripts; .nasa and dance use WebAdmin's own slower way", _server.Id);
         if ((welcome.Capabilities & Welcome.CapSeats) == 0)
             _logger.LogInformation("Admin channel {ServerId}: the module takes no seat preferences; .pilot and .gunner do nothing", _server.Id);
+        if ((welcome.Capabilities & Welcome.CapHealth) == 0)
+            _logger.LogInformation("Admin channel {ServerId}: the module sends no server health", _server.Id);
 
         _server.ResetStartTime();
         await _server.UpdateSocketStateAsync(SocketState.Connected, time);
@@ -127,19 +131,26 @@ public class AdminStateApplier : IAdminSessionHandler
         _session = session;
         _nextPlayerTick = _nextProjectileTick = _nextVehicleTick = 0;
         _server.Viewer.RequestKeyframe();
-        Subscribe(session);
+        Subscribe(session, welcome.Capabilities);
 
         await _server.UpdateMapAsync(FindMap(welcome.Map, welcome.Mode, welcome.MapSize, welcome.MapIndex), welcome.Team1, welcome.Team2, time);
     }
 
     private byte TrackerRate => AdminGameWriter.RateHz(_server.GameWriter.CurrentTrackerInterval);
 
-    private void Subscribe(AdminSession session)
+    /// <summary>
+    /// What a new link is subscribed to, after its Welcome: the position streams, the game state, the hit/miss replay and,
+    /// for a module with <see cref="Welcome.CapHealth"/>, the server health. Public for the tests.
+    /// </summary>
+    public void Subscribe(AdminSession session, byte capabilities)
     {
         SubscribeStreams(session);
         session.Fire(id => new Subscribe(id, AdminStream.Game, 1, []));
         // The hit/miss replay is kept for the viewer's missile list whether a viewer is open or not
         session.Fire(id => new Subscribe(id, AdminStream.Replay, 0, TrackedProjectiles));
+        // Only a module with the capability has the stream
+        if ((capabilities & Welcome.CapHealth) != 0)
+            session.Fire(id => new Subscribe(id, AdminStream.Health, 0, []));
     }
 
     /// <summary>
@@ -612,6 +623,11 @@ public class AdminStateApplier : IAdminSessionHandler
 
             case EvScriptEvent ev:
                 await _server.ScriptRunner.OnEventAsync(ev, time);
+                break;
+
+            case EvServerHealth ev:
+                if (_health != null)
+                    await _health.AddAsync(_server.Id, ev, time);
                 break;
 
             case EvDamage or EvProjectileFired or EvProjectileHit:

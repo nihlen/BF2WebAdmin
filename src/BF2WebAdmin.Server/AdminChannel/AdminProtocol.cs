@@ -54,6 +54,7 @@ public enum AdminMessageType : ushort
     EvProjectileTrace = 0x121A,
     EvScriptFinished = 0x121C,
     EvScriptEvent = 0x121D,
+    EvServerHealth = 0x121E,
 
     CmdConsole = 0x1301,
     CmdSay = 0x1302,
@@ -118,6 +119,8 @@ public enum AdminStream : byte
     Weapons = 19,
     /// <summary>The hit/miss replay: ProjectileCollision and ProjectileTrace; needs projectile template filters.</summary>
     Replay = 20,
+    /// <summary>ServerHealth events, one per window of 300 ticks; only for a module with <see cref="Welcome.CapHealth"/>.</summary>
+    Health = 21,
 }
 
 public enum ObjectRefKind : byte
@@ -217,6 +220,8 @@ public static class AdminProtocol
             AdminMessageType.EvProjectileTrace => EvProjectileTrace.Read(ref r),
             AdminMessageType.EvScriptFinished => new EvScriptFinished(r.U32(), r.U32(), r.U32(), r.Str(), r.U8(), r.Str(), r.U32(), r.U32(), r.U32()),
             AdminMessageType.EvScriptEvent => new EvScriptEvent(r.U32(), r.U32(), r.U32(), r.U8(), r.Str()),
+            AdminMessageType.EvServerHealth => new EvServerHealth(r.U32(), r.U32(), r.U16(), r.U32(), r.U8(), r.U32(), r.U32(), r.U32(),
+                r.U16(), r.U16(), r.U32(), r.U32(), r.U32(), r.U32(), r.U32(), r.U32(), r.U32(), r.U16(), r.U16(), r.U16(), r.U16(), r.U32()),
             AdminMessageType.CmdConsole => new CmdConsole(r.U32(), r.Str()),
             AdminMessageType.CmdSay => new CmdSay(r.U32(), r.U8(), r.U8(), r.Str()),
             AdminMessageType.CmdTeleport => new CmdTeleport(r.U32(), ObjectRef.Read(ref r), r.U8(), r.Vec(), r.Vec()),
@@ -607,6 +612,9 @@ public sealed record Welcome(
 
     /// <summary>The module switches an object's collision (<see cref="CmdSetCollision"/>).</summary>
     public const byte CapCollision = 32;
+
+    /// <summary>The module has stream 21 (<see cref="EvServerHealth"/>).</summary>
+    public const byte CapHealth = 64;
 
     public override AdminMessageType Type => AdminMessageType.Welcome;
 
@@ -1147,6 +1155,31 @@ public sealed record EvScriptEvent(uint Seq, uint Tick, uint Instance, byte Kind
 
     public override AdminMessageType Type => AdminMessageType.EvScriptEvent;
     protected override void WriteFields(AdminWriter w) => w.U32(Instance).Byte(Kind).Str(Payload);
+}
+
+/// <summary>
+/// How the server process ran over one window of <see cref="Ticks"/> ticks (stream 21, 10 s at 30 Hz): the real time
+/// between ticks, the main thread's CPU time per tick, the module's own part of it, and the host. Times are in
+/// microseconds, the host percentages in hundredths of a percent of all CPUs and only meaningful with
+/// <see cref="FlagHostValid"/>, the resident memory in KiB.
+/// </summary>
+public sealed record EvServerHealth(uint Seq, uint Tick, ushort Ticks, uint WallMicroseconds, byte Flags, uint IntervalMedian,
+    uint IntervalP99, uint IntervalMax, ushort LateTicks, ushort ShortTicks, uint CpuMedian, uint CpuP99, uint CpuMax, uint HandlerP99,
+    uint HandlerMax, uint InvoluntarySwitches, uint MajorFaults, ushort HostCpus, ushort HostBusy, ushort HostSteal, ushort HostIoWait,
+    uint ResidentKib) : AdminEvent(Seq, Tick)
+{
+    /// <summary>Stepped time is on: the tick figures do not describe a real-time server.</summary>
+    public const byte FlagStepped = 1;
+    public const byte FlagHostValid = 2;
+    /// <summary>A level was unloaded during the window: the load that followed is in the tick figures.</summary>
+    public const byte FlagLevelLoad = 4;
+
+    public override AdminMessageType Type => AdminMessageType.EvServerHealth;
+
+    protected override void WriteFields(AdminWriter w) =>
+        w.U16(Ticks).U32(WallMicroseconds).Byte(Flags).U32(IntervalMedian).U32(IntervalP99).U32(IntervalMax).U16(LateTicks).U16(ShortTicks)
+            .U32(CpuMedian).U32(CpuP99).U32(CpuMax).U32(HandlerP99).U32(HandlerMax).U32(InvoluntarySwitches).U32(MajorFaults)
+            .U16(HostCpus).U16(HostBusy).U16(HostSteal).U16(HostIoWait).U32(ResidentKib);
 }
 
 // ---------------------------------------------------------------- commands (WebAdmin -> module)

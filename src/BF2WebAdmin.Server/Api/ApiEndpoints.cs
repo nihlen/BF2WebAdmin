@@ -87,6 +87,7 @@ public static class ApiEndpoints
         servers.MapPost("/{serverId}/players/{index:int}/warn", WarnPlayerAsync);
         servers.MapPost("/{serverId}/players/{index:int}/kick", KickPlayerAsync);
         servers.MapPost("/{serverId}/players/{index:int}/ban", BanPlayerAsync);
+        servers.MapGet("/{serverId}/health", GetHealth);
         servers.MapGet("/{serverId}/missiles", GetMissiles);
         servers.MapGet("/{serverId}/missiles/{key:int}", GetMissile);
 
@@ -156,6 +157,14 @@ public static class ApiEndpoints
         var serverInfo = (await registry.GetDisconnectedServersAsync()).FirstOrDefault(s => s.ServerId == serverId);
         return serverInfo is null ? TypedResults.NotFound() : TypedResults.Ok(serverInfo.ToSnapshot());
     }
+
+    /// <summary>
+    /// How the server process runs (the module's ServerHealth windows of 10 s, rated): the latest window and the windows
+    /// of the last <paramref name="minutes"/> minutes, oldest first; without it all that are kept (six hours). Empty for a
+    /// server whose module sends none. The hub's ServerHealthEvent brings each new window.
+    /// </summary>
+    private static ServerHealthDto GetHealth(string serverId, ServerHealthStore health, int? minutes = null) =>
+        health.Get(serverId, minutes is { } m ? DateTimeOffset.UtcNow.AddMinutes(-Math.Max(m, 0)) : null);
 
     /// <summary>The last traced TV missiles of a connected server, newest first (the 3D viewer's list).</summary>
     private static Results<Ok<IReadOnlyList<MissileSummaryDto>>, NotFound> GetMissiles(string serverId, IGameServerRegistry registry) =>

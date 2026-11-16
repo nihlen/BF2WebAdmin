@@ -34,6 +34,9 @@ public interface IServerHubClient
     /// <summary>A web user sent a command to the server (<see cref="Api.CommandLog"/>).</summary>
     Task CommandLogEvent(Api.CommandLogEntryDto e);
 
+    /// <summary>The server's module reported a ServerHealth window (<see cref="ServerHealthStore"/>).</summary>
+    Task ServerHealthEvent(Events.ServerHealthEvent e);
+
     // Clients with the 3D viewer open on the server (SubscribeViewer)
     Task ViewerFrame(ViewerFrameDto e);
     Task MissileEvent(MissileSummaryDto e);

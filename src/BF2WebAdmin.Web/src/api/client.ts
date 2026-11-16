@@ -27,6 +27,9 @@ export type CommandInfo = Schemas['CommandInfoDto']
 export type CommandLogEntry = Schemas['CommandLogEntryDto']
 export type PlayerAuth = Schemas['PlayerAuthDto']
 export type TestServerResult = Schemas['TestServerResult']
+export type ServerHealth = Schemas['ServerHealthDto']
+export type ServerHealthWindow = Schemas['ServerHealthWindowDto']
+export type ServerHealthStatus = Schemas['ServerHealthStatus']
 
 /** A failed API request. React Query receives it as the error of the query or mutation. */
 export class ApiError extends Error {

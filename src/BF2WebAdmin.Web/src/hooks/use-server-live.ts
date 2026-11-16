@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { api, type CommandLogEntry, type Player, type ServerSnapshot, type Vector3 } from '@/api/client'
+import { api, type CommandLogEntry, type Player, type ServerHealth, type ServerSnapshot, type Vector3 } from '@/api/client'
 import { onHubReconnected, useHubEvent, useServerSubscription } from '@/api/hub'
 import { reportGameUpdate } from '@/lib/pending-actions'
 
@@ -21,6 +21,13 @@ export const snapshotQuery = (serverId: string) => api.queryOptions('get', '/api
 /** The commands web users sent to the server (kept by WebAdmin in memory), oldest first. */
 export const commandLogQuery = (serverId: string) => api.queryOptions('get', '/api/servers/{serverId}/log', { params: { path: { serverId } } })
 
+/** The part of a server's health windows the server page shows (WebAdmin keeps six hours). */
+export const healthMinutes = 60
+
+/** How the server process runs: its latest health window (one per 10 s) and those of the last hour, oldest first. */
+export const healthQuery = (serverId: string) =>
+  api.queryOptions('get', '/api/servers/{serverId}/health', { params: { path: { serverId }, query: { minutes: healthMinutes } } })
+
 /**
  * A server's state: the snapshot from the API, kept current by the hub's game events. Positions arrive several times
  * a second per player, so they go to the positions ref (for the map) instead of the query cache.
@@ -33,6 +40,9 @@ export function useServerLive(serverId: string) {
   const logQuery = commandLogQuery(serverId)
   // Kept current by CommandLogEvent, like the snapshot
   useQuery({ ...logQuery, enabled: subscribed, staleTime: Infinity })
+  const health = healthQuery(serverId)
+  // Kept current by ServerHealthEvent
+  useQuery({ ...health, enabled: subscribed, staleTime: Infinity })
   const positions = useRef(new Map<number, PlayerPosition>())
 
   // Events that arrive before the snapshot are already in it
@@ -59,6 +69,7 @@ export function useServerLive(serverId: string) {
         positions.current.clear()
         void queryClient.invalidateQueries({ queryKey: snapshotQuery(serverId).queryKey })
         void queryClient.invalidateQueries({ queryKey: commandLogQuery(serverId).queryKey })
+        void queryClient.invalidateQueries({ queryKey: healthQuery(serverId).queryKey })
       }),
     [queryClient, serverId],
   )
@@ -126,6 +137,17 @@ export function useServerLive(serverId: string) {
     if (e.serverId !== serverId) return
     queryClient.setQueryData<CommandLogEntry[]>(logQuery.queryKey, (entries) =>
       entries && !entries.some((x) => x.id === e.id) ? [...entries, e].slice(-maxLogEntries) : entries,
+    )
+  })
+
+  useHubEvent('ServerHealthEvent', (e) => {
+    if (e.serverId !== serverId) return
+    // The last hour by the server's clock, which the windows' times are from
+    const from = Date.parse(e.window.time) - healthMinutes * 60_000
+    queryClient.setQueryData<ServerHealth>(health.queryKey, (current) =>
+      current && !current.history.some((w) => w.time === e.window.time && w.tick === e.window.tick)
+        ? { latest: e.window, history: [...current.history, e.window].filter((w) => Date.parse(w.time) >= from) }
+        : current,
     )
   })
 

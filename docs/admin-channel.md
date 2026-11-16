@@ -28,6 +28,7 @@ modules ── IGameWriter (AdminGameWriter) ── typed commands / Console, in
 | `AdminGameWriter.cs` | `IGameWriter` on the current session: typed commands, `Console` lines in order with them, `ListObjects`, `SpawnObject`, `SetObjectActive`, `Subscribe` |
 | `GameServerRegistry.cs` | `IGameServerRegistry`: configured servers (DB + config), the `GameServer` per server id, key lookup |
 | `ScriptRunner.cs` | `IScriptRunner` (`GameServer.Scripts`): starts, messages and stops game scripts on the current session, and follows them to their end ([scripts.md](scripts.md)) |
+| `ServerHealth.cs` | `ServerHealthRules` rates a `ServerHealth` window; `ServerHealthStore` keeps six hours of every server's windows and sends each new one to the hub ([Server health](#server-health)) |
 
 Modules see `IGameServer`, the `GameEvents.cs` records and `IGameWriter`. `GameServer`'s mutators are not on
 `IGameServer`; only the applier calls them. The game classes (`Player`, `Vehicle`, `Team`, `Map` in
@@ -73,7 +74,8 @@ repositories, retry policies and Discord webhooks are shared. A module reload di
   stop (up to 15 s) before the new one applies anything, and a closed session applies nothing of what it still had
   queued. Subscriptions are made again after every
   `Welcome`: players and `agm114_hellfire_tv` projectiles at the module's tracker interval (default 0.25 s, Heli2v2's
-  `.interval`), vehicles and game state at 1 Hz, and the hit/miss replay (stream 20) for `agm114_hellfire_tv`.
+  `.interval`), vehicles and game state at 1 Hz, the hit/miss replay (stream 20) for `agm114_hellfire_tv`, and the
+  server health (stream 21) when the module has capability bit 6.
   While a 3D viewer is open on the server, players, vehicles, projectiles and aim (stream 5) run at 30 Hz; the
   applier still hands the modules players and projectiles at the tracker rate and vehicles at 1 Hz.
 - A player's team, alive state and vehicle come from events and snapshots. The player stream reports them too, and
@@ -125,6 +127,38 @@ disconnects, across admin-link reconnects; WebAdmin's copy is only for that clea
 back. The console lines it used before (`object.hasCollision`, `object.armor.*`) are unknown commands on OpenBF2, which
 answers them with "Unknown object or method!" as plain console output, so noclip did nothing there; armour values exist
 only per template, so noclip no longer changes them. Collision comes back when the vehicle's last player is out.
+
+### Server health
+
+A module with capability bit 6 has `ServerHealth` (openbf2-server-ext `docs/admin-channel.md`, "Server health"): every
+10 s one window of figures on how the server process ran (the real time between ticks, the main thread's CPU time per
+tick, the host's CPU). WebAdmin subscribes to it (stream 21) after every `Welcome` of such a module, and never sends
+the subscription to a module without the bit.
+
+- **Kept in memory.** `ServerHealthStore` (a host singleton) keeps each server's last 2160 windows (six hours), with
+  the time WebAdmin received each (UTC). They outlive admin links and a change of the server's settings, go when the
+  server is removed, and are gone after a restart of WebAdmin. Nothing is written to the database.
+- **Status.** `ServerHealthRules.Rate` gives each window a status, and the web UI only shows it:
+
+  | Status | When |
+  |---|---|
+  | `Loading` | flag bit 2: a level load fell in the window |
+  | `Stepped` | flag bit 0: stepped time is on |
+  | `Bad` | 3 or more late ticks, 3 or more lost ticks, CPU per tick p99 of 30 ms or more, or host steal of 15 % or more |
+  | `Warn` | any late tick, any short tick, 2 lost ticks, CPU per tick p99 of 16.667 ms (half a tick) or more, any major page fault, or host steal of 5 % or more |
+  | `Good` | none of these |
+
+  Lost ticks are `round(real time × 30) − ticks`, never below 0; one lost tick is within the figure's accuracy and is
+  not a warning. Steal counts only when the host figures are valid (flag bit 1). `Loading` and `Stepped` windows are
+  left out of every statistic. A `Warn` or `Bad` window names its reasons, the `Bad` ones first: `lateTicks`,
+  `shortTicks`, `lostTicks`, `cpu`, `pageFaults`, `steal`.
+- **Web API.** `GET /api/servers/{id}/health` returns the latest window and the kept windows, oldest first;
+  `?minutes=60` returns only the windows received in the last hour. A server without windows has `latest: null` and an
+  empty history. Times are in microseconds (`...Us`), the host figures in percent of all CPUs, the memory in KiB.
+- **Hub.** `ServerHealthEvent` (`serverId`, `window`) brings each new window to the clients subscribed to the server.
+- **Web UI.** The "Server health" panel of the server page shows the latest window, a summary of the last hour and
+  one cell per window. The engine runs frames of 28.3 ms against ticks of 33.3 ms, so a median interval of one frame
+  and a longest interval of two (56.7 ms) are normal.
 
 ## Setup
 

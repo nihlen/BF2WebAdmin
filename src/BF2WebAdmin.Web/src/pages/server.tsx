@@ -13,6 +13,7 @@ import { ActivityLog } from '@/components/server/activity-log'
 import { BanList } from '@/components/server/ban-list'
 import { ChatPanel } from '@/components/server/chat-panel'
 import { CommandPanel } from '@/components/server/command-panel'
+import { HealthPanel } from '@/components/server/health-panel'
 import { LogList, Time } from '@/components/server/log-list'
 import { MapList } from '@/components/server/map-list'
 import { PlayerSheet } from '@/components/server/player-sheet'
@@ -131,6 +132,8 @@ export function ServerPage() {
         <ServerTabs serverId={serverId} snapshot={snapshot.data} eventLog={eventLog} actions={actions} confirm={confirm} />
         <ServerMap map={server.map} players={players} positions={positions} />
       </div>
+
+      <HealthPanel serverId={serverId} connected={connected} />
 
       <PlayerSheet
         serverId={serverId}

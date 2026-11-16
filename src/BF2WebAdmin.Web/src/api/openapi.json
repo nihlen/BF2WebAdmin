@@ -922,6 +922,43 @@
         }
       }
     },
+    "/api/servers/{serverId}/health": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minutes",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerHealthDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/servers/{serverId}/missiles": {
       "get": {
         "tags": [
@@ -1282,6 +1319,45 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExportPageOfExportJoin"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export/v1/missiles": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportMissilePage"
                 }
               }
             }
@@ -1662,6 +1738,213 @@
             "items": {
               "$ref": "#/components/schemas/ExportRound"
             }
+          }
+        }
+      },
+      "ExportMissile": {
+        "required": [
+          "seq",
+          "serverId",
+          "map",
+          "matchId",
+          "roundId",
+          "roundNumber",
+          "launchTime",
+          "template",
+          "shooterHash",
+          "shooterName",
+          "shooterTeam",
+          "shooterVehicle",
+          "shooterRoot",
+          "firstTick",
+          "flags",
+          "outcome",
+          "hitPart",
+          "hitRoot",
+          "hitPlayerHash",
+          "hitRewound",
+          "lagMs",
+          "targets",
+          "samples",
+          "collisions"
+        ],
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "map": {
+            "type": "string"
+          },
+          "matchId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "roundId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "roundNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "launchTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "template": {
+            "type": "string"
+          },
+          "shooterHash": {
+            "type": "string"
+          },
+          "shooterName": {
+            "type": "string"
+          },
+          "shooterTeam": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "shooterVehicle": {
+            "type": "string"
+          },
+          "shooterRoot": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "firstTick": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "flags": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "hitPart": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hitRoot": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hitPlayerHash": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hitRewound": {
+            "type": "boolean"
+          },
+          "lagMs": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportMissileTarget"
+            }
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissileSampleDto"
+            }
+          },
+          "collisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissileCollisionDto"
+            }
+          }
+        }
+      },
+      "ExportMissilePage": {
+        "required": [
+          "epoch",
+          "items",
+          "next",
+          "hasMore"
+        ],
+        "type": "object",
+        "properties": {
+          "epoch": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportMissile"
+            }
+          },
+          "next": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ExportMissileTarget": {
+        "required": [
+          "netId",
+          "template",
+          "team",
+          "crew",
+          "closestTested",
+          "closestCurrent",
+          "moved"
+        ],
+        "type": "object",
+        "properties": {
+          "netId": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "template": {
+            "type": "string"
+          },
+          "team": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "crew": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissileCrewDto"
+            }
+          },
+          "closestTested": {
+            "type": "number",
+            "format": "float"
+          },
+          "closestCurrent": {
+            "type": "number",
+            "format": "float"
+          },
+          "moved": {
+            "type": "boolean"
           }
         }
       },
@@ -2099,6 +2382,26 @@
           }
         }
       },
+      "MissileCrewDto": {
+        "required": [
+          "hash",
+          "name",
+          "team"
+        ],
+        "type": "object",
+        "properties": {
+          "hash": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "team": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "MissileReplayDto": {
         "required": [
           "summary",
@@ -2522,6 +2825,172 @@
           },
           "serverGroup": {
             "type": "string"
+          }
+        }
+      },
+      "ServerHealthDto": {
+        "required": [
+          "latest",
+          "history"
+        ],
+        "type": "object",
+        "properties": {
+          "latest": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ServerHealthWindowDto"
+              }
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerHealthWindowDto"
+            }
+          }
+        }
+      },
+      "ServerHealthStatus": {
+        "enum": [
+          "Good",
+          "Warn",
+          "Bad",
+          "Loading",
+          "Stepped"
+        ]
+      },
+      "ServerHealthWindowDto": {
+        "required": [
+          "time",
+          "tick",
+          "status",
+          "reasons",
+          "ticks",
+          "wallUs",
+          "lostTicks",
+          "intervalMedianUs",
+          "intervalP99Us",
+          "intervalMaxUs",
+          "lateTicks",
+          "shortTicks",
+          "cpuMedianUs",
+          "cpuP99Us",
+          "cpuMaxUs",
+          "handlerP99Us",
+          "handlerMaxUs",
+          "involuntarySwitches",
+          "majorFaults",
+          "hostValid",
+          "hostCpus",
+          "hostBusyPercent",
+          "hostStealPercent",
+          "hostIoWaitPercent",
+          "residentKib"
+        ],
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "tick": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ServerHealthStatus"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ticks": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "wallUs": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "lostTicks": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "intervalMedianUs": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "intervalP99Us": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "intervalMaxUs": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "lateTicks": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "shortTicks": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "cpuMedianUs": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "cpuP99Us": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "cpuMaxUs": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "handlerP99Us": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "handlerMaxUs": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "involuntarySwitches": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "majorFaults": {
+            "type": "integer",
+            "format": "uint32"
+          },
+          "hostValid": {
+            "type": "boolean"
+          },
+          "hostCpus": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hostBusyPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "hostStealPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "hostIoWaitPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "residentKib": {
+            "type": "integer",
+            "format": "uint32"
           }
         }
       },

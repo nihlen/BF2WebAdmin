@@ -10,6 +10,8 @@ export const MISSILE_LENGTH = 1.75
 export class MissileModel {
   readonly root = new Group()
   private readonly glow: Mesh
+  /** The body and nose, hidden when the test point is shown */
+  private readonly body = new Group()
   private testPoint: Mesh | null = null
 
   constructor(teamColor: string) {
@@ -18,12 +20,13 @@ export class MissileModel {
     const body = new Mesh(new CylinderGeometry(0.09, 0.09, MISSILE_LENGTH - noseLength, 8), new MeshLambertMaterial({ color: '#d9d9d0' }))
     body.rotation.x = Math.PI / 2
     body.position.z = noseLength / 2
-    this.root.add(body)
+    this.body.add(body)
 
     const nose = new Mesh(new ConeGeometry(0.09, noseLength, 8), new MeshLambertMaterial({ color: '#d9d9d0' }))
     nose.rotation.x = -Math.PI / 2
     nose.position.z = -half + noseLength / 2
-    this.root.add(nose)
+    this.body.add(nose)
+    this.root.add(this.body)
 
     const glow = (this.glow = new Mesh(
       new SphereGeometry(0.4, 10, 8),
@@ -40,10 +43,15 @@ export class MissileModel {
     this.root.add(glow)
   }
 
-  /** A small bright dot on the origin, drawn over everything: the point the engine tests */
+  /**
+   * A small bright dot on the origin, drawn over everything: the point the engine tests. It replaces the body, whose rear
+   * half would lie along the tested sweep behind the dot and hide it
+   */
   addTestPoint(color: string) {
+    this.body.visible = false
     const dot = new Mesh(new SphereGeometry(0.12, 12, 8), new MeshBasicMaterial({ color, depthTest: false, transparent: true }))
-    dot.renderOrder = 8
+    // After the tested sweep (render order 11)
+    dot.renderOrder = 12
     this.root.add(dot)
     this.testPoint = dot
   }

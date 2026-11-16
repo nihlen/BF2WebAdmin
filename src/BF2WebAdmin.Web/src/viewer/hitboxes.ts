@@ -142,7 +142,8 @@ export class HitboxModel {
         this.parts.add(holder)
       }
     }
-    for (const group of [this.hull, this.parts]) group.traverse((o) => (o.renderOrder = 3))
+    // Meshes only: a Group's renderOrder would order its whole subtree before the objects' own (three.js groupOrder), drawing it over the lines
+    for (const group of [this.hull, this.parts]) group.traverse((o) => (o as Mesh).isMesh && (o.renderOrder = 3))
   }
 }
 

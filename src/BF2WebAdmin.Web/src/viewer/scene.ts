@@ -431,7 +431,10 @@ export class ViewerScene {
     const positions = replay.samples.map((s) => vecToWorld(s.p))
     const path = makeLine(PATH_COLOR, positions.length, 0.35, 2)
     const flown = makeLine(PATH_COLOR, positions.length, 0.95, 3)
+    // The tested sweep is drawn over everything, like the test point and the hit markers: it is what the view is about
     const sweep = makeLine(SWEEP_COLOR, 2, 1, 5)
+    sweep.material.depthTest = false
+    sweep.renderOrder = 11
     setLinePoints(path, positions)
     // True size, its centre on the traced position: the point the engine tests
     const model = new MissileModel(teamColor(replay.summary.shooterTeam))
@@ -497,7 +500,8 @@ export class ViewerScene {
         const face = isHull ? facesNear(part, local, 0.6, HIT_COLOR) : null
         if (!isHull) touched.add(partMesh(part, HIT_COLOR, 0.8))
         if (face) touched.add(face)
-        touched.traverse((o) => (o.renderOrder = 4))
+        // Meshes only: a Group's renderOrder would order its whole subtree before the objects' own (three.js groupOrder), drawing it over the lines
+        touched.traverse((o) => (o as Mesh).isMesh && (o.renderOrder = 4))
         if (face) face.renderOrder = 7
         touched.userData.tick = c.tick
         this.overlay.add(touched)
@@ -641,8 +645,16 @@ export class ViewerScene {
       return
     }
     if (!this.playing) return
+    const before = this.tick
     this.tick += (dtMs / 1000) * TICK_RATE * this.speed
-    if (this.tick >= end) {
+    // A missile stops on its impact tick: the trace goes on after it, with the hit helicopter flying or falling on.
+    // Play continues
+    const impact = this.missile?.impactTick ?? -1
+    if (impact >= 0 && before < impact && this.tick >= impact) {
+      this.tick = impact
+      this.playing = false
+      this.notify()
+    } else if (this.tick >= end) {
       this.tick = end
       // At the live end of the buffer, playing becomes following
       if (!this.missile) this.following = true
@@ -770,9 +782,10 @@ export class ViewerScene {
     const b = this.buffer
     const t = this.tick
     if (!b) return
-    // During the selected missile's flight, the targets that moved are drawn by their ghosts
+    // From the selected missile's launch, the targets that moved are drawn by their ghosts, which stay where the trace
+    // ends after the flight (a hit helicopter is not seen flying or falling on)
     const missileTargets = new Set(
-      this.missile && this.missileInFlight() ? this.missile.replay.summary.targets.filter((x) => x.moved).map((x) => x.netId) : [],
+      this.missile && this.missileLaunched() ? this.missile.replay.summary.targets.filter((x) => x.moved).map((x) => x.netId) : [],
     )
 
     // Vehicles
@@ -925,10 +938,9 @@ export class ViewerScene {
     return this.missile !== null
   }
 
-  /** Whether the timeline is within the selected missile's flight (its first to last sample) */
-  private missileInFlight() {
-    const { x, n } = this.missileSample()
-    return x >= 0 && x <= n - 1
+  /** Whether the timeline is at or after the selected missile's first sample */
+  private missileLaunched() {
+    return this.missileSample().x >= 0
   }
 
   /**
@@ -1019,12 +1031,14 @@ export class ViewerScene {
       const b = u > 0 ? samples[k + 1].t[i] : null
       const aa = samples[after.k].t[i]
       const ba = after.u > 0 ? samples[after.k + 1].t[i] : null
-      const visible = inFlight
+      // After the flight the target stays where the trace ends (the samples are clamped to the last one), without the
+      // tested hull: there is no sweep left to test
+      const visible = x >= 0
       const currentRoot = rootOf(view.current)
       const testedRoot = view.tested
-      currentRoot.visible = testedRoot.visible = visible
+      currentRoot.visible = visible
+      testedRoot.visible = view.lagLine.visible = inFlight
       if (view.parts) view.parts.visible = visible
-      view.lagLine.visible = visible
       // CSS2DRenderer sets the element's display from `visible` on every render: the Names toggle goes in here
       view.label.visible = visible && this.showLabels
       if (!visible) return
@@ -1039,7 +1053,7 @@ export class ViewerScene {
 
       const lagMs = Math.round(samples[k].lag * 1000)
       const crew = target.crew.length ? target.crew.join(' · ') : target.template
-      view.labelEl.textContent = `${crew} · ${lagMs} ms → ${this._p.distanceTo(this._w).toFixed(1)} m`
+      view.labelEl.textContent = inFlight ? `${crew} · ${lagMs} ms → ${this._p.distanceTo(this._w).toFixed(1)} m` : crew
       view.label.position.copy(this._p)
     })
   }
@@ -1144,6 +1158,11 @@ export class ViewerScene {
     for (let i = after.k; i >= 0; i--) {
       vecToWorld(m.replay.samples[i].v, this._v)
       if (this._v.lengthSq() > 1) break
+    }
+    // Blended towards the next sample's heading between ticks, or the camera turns in 30 Hz steps
+    if (after.u > 0 && this._v.lengthSq() > 1) {
+      vecToWorld(m.replay.samples[after.k + 1].v, this._w)
+      if (this._w.lengthSq() > 1) this._v.normalize().lerp(this._w.normalize(), after.u)
     }
     // lookAt turns -Z (the forward of models and cameras) towards the target
     lookAt(this._w.set(0, 0, 0), this._v, this._q)

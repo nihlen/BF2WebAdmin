@@ -8,11 +8,11 @@ such as Heli2v2. [README.md](README.md) describes the product.
 - `admin-channel` (checked out here): the game-server backend is the native admin channel of the OpenBF2 module
   `libserverext.so` (openbf2-server-ext), not `mm_webadmin.py`. **Production runs it since 2026-11-08** (release 0.1.0;
   the migration runbook and scripts are in the author's private vps-setup repo).
-  It is **not merged into `master`** and stays a separate branch for now. The backend is described in [docs/admin-channel.md](docs/admin-channel.md). The wire contract is
+  The backend is described in [docs/admin-channel.md](docs/admin-channel.md). The wire contract is
   [openbf2-server-ext](https://github.com/nihlen/openbf2-server-ext) `docs/admin-channel.md`; code follows it.
-- `master`: the `mm_webadmin.py` text-socket version (port 4300, release 0.0.2), which production ran until 2026-11-08
-  and is the rollback.
-  `src/BF2WebAdmin.Server/README.md` on that branch documents that old protocol.
+- `master`: the same since 2026-11-16, when `admin-channel` was merged into it (a fast-forward). Before that it was the
+  `mm_webadmin.py` text-socket version (port 4300, release 0.0.2), which production ran until 2026-11-08; that version
+  ends at commit `a869c5c`, where `src/BF2WebAdmin.Server/README.md` documents the old protocol.
 
 ## The whole system
 
@@ -46,7 +46,7 @@ result (`-p:SkipGameScripts=true` embeds what `GameScripts/dist` already holds).
 
 ```powershell
 dotnet build src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj
-dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 466 tests on 2026-11-14, some skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
+dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 567 tests on 2026-11-16, some skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
 dotnet publish src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj -c Release -o <dir>
 BF2WebAdmin.Server.exe --admin-pin                                    # prints the admin-channel certificate pin
 BF2WebAdmin.Server.exe --admin-cert-create [--pem]                     # prints a new certificate for the Certificate secret, and its pin
@@ -89,7 +89,7 @@ are included; it records the commit and the changed paths in its `app\source.txt
 
 - The author may have uncommitted work here. Never stage, commit, revert or modify files you did not change; commit
   with explicit paths.
-- Local commits are allowed. Don't push, don't merge `admin-channel` into `master`, and don't open PRs or issues.
+- Local commits are allowed. Don't push, and don't open PRs or issues, unless the author asks.
 - Port 16567 is reserved for the author's sessions. WebAdmin's admin-channel port must never be 16567.
 - In the localtest, run `play-2v2.ps1 -Mode Status` before you stop, restart or republish anything. The author may be
   playing.

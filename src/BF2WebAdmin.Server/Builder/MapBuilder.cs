@@ -492,6 +492,11 @@ public sealed class MapBuilder
 
         try
         {
+            // Items built before the builder heard of a round are on this map: a module that loads a layout when the
+            // admin channel connects (Chopper Mayhem) can be quicker than the connection's round start
+            if (_map == null && Items.Count > 0)
+                _map = map;
+
             if (_map != map)
             {
                 var had = Items.Count;

@@ -181,6 +181,23 @@ public class MapBuilderTests
     }
 
     [Fact]
+    public async Task ItemsBuiltBeforeTheFirstRoundStartAreKept()
+    {
+        // A module that loads a layout when the link comes up can be quicker than the builder's first round start
+        var link = await ConnectAsync(Capabilities);
+        await AddObjectAsync(link, "house_01", 900);
+
+        var starting = link.Server.Builder.OnRoundStartAsync("dalian_2_v_2");
+        var list = Assert.IsType<CmdListObjects>((await link.Module.ReadConsoleAsync()).Next);
+        Assert.Equal("house_01", list.Template);
+        await link.Module.SendAsync(new ObjectList(list.RequestId, 0, [new ObjectListEntry(900, 40900, "house_01", new Vec3(100, 150, 200), default, 1, 0)]));
+        await starting;
+
+        var item = Assert.Single(link.Server.Builder.GetState().Items);
+        Assert.True(item.Spawned);
+    }
+
+    [Fact]
     public async Task ATemplateTheLevelDoesNotUseIsNotSpawned()
     {
         var link = await ConnectAsync(Capabilities);

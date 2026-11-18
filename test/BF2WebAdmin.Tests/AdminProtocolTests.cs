@@ -15,7 +15,8 @@ namespace BF2WebAdmin.Tests;
 /// values and compared byte for byte, then decoded and re-encoded.
 /// The file here holds the messages WebAdmin has: the module's votes and R7 commands are not among them, and the
 /// seven script frames (cmd_start_script to ev_script_event) were added on 2026-11-14 from the contract's layouts.
-/// cmd_subscribe_health and ev_server_health are the module's frames at 8396330, ev_player_connections at dc50dbd.
+/// cmd_subscribe_health and ev_server_health are the module's frames at 8396330, ev_player_connections at dc50dbd,
+/// cmd_set_control_point_team at 2a920c0.
 /// </summary>
 public class AdminProtocolTests
 {
@@ -136,6 +137,9 @@ public class AdminProtocolTests
         ["cmd_seat_preference_none"] = new CmdSeatPreference(35, 3, CmdSeatPreference.None),
         ["cmd_set_collision_off"] = new CmdSetCollision(36, ObjectRef.Player(3), 0),
         ["cmd_set_collision_on"] = new CmdSetCollision(37, ObjectRef.Networkable(1819), CmdSetCollision.FlagCollision),
+        ["cmd_resync_client"] = new CmdResyncClient(39, 3),
+        ["cmd_resync_client_all"] = new CmdResyncClient(40, CmdResyncClient.AllPlayers),
+        ["cmd_set_control_point_team"] = new CmdSetControlPointTeam(41, ObjectRef.Console(812), 2),
         ["script_list"] = new ScriptList(33, [(7, "nasa"), (9, "dance")]),
         ["ev_script_finished"] = new EvScriptFinished(28, 10, 7, "nasa", EvScriptFinished.ReasonFinished, "{\"ticks\":90}", 90, 1234, 56),
         ["ev_script_event"] = new EvScriptEvent(29, 10, 7, EvScriptEvent.KindData, "{\"player\":3,\"y\":301.5}"),
@@ -152,7 +156,7 @@ public class AdminProtocolTests
     [Fact]
     public void GoldenFileHasEveryFrame()
     {
-        Assert.Equal(81, Golden.Count);
+        Assert.Equal(84, Golden.Count);
         Assert.Equal(Golden.Keys.OrderBy(k => k), SampleMessages().Keys.OrderBy(k => k));
     }
 

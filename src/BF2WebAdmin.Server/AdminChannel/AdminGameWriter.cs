@@ -358,6 +358,42 @@ public class AdminGameWriter : IGameWriter
             Fire(id => new CmdDeleteObject(id, ObjectRef.Console((uint)consoleId)));
     }
 
+    public bool CanResyncClients => _server.Session is { IsOpen: true } session && (session.Capabilities & Welcome.CapResync) != 0;
+
+    public async Task<bool> ResyncClientAsync(Player? player)
+    {
+        if (!CanResyncClients || (player != null && !IsReal(player)))
+            return false;
+
+        try
+        {
+            await RequestAsync(id => new CmdResyncClient(id, player == null ? CmdResyncClient.AllPlayers : (short)player.Index));
+            return true;
+        }
+        catch (AdminCommandException e)
+        {
+            _logger.LogInformation("Admin channel {ServerId}: no resync for {Player}: {Error}", _server.Id, player?.Name ?? "all", e.Message);
+            return false;
+        }
+    }
+
+    public async Task<bool> SetControlPointTeamAsync(uint consoleId, int team)
+    {
+        if (!CanResyncClients || team is < 0 or > 2)
+            return false;
+
+        try
+        {
+            await RequestAsync(id => new CmdSetControlPointTeam(id, ObjectRef.Console(consoleId), (byte)team));
+            return true;
+        }
+        catch (AdminCommandException e)
+        {
+            _logger.LogWarning("Admin channel {ServerId}: control point {ConsoleId} not set to team {Team}: {Error}", _server.Id, consoleId, team, e.Message);
+            return false;
+        }
+    }
+
     public void SendTimerInterval(double timerInterval)
     {
         CurrentTrackerInterval = timerInterval;

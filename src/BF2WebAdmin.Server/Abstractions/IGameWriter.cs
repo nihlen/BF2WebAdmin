@@ -119,6 +119,24 @@ public interface IGameWriter
     Task<ObjectSpawned> SpawnObjectAsync(string template, Position position, Rotation rotation, int team = 0);
     void SendDeleteObject(long consoleId);
 
+    /// <summary>Whether the module can resync clients (<see cref="ResyncClientAsync"/>): the admin channel's capability bit 7.</summary>
+    bool CanResyncClients { get; }
+
+    /// <summary>
+    /// Makes a client drop every spawned object and get them again from the server, without a round restart, which
+    /// clears client copies of static objects deleted on the server. <paramref name="player"/> null is every connected
+    /// human client. False when the module refuses (a bot, a client that is not playing yet or has not acknowledged an
+    /// earlier resync) or cannot resync.
+    /// </summary>
+    Task<bool> ResyncClientAsync(Player? player);
+
+    /// <summary>
+    /// Sets a control point's team (<c>IControlPoint::setTeam</c>); the engine gives it to the point's spawn groups and
+    /// object spawners. The team the point has sends no HUD event: it gives a spawn group made since the round start its
+    /// team. False when the module cannot (no capability bit 7) or refuses. Throws nothing.
+    /// </summary>
+    Task<bool> SetControlPointTeamAsync(uint consoleId, int team);
+
     /// <summary>Set the player and projectile stream interval in seconds (1/30 to 1).</summary>
     void SendTimerInterval(double timerInterval);
 

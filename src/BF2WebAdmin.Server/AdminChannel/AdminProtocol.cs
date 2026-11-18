@@ -81,6 +81,8 @@ public enum AdminMessageType : ushort
     CmdListScripts = 0x131B,
     CmdSeatPreference = 0x131C,
     CmdSetCollision = 0x131D,
+    CmdResyncClient = 0x131E,
+    CmdSetControlPointTeam = 0x131F,
 
     Ok = 0x1401,
     ConsoleResult = 0x1402,
@@ -251,6 +253,8 @@ public static class AdminProtocol
             AdminMessageType.CmdListScripts => new CmdListScripts(r.U32()),
             AdminMessageType.CmdSeatPreference => new CmdSeatPreference(r.U32(), r.U8(), r.U8()),
             AdminMessageType.CmdSetCollision => new CmdSetCollision(r.U32(), ObjectRef.Read(ref r), r.U8()),
+            AdminMessageType.CmdResyncClient => new CmdResyncClient(r.U32(), r.I16()),
+            AdminMessageType.CmdSetControlPointTeam => new CmdSetControlPointTeam(r.U32(), ObjectRef.Read(ref r), r.U8()),
             AdminMessageType.Ok => new OkReply(r.U32()),
             AdminMessageType.ConsoleResult => ConsoleResult.Read(ref r),
             AdminMessageType.ObjectList => ObjectList.Read(ref r),
@@ -620,6 +624,10 @@ public sealed record Welcome(
 
     /// <summary>The module has stream 21 (<see cref="EvServerHealth"/> and <see cref="EvPlayerConnections"/>).</summary>
     public const byte CapHealth = 64;
+
+    /// <summary>The module resyncs clients (<see cref="CmdResyncClient"/>) and sets a control point's team
+    /// (<see cref="CmdSetControlPointTeam"/>).</summary>
+    public const byte CapResync = 128;
 
     public override AdminMessageType Type => AdminMessageType.Welcome;
 
@@ -1434,6 +1442,35 @@ public sealed record CmdSetCollision(uint RequestId, ObjectRef Target, byte Flag
         w.U32(RequestId);
         Target.Write(w);
         w.Byte(Flags);
+    }
+}
+
+/// <summary>
+/// Makes a client drop every dynamic object and build them again from the server, without a round restart: clears the
+/// client copies of spawned static objects deleted on the server. <see cref="Player"/> -1 is every connected human
+/// client. Only sent to a module with <see cref="Welcome.CapResync"/>.
+/// </summary>
+public sealed record CmdResyncClient(uint RequestId, short Player) : AdminCommand(RequestId)
+{
+    public const short AllPlayers = -1;
+    public override AdminMessageType Type => AdminMessageType.CmdResyncClient;
+    public override void Write(AdminWriter w) => w.U32(RequestId).I16(Player);
+}
+
+/// <summary>
+/// <c>IControlPoint::setTeam</c>: the engine gives the team to the control point's spawn groups and object spawners. With
+/// the team it has (1 or 2) nothing else happens, which gives a spawn group made since the round start its team. Only
+/// sent to a module with <see cref="Welcome.CapResync"/>.
+/// </summary>
+public sealed record CmdSetControlPointTeam(uint RequestId, ObjectRef Target, byte Team) : AdminCommand(RequestId)
+{
+    public override AdminMessageType Type => AdminMessageType.CmdSetControlPointTeam;
+
+    public override void Write(AdminWriter w)
+    {
+        w.U32(RequestId);
+        Target.Write(w);
+        w.Byte(Team);
     }
 }
 

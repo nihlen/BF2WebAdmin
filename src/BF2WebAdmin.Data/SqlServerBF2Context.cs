@@ -32,6 +32,7 @@ public class SqlServerBF2Context : BF2Context
             e.ToTable("MapMod");
             e.Property(m => m.Name).HasMaxLength(50).IsRequired();
             e.Property(m => m.CreatedBy).HasMaxLength(100).IsRequired();
+            e.Property(m => m.Map).HasMaxLength(50);
         });
 
         modelBuilder.Entity<MapModObject>(e =>

@@ -40,6 +40,9 @@ public interface IServerHubClient
     /// <summary>The players' connections over that window; it follows the window's ServerHealthEvent.</summary>
     Task ServerConnectionsEvent(Events.ServerConnectionsEvent e);
 
+    /// <summary>The map builder's items or resync queue changed (<see cref="Builder.MapBuilder"/>).</summary>
+    Task BuilderEvent(Builder.BuilderStateDto e);
+
     // Clients with the 3D viewer open on the server (SubscribeViewer)
     Task ViewerFrame(ViewerFrameDto e);
     Task MissileEvent(MissileSummaryDto e);

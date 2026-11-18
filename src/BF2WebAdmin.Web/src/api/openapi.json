@@ -1115,6 +1115,430 @@
         }
       }
     },
+    "/api/servers/{serverId}/builder": {
+      "get": {
+        "tags": [
+          "Map builder"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderStateDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/builder/apply": {
+      "post": {
+        "tags": [
+          "Map builder"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuilderApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderApplyResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/builder/clear": {
+      "post": {
+        "tags": [
+          "Map builder"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/builder/templates": {
+      "post": {
+        "tags": [
+          "Map builder"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/builder/layouts": {
+      "get": {
+        "tags": [
+          "Map builder"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LayoutDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Map builder"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveLayoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/builder/layouts/{layoutId}/load": {
+      "post": {
+        "tags": [
+          "Map builder"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "layoutId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderApplyResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/servers/{serverId}/builder/layouts/{layoutId}": {
+      "delete": {
+        "tags": [
+          "Map builder"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "layoutId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/modules": {
       "get": {
         "tags": [
@@ -1537,6 +1961,235 @@
           },
           "length": {
             "type": "string"
+          }
+        }
+      },
+      "BuilderAddDto": {
+        "required": [
+          "kind",
+          "template",
+          "team",
+          "position",
+          "rotation"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MapModObjectKind"
+          },
+          "template": {
+            "type": "string"
+          },
+          "team": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "position": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "rotation": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        }
+      },
+      "BuilderApplyRequest": {
+        "required": [
+          "revision",
+          "add",
+          "update",
+          "remove"
+        ],
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "add": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BuilderAddDto"
+            }
+          },
+          "update": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BuilderUpdateDto"
+            }
+          },
+          "remove": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        }
+      },
+      "BuilderApplyResult": {
+        "required": [
+          "state",
+          "added",
+          "errors"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/BuilderStateDto"
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "BuilderStateDto": {
+        "required": [
+          "map",
+          "revision",
+          "connected",
+          "canResync",
+          "layoutId",
+          "layoutName",
+          "items",
+          "pendingResync"
+        ],
+        "type": "object",
+        "properties": {
+          "map": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "canResync": {
+            "type": "boolean"
+          },
+          "layoutId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "layoutName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BuiltItemDto"
+            }
+          },
+          "pendingResync": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingResyncDto"
+            }
+          }
+        }
+      },
+      "BuilderUpdateDto": {
+        "required": [
+          "id",
+          "position",
+          "rotation"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "position": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "rotation": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        }
+      },
+      "BuiltItemDto": {
+        "required": [
+          "id",
+          "kind",
+          "template",
+          "team",
+          "position",
+          "rotation",
+          "spawned",
+          "spawnReady"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MapModObjectKind"
+          },
+          "template": {
+            "type": "string"
+          },
+          "team": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "position": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "rotation": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "spawned": {
+            "type": "boolean"
+          },
+          "spawnReady": {
+            "type": "boolean"
           }
         }
       },
@@ -2297,6 +2950,38 @@
         }
       },
       "JsonElement": { },
+      "LayoutDto": {
+        "required": [
+          "id",
+          "name",
+          "map",
+          "createdBy",
+          "editedDate"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "map": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "editedDate": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "LoginRequest": {
         "required": [
           "username",
@@ -2330,6 +3015,13 @@
             "type": "string"
           }
         }
+      },
+      "MapModObjectKind": {
+        "enum": [
+          "Object",
+          "SpawnPoint",
+          "Helipad"
+        ]
       },
       "MapRequest": {
         "required": [
@@ -2716,6 +3408,29 @@
           }
         }
       },
+      "PendingResyncDto": {
+        "required": [
+          "index",
+          "name",
+          "blocker"
+        ],
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "blocker": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "PlayerActionRequest": {
         "required": [
           "reason"
@@ -2926,6 +3641,42 @@
           }
         }
       },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "RconResponse": {
         "required": [
           "request",
@@ -2938,6 +3689,21 @@
           },
           "response": {
             "type": "string"
+          }
+        }
+      },
+      "SaveLayoutRequest": {
+        "required": [
+          "name",
+          "overwrite"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "overwrite": {
+            "type": "boolean"
           }
         }
       },
@@ -3395,6 +4161,9 @@
     },
     {
       "name": "Servers"
+    },
+    {
+      "name": "Map builder"
     },
     {
       "name": "Modules"

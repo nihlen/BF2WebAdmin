@@ -15,7 +15,7 @@ namespace BF2WebAdmin.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
             modelBuilder.Entity("BF2WebAdmin.Data.Entities.MapMod", b =>
                 {
@@ -32,6 +32,9 @@ namespace BF2WebAdmin.Data.Migrations
                     b.Property<DateTime>("EditedDate")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Map")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .HasColumnType("TEXT");
 
@@ -46,6 +49,9 @@ namespace BF2WebAdmin.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("MapModId")
                         .HasColumnType("TEXT");
 
@@ -54,6 +60,9 @@ namespace BF2WebAdmin.Data.Migrations
 
                     b.Property<string>("Rotation")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("Team")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("TemplateName")
                         .HasColumnType("TEXT");

@@ -135,6 +135,7 @@ public class AdminStateApplier : IAdminSessionHandler
         Subscribe(session, welcome.Capabilities);
 
         await _server.UpdateMapAsync(FindMap(welcome.Map, welcome.Mode, welcome.MapSize, welcome.MapIndex), welcome.Team1, welcome.Team2, time);
+        _ = _server.Builder.OnRoundStartAsync(welcome.Map);
     }
 
     private byte TrackerRate => AdminGameWriter.RateHz(_server.GameWriter.CurrentTrackerInterval);
@@ -233,6 +234,7 @@ public class AdminStateApplier : IAdminSessionHandler
 
         await ApplyGameStateAsync(snapshot.Game, time);
         ApplyVehicles(snapshot.Vehicles);
+        _server.SetControlPoints(snapshot.ControlPoints);
         _streamMismatches.Clear();
 
         var present = new HashSet<int>();
@@ -498,6 +500,8 @@ public class AdminStateApplier : IAdminSessionHandler
                 var teams = _server.Teams.ToList();
                 await _server.UpdateMapAsync(FindMap(ev.Map, ev.Mode, 0, -1),
                     teams.FirstOrDefault(t => t.Id == 1)?.Name ?? "", teams.FirstOrDefault(t => t.Id == 2)?.Name ?? "", time);
+                // Not awaited: spawning waits for the module's replies, and events must keep flowing meanwhile
+                _ = _server.Builder.OnRoundStartAsync(ev.Map);
                 break;
 
             case EvRoundEnd ev:
@@ -595,6 +599,7 @@ public class AdminStateApplier : IAdminSessionHandler
 
             case EvControlPoint ev:
                 _server.AddEventLog($"ControlPoint {(ev.Kind == 1 ? "captured" : "neutralised")} {ev.ControlPoint.Template} team {ev.ControlPoint.Team}", time);
+                _server.UpdateControlPoint(ev.ControlPoint);
                 break;
 
             case EvChat ev:

@@ -101,6 +101,13 @@ export const viewerRoute = createRoute({
   component: lazyRouteComponent(() => import('@/pages/viewer'), 'ViewerPage'),
 })
 
+// The map builder: three.js too, loaded when opened
+export const builderRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/server/$serverId/builder',
+  component: lazyRouteComponent(() => import('@/pages/builder'), 'BuilderPage'),
+})
+
 export const serverGroupRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/servergroup/$serverGroup',
@@ -109,7 +116,7 @@ export const serverGroupRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
-  appRoute.addChildren([dashboardRoute, serverAddRoute, serverRoute, serverEditRoute, serverGroupRoute, viewerRoute]),
+  appRoute.addChildren([dashboardRoute, serverAddRoute, serverRoute, serverEditRoute, serverGroupRoute, viewerRoute, builderRoute]),
 ])
 
 export function createAppRouter(queryClient: QueryClient) {

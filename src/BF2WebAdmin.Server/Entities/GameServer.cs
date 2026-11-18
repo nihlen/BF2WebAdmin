@@ -5,6 +5,7 @@ using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.AdminChannel;
+using BF2WebAdmin.Server.Builder;
 using BF2WebAdmin.Server.Constants;
 using BF2WebAdmin.Server.Hubs;
 using BF2WebAdmin.Server.Communication.DTOs;
@@ -95,6 +96,8 @@ public class GameServer : IGameServer
             _globalServices.GetService<MissileArchive>());
         if (_viewers != null)
             _viewers.ActiveChanged += OnViewersChanged;
+        Builder = new MapBuilder(this, _globalServices, _globalServices.GetService<IHubContext<ServerHub, IServerHubClient>>(),
+            _globalServices.GetRequiredService<ILogger<MapBuilder>>(), _cancellationToken);
     }
 
     private readonly CancellationTokenSource _lifetime;
@@ -119,6 +122,37 @@ public class GameServer : IGameServer
 
     /// <summary>The 3D viewer's frames and the last traced missiles.</summary>
     public ViewerFeed Viewer { get; }
+
+    /// <summary>The objects, spawn points and helipads built on the running map (the web map builder and the .o commands).</summary>
+    public MapBuilder Builder { get; }
+
+    /// <summary>
+    /// The control points as of the last snapshot, with captures applied since, and the map that snapshot was taken on
+    /// (a new map's control points come with the next snapshot).
+    /// </summary>
+    public (string? Map, IReadOnlyList<AdminControlPointState> Points) ControlPoints
+    {
+        get { lock (_controlPointsLock) return (_controlPointsMap, _controlPoints); }
+    }
+
+    private readonly object _controlPointsLock = new();
+    private IReadOnlyList<AdminControlPointState> _controlPoints = [];
+    private string? _controlPointsMap;
+
+    public void SetControlPoints(IReadOnlyList<AdminControlPointState> points)
+    {
+        lock (_controlPointsLock)
+        {
+            _controlPoints = points.ToArray();
+            _controlPointsMap = Map?.Name?.ToLowerInvariant();
+        }
+    }
+
+    public void UpdateControlPoint(AdminControlPointState point)
+    {
+        lock (_controlPointsLock)
+            _controlPoints = _controlPoints.Select(p => p.ConsoleId == point.ConsoleId ? point : p).ToArray();
+    }
 
     /// <summary>Maps admin channel messages onto this server.</summary>
     public AdminStateApplier Applier { get; }

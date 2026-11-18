@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# The 3D viewer's and map builder's models, built from the game's files: not in git, served from static.nihlen.net
+# (tools/builder-assets/README.md). Local copies here are used by the dev server (vite.config.ts)
+public/viewer/maps/
+public/viewer/models/
+public/viewer/templates/

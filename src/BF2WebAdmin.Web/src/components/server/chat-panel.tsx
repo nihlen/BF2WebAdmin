@@ -11,16 +11,19 @@ export function ChatPanel({
   teams,
   commands,
   onSend,
+  listClassName = 'h-[500px]',
 }: {
   chatLog: ChatLogEntry[]
   players: Player[]
   teams: Team[]
   commands: CommandInfo[]
   onSend: (message: string) => void
+  /** The list's size: a fixed height on the server page, the rest of a column in the map builder */
+  listClassName?: string
 }) {
   return (
     <>
-      <LogList className="h-[500px]" items={chatLog} empty="No chat yet">
+      <LogList className={listClassName} items={chatLog} empty="No chat yet">
         {(entry) => <ChatLine key={entry.message.id} entry={entry} players={players} teams={teams} />}
       </LogList>
       <ChatInput players={players} commands={commands} onSend={onSend} />

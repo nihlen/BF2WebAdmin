@@ -8,6 +8,7 @@ using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Data.Abstractions;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.AdminChannel;
+using BF2WebAdmin.Server.Builder;
 using BF2WebAdmin.Server.Controllers;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Hubs;
@@ -93,6 +94,7 @@ public static class ApiEndpoints
         servers.MapGet("/{serverId}/health/rounds", GetHealthRounds);
         servers.MapGet("/{serverId}/missiles", GetMissiles);
         servers.MapGet("/{serverId}/missiles/{key:int}", GetMissile);
+        servers.MapBuilderEndpoints();
 
         var modules = api.MapGroup("/").WithTags("Modules").RequireAuthorization(AdminPolicy);
         modules.MapGet("/modules", () => ModuleResolver.AllModuleNames.Order().ToArray());

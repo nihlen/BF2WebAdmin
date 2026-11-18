@@ -17,6 +17,12 @@ export class SpectatorControls {
   slowFactor = 0.25
   /** Lowest camera height (the sea level) */
   minHeight = -Infinity
+  /** The mouse buttons that look around when dragged (the map builder leaves the left one to selecting) */
+  lookButtons: number[] = [0, 2]
+  /** Which keys (KeyboardEvent.code) fly which way */
+  keyMap = { forward: FORWARD, back: BACK, left: LEFT, right: RIGHT, up: UP, down: DOWN }
+  /** Keys that fly only while the view is dragged: the map builder's W and E also pick its tools, as in HeliGame */
+  whileLooking = new Set<string>()
 
   private readonly keys = new Set<string>()
   private readonly velocity = new Vector3()
@@ -48,6 +54,11 @@ export class SpectatorControls {
     this.velocity.set(0, 0, 0)
   }
 
+  /** Whether the view is being dragged */
+  get looking() {
+    return this.dragging
+  }
+
   setKey(code: string, down: boolean) {
     if (down) this.keys.add(code)
     else this.keys.delete(code)
@@ -59,9 +70,10 @@ export class SpectatorControls {
 
   update(dtMs: number) {
     if (!this.enabled) return
-    const pressed = (codes: string[]) => (codes.some((c) => this.keys.has(c)) ? 1 : 0)
+    const pressed = (codes: string[]) => (codes.some((c) => this.keys.has(c) && (this.dragging || !this.whileLooking.has(c))) ? 1 : 0)
 
-    _move.set(pressed(RIGHT) - pressed(LEFT), pressed(UP) - pressed(DOWN), pressed(BACK) - pressed(FORWARD))
+    const k = this.keyMap
+    _move.set(pressed(k.right) - pressed(k.left), pressed(k.up) - pressed(k.down), pressed(k.back) - pressed(k.forward))
     const speed = this.speed * this.modifier()
     const target = new Vector3()
     if (_move.lengthSq() > 0) {
@@ -83,7 +95,7 @@ export class SpectatorControls {
   }
 
   private onPointerDown = (e: PointerEvent) => {
-    if (!this.enabled || (e.button !== 0 && e.button !== 2)) return
+    if (!this.enabled || !this.lookButtons.includes(e.button)) return
     this.dragging = true
     this.lastX = e.clientX
     this.lastY = e.clientY

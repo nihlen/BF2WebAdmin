@@ -17,7 +17,7 @@ namespace BF2WebAdmin.Data.Migrations.Postgres
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.14")
+                .HasAnnotation("ProductVersion", "10.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -43,6 +43,10 @@ namespace BF2WebAdmin.Data.Migrations.Postgres
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("edited_date");
 
+                    b.Property<string>("Map")
+                        .HasColumnType("text")
+                        .HasColumnName("map");
+
                     b.Property<string>("Name")
                         .HasColumnType("text")
                         .HasColumnName("name");
@@ -60,6 +64,10 @@ namespace BF2WebAdmin.Data.Migrations.Postgres
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
                     b.Property<Guid>("MapModId")
                         .HasColumnType("uuid")
                         .HasColumnName("map_mod_id");
@@ -71,6 +79,10 @@ namespace BF2WebAdmin.Data.Migrations.Postgres
                     b.Property<string>("Rotation")
                         .HasColumnType("text")
                         .HasColumnName("rotation");
+
+                    b.Property<int>("Team")
+                        .HasColumnType("integer")
+                        .HasColumnName("team");
 
                     b.Property<string>("TemplateName")
                         .HasColumnType("text")

@@ -194,7 +194,7 @@ npm test          # builds, then runs test/*.test.mjs with node:test
 
 ## What was tested on a game server
 
-On 2026-11-14, with this WebAdmin (`f2ca979`) and the module of openbf2-server-ext `a0ba53b` on a WSL test server with
+On 2026-11-14, with this WebAdmin (`df4558c`) and the module of openbf2-server-ext `a0ba53b` on a WSL test server with
 a bot helicopter hovering at 213.9 m:
 
 | Command | What happened |

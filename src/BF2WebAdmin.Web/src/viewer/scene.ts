@@ -1,32 +1,23 @@
 import {
   ACESFilmicToneMapping,
   BoxGeometry,
-  BufferGeometry,
   CapsuleGeometry,
-  ClampToEdgeWrapping,
   CylinderGeometry,
   Color,
   DirectionalLight,
-  DoubleSide,
-  Float32BufferAttribute,
   FogExp2,
   Group,
   HemisphereLight,
   type InterleavedBufferAttribute,
-  type Material,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
-  MeshPhongMaterial,
   type Object3D,
   PerspectiveCamera,
-  PlaneGeometry,
   Quaternion,
-  RepeatWrapping,
   Scene,
   SphereGeometry,
   SRGBColorSpace,
-  TextureLoader,
   Vector3,
   WebGLRenderer,
 } from 'three'
@@ -60,14 +51,13 @@ import { HeliModel } from './helis'
 import { findPart, type HitboxSet, HitboxModel, loadHitboxes, facesNear, partMesh } from './hitboxes'
 import { Explosion, MissileModel } from './models'
 import { SpectatorControls } from './spectator'
+import { ASSETS, DEFAULT_HORIZON_COLOR, DRACO, DEFAULT_SEA_LEVEL, disposeTree, FOG_DENSITY, loadMapWorld } from './world'
 
 // The 3D viewer's scene: the live stream (LiveBuffer) drawn at any tick, a player's own view, and a selected missile's
 // hit/miss replay with its targets where they were ("red") and where the server tested them ("blue"). Ported from
 // BF2v2's round replay (app/src/components/pages/Match/Replay/scene.ts); its samples come 30 times a second, so it
 // interpolates linearly between ticks instead of smoothing.
 
-const ASSETS = '/viewer'
-const DEFAULT_SEA_LEVEL = 141.4
 const TRAIL_TICKS = 8 * TICK_RATE
 const TRAIL_POINTS = 80
 /** Live playback stays this many ticks behind the newest frame, so there is always a next sample to interpolate to */
@@ -75,9 +65,6 @@ const LIVE_DELAY_TICKS = 2
 /** Ticks shown before and after a missile's flight */
 const MISSILE_PADDING_TICKS = TICK_RATE
 
-const FOG_DENSITY = 0.0005
-const DEFAULT_HORIZON_COLOR = '#b1bad0'
-const SKY_RADIUS = 20000
 const FOV_FREE = 55
 /** The free camera's speed (m/s): normal, and while a missile replay is shown, to get close and look precisely */
 const FREE_SPEED = 60
@@ -101,18 +88,6 @@ export const IMPACT_COLOR = '#d4d4d4'
 export const teamColor = (team: number) => (team === 2 ? '#60a5fa' : team === 1 ? '#f87171' : '#d4d4d4')
 
 export type CameraMode = 'free' | 'orbit' | 'player' | 'missile'
-
-interface MapMeta {
-  seaLevel: number
-  sky?: SkyMeta
-}
-
-interface SkyMeta {
-  texture: string
-  uOffset: number
-  horizonColor: string
-  sunDirection?: [number, number, number]
-}
 
 /** What the timeline shows */
 export type PlaybackState = {
@@ -298,7 +273,7 @@ export class ViewerScene {
   // ---------------------------------------------------------------------------------------------------------------
   // Map
 
-  /** Loads the helicopter models and the map's 3D terrain (/viewer/maps/<map>/map.glb), or a flat ground without one */
+  /** Loads the helicopter models and the map's 3D terrain (maps/<map>/map.glb under ASSETS), or a flat ground without one */
   async loadMap(map: string) {
     if (!map || map === this.loadedMap) return
     this.loadedMap = map
@@ -315,7 +290,7 @@ export class ViewerScene {
       .then((set) => (this.hitboxes = set))
       .catch((e: unknown) => console.warn('[viewer] helicopter hitboxes not available, showing the visual hull instead', e))
     try {
-      const draco = new DRACOLoader().setDecoderPath(`${ASSETS}/draco/`)
+      const draco = new DRACOLoader().setDecoderPath(DRACO)
       const gltf = await new GLTFLoader().setDRACOLoader(draco).loadAsync(`${ASSETS}/models/helis.glb`)
       draco.dispose()
       for (const name of ['ahe_ah1z', 'ahe_z10']) {
@@ -329,81 +304,10 @@ export class ViewerScene {
   }
 
   private async loadTerrain(map: string) {
-    const base = `${ASSETS}/maps/${map}`
-    let meta: MapMeta | null = null
-    try {
-      const response = await fetch(`${base}/map.json`)
-      if (response.ok && response.headers.get('content-type')?.includes('json')) meta = (await response.json()) as MapMeta
-    } catch {
-      meta = null
-    }
-
-    if (meta) {
-      this.seaLevel = meta.seaLevel
-      if (meta.sky) await this.loadSky(`${base}/${meta.sky.texture}`, meta.sky)
-      if (this.disposed) return
-      this.spectator.minHeight = meta.seaLevel + 2
-      const draco = new DRACOLoader().setDecoderPath(`${ASSETS}/draco/`)
-      const gltf = await new GLTFLoader().setDRACOLoader(draco).loadAsync(`${base}/map.glb`)
-      draco.dispose()
-      gltf.scene.traverse((o) => {
-        const mesh = o as Mesh
-        if (!mesh.isMesh) return
-        const old = mesh.material as Material & { map?: MeshLambertMaterial['map'] }
-        if (mesh.name.startsWith('terrain')) {
-          mesh.material = new MeshLambertMaterial({ map: old.map ?? null })
-        } else if (mesh.name.startsWith('outer_terrain')) {
-          mesh.material = new MeshLambertMaterial({ color: '#6f6f5a' })
-        } else if (mesh.name.startsWith('see_through')) {
-          // Wire fences and grates: the holes are in textures the map doesn't carry, so show them translucent
-          mesh.material = new MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.35, side: DoubleSide, depthWrite: false })
-        } else if (mesh.name.startsWith('objects') || mesh.name.startsWith('trees')) {
-          mesh.material = mesh.geometry.hasAttribute('color')
-            ? new MeshLambertMaterial({ vertexColors: true })
-            : new MeshLambertMaterial({ color: '#a29d94', flatShading: true })
-        }
-        old.dispose()
-      })
-      if (this.disposed) return
-      this.world.add(gltf.scene)
-    } else {
-      // No 3D map for this level: a plain ground at the default sea level, with a grid of 100 m squares
-      const ground = new Mesh(new PlaneGeometry(4096, 4096, 41, 41), new MeshLambertMaterial({ color: '#6b6b55', wireframe: false }))
-      ground.rotation.x = -Math.PI / 2
-      ground.position.y = this.seaLevel + 0.5
-      const grid = new Mesh(new PlaneGeometry(4096, 4096, 41, 41), new MeshBasicMaterial({ color: '#8a8a70', wireframe: true }))
-      grid.rotation.x = -Math.PI / 2
-      grid.position.y = this.seaLevel + 0.6
-      this.world.add(ground, grid)
-    }
-
-    const water = new Mesh(
-      new PlaneGeometry(40000, 40000),
-      new MeshPhongMaterial({ color: '#2f4d5e', transparent: true, opacity: 0.88, shininess: 40, specular: '#46555e' }),
-    )
-    water.rotation.x = -Math.PI / 2
-    water.position.y = this.seaLevel
-    // Drawn first among the transparent objects and writing depth: the lines and ghosts drawn after it are hidden
-    // where the sea is in front of them and drawn over it where they are in front
-    water.renderOrder = -1
-    this.world.add(water)
-  }
-
-  private async loadSky(url: string, sky: SkyMeta) {
-    const texture = await new TextureLoader().loadAsync(url).catch(() => null)
-    if (!texture || this.disposed) return
-    texture.colorSpace = SRGBColorSpace
-    texture.wrapS = RepeatWrapping
-    texture.wrapT = ClampToEdgeWrapping
-    this.sky = new Mesh(skyDomeGeometry(sky.uOffset), new MeshBasicMaterial({ map: texture, fog: false, depthWrite: false, side: DoubleSide }))
-    this.sky.renderOrder = -1
-    this.sky.frustumCulled = false
-    this.world.add(this.sky)
-
-    const horizon = new Color(sky.horizonColor)
-    this.scene.background = horizon
-    ;(this.scene.fog as FogExp2).color.copy(horizon)
-    if (sky.sunDirection) this.sun.position.fromArray(sky.sunDirection).multiplyScalar(1000)
+    const loaded = await loadMapWorld(map, this.world, this.scene, this.sun, () => this.disposed)
+    this.seaLevel = loaded.seaLevel
+    this.sky = loaded.sky
+    this.spectator.minHeight = loaded.seaLevel + 2
   }
 
   // ---------------------------------------------------------------------------------------------------------------
@@ -1460,49 +1364,3 @@ function updateTrail(line: Line2, from: number, to: number, positionAt: (tick: n
   setLinePoints(line, _trailPoints)
 }
 
-/**
- * Sphere around the camera with the panorama UVs of BF2's skydome. u keeps increasing past 1 across the seam
- * (the texture repeats) so no triangle spans the whole texture. Below the horizon it shows the bottom row (haze)
- */
-function skyDomeGeometry(uOffset: number, columns = 64, rows = 32) {
-  const positions: number[] = []
-  const uvs: number[] = []
-  const indices: number[] = []
-  for (let r = 0; r <= rows; r++) {
-    const elevation = -Math.PI / 2 + (r / rows) * Math.PI
-    for (let c = 0; c <= columns; c++) {
-      const azimuth = (c / columns) * Math.PI * 2
-      // BF2 direction (cos el cos az, sin el, cos el sin az) -> world (x, y, -z)
-      positions.push(
-        SKY_RADIUS * Math.cos(elevation) * Math.cos(azimuth),
-        SKY_RADIUS * Math.sin(elevation),
-        -SKY_RADIUS * Math.cos(elevation) * Math.sin(azimuth),
-      )
-      uvs.push(uOffset + c / columns, Math.min(Math.max(elevation / (Math.PI / 2), 0.002), 1))
-    }
-  }
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < columns; c++) {
-      const a = r * (columns + 1) + c
-      const b = a + columns + 1
-      indices.push(a, b, a + 1, a + 1, b, b + 1)
-    }
-  }
-  const geometry = new BufferGeometry()
-  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
-  geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2))
-  geometry.setIndex(indices)
-  return geometry
-}
-
-function disposeTree(root: Object3D) {
-  root.traverse((o) => {
-    const mesh = o as Mesh
-    if (mesh.geometry && !mesh.userData.sharedGeometry) mesh.geometry.dispose()
-    const materials = mesh.material ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : []
-    for (const m of materials) {
-      ;(m as Material & { map?: { dispose(): void } }).map?.dispose()
-      m.dispose()
-    }
-  })
-}

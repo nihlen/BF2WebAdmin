@@ -11,6 +11,9 @@ import type {
   Team,
   Vector3,
 } from './client'
+import type { components } from './schema'
+
+type BuilderState = components['schemas']['BuilderStateDto']
 
 // The events of the server hub (/hubs/server), as sent by BF2WebAdmin.Server's IServerHubClient
 // (src/BF2WebAdmin.Server/Hubs/ServerHub.cs; the classes are in src/BF2WebAdmin.Shared/Communication/Events).
@@ -66,6 +69,9 @@ export type HubEvents = {
   ServerHealthEvent: { serverId: string; window: ServerHealthWindow }
   // The players' connections over that window; it follows the window's ServerHealthEvent
   ServerConnectionsEvent: { serverId: string; connections: ServerConnections }
+  // The map builder's items or resync queue changed (MapBuilder in src/BF2WebAdmin.Server/Builder/MapBuilder.cs); the
+  // type is in the OpenAPI document
+  BuilderEvent: BuilderState
 
   // Sent to the clients with the 3D viewer open on the server (SubscribeViewer)
   ViewerFrame: ViewerFrame

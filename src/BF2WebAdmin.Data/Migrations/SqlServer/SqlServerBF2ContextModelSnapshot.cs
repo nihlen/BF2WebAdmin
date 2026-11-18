@@ -19,7 +19,7 @@ namespace BF2WebAdmin.Data.Migrations.SqlServer
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("dbo")
-                .HasAnnotation("ProductVersion", "10.0.14")
+                .HasAnnotation("ProductVersion", "10.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -43,6 +43,10 @@ namespace BF2WebAdmin.Data.Migrations.SqlServer
                     b.Property<DateTime>("EditedDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Map")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -59,6 +63,9 @@ namespace BF2WebAdmin.Data.Migrations.SqlServer
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("MapModId")
                         .HasColumnType("uniqueidentifier");
 
@@ -71,6 +78,9 @@ namespace BF2WebAdmin.Data.Migrations.SqlServer
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("Team")
+                        .HasColumnType("int");
 
                     b.Property<string>("TemplateName")
                         .IsRequired()

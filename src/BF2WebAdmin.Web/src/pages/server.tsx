@@ -1,7 +1,7 @@
 import { HubConnectionState } from '@microsoft/signalr'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Ban as BanIcon, Bolt, Box, History, Loader2, Map as MapIcon, MessageSquare, Pause, Play, Power, RotateCcw, Settings, SquareTerminal } from 'lucide-react'
+import { Ban as BanIcon, Bolt, Box, Hammer, History, Loader2, Map as MapIcon, MessageSquare, Pause, Play, Power, RotateCcw, Settings, SquareTerminal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api, errorMessage, type Player, type ServerSnapshot } from '@/api/client'
 import { useHubState } from '@/api/hub'
@@ -78,6 +78,15 @@ export function ServerPage() {
           >
             <Box data-icon="inline-start" />
             <span className="hidden sm:inline">3D viewer</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            nativeButton={false}
+            render={<Link to="/server/$serverId/builder" params={{ serverId: encodeServerId(serverId) }} />}
+          >
+            <Hammer data-icon="inline-start" />
+            <span className="hidden sm:inline">Map builder</span>
           </Button>
           <Button
             variant="outline"

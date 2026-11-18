@@ -179,8 +179,9 @@ try
     }
 
     // The web UI (src/BF2WebAdmin.Web, built into wwwroot on publish). Vite puts a content hash in the names of the files in
-    // assets/, so they can be cached for good; index.html is checked on every load. The 3D viewer's models and maps
-    // (wwwroot/viewer) are glTF binaries, a type the default provider does not know and would not serve.
+    // assets/, so they can be cached for good; index.html is checked on every load. The 3D viewer's models and maps come
+    // from elsewhere (vite.config.ts); a build with VIEWER_ASSETS=/viewer serves its own copies from wwwroot/viewer, glTF
+    // binaries, a type the default provider does not know and would not serve.
     var contentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
     contentTypes.Mappings[".glb"] = "model/gltf-binary";
     app.UseStaticFiles(new StaticFileOptions

@@ -98,9 +98,10 @@ rotors as their blade sweep, the AH-1Z's Hellfire dummies, turret, sensors, gear
 lit at the pose the `ProjectileCollision` reports. Its
 player view follows `PlayerState`'s view mode: the server's camera object (`AimStream`) for the inside view and the
 TV launcher, the chase, front chase, nose and fly-by views computed from the vehicle with the camera templates'
-values. The map and helicopter models are BF2v2's (`public/viewer/`, only `dalian_2_v_2` has a 3D map); the hitboxes
-(`public/viewer/models/heli-hitboxes.json`) are built by `tools/viewer/build_heli_hitboxes.py` from the server's
-collision meshes.
+values. The map and helicopter models are BF2v2's (only `dalian_2_v_2` has a 3D map); the hitboxes
+(`models/heli-hitboxes.json`) are built by `tools/viewer/build_heli_hitboxes.py` from the server's collision meshes.
+They are made of the game's files, so they are not in git: they load from static.nihlen.net like the map builder's
+models (tools/builder-assets/README.md).
 
 ### Game scripts
 

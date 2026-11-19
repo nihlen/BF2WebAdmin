@@ -23,7 +23,7 @@ C# module <── ScriptDataEvent, ScriptLogEvent, ScriptFinishedEvent <── S
 | The scripts, their types and tests | `src/BF2WebAdmin.Server/GameScripts/` (an npm project: `src/*.ts`, `game.d.ts`, `test/`, `build.mjs`) |
 | Starting, stopping and following scripts | `IScriptRunner` and `IScriptRun` (`Abstractions/IScriptRunner.cs`), reached as `GameServer.Scripts`; implemented by `AdminChannel/ScriptRunner.cs` |
 | The messages | `AdminChannel/AdminProtocol.cs`: `CmdStartScript`, `CmdStopScript`, `CmdScriptMessage`, `CmdListScripts`, `ScriptList`, `EvScriptFinished`, `EvScriptEvent`, and `Welcome.CapScripts` |
-| The scripts in use | `nasa` (`.nasa`, `PracticeModule`) and `dance` (`.dance`, `FunModule`) |
+| The scripts in use | `nasa` (`.nasa`, `PracticeModule`), `dance` (`.dance`, `FunModule`) and `replay` (`.replay`, `ReplayModule`; [replay.md](replay.md)) |
 
 ## Servers that cannot run scripts
 
@@ -102,6 +102,16 @@ Rules a script must follow:
 | `game.teleport(id, position, rotation)` | Moves or turns the player's root object (its vehicle when seated); a position resets its speed |
 | `game.setVelocity(id, velocity)`, `game.setAngularVelocity(id, velocity)` | Set the root object's speed (m/s) or rotational speed (rad/s) |
 | `game.say(text, player?)` | A chat line to everyone or to one player |
+
+API 2 (a contract draft of openbf2-server-ext, "Host API, version 2") adds objects by networkable id, for objects
+WebAdmin spawned that no player can name. A script that uses them is started with
+`StartAsync(name, args, CmdStartScript.ApiObjects)`; a module with API 1 refuses it (`AdminErrorCode.Unavailable`).
+
+| Member | Meaning |
+|---|---|
+| `game.object(id)` | An object's root: id, template, position, rotation and velocity; null when there is none |
+| `game.teleportObject(id, position, rotation)`, `game.setObjectVelocity(id, velocity)`, `game.setObjectAngularVelocity(id, velocity)` | As the player versions, on an object |
+| `game.activateProjectile(id)` | Starts a spawned projectile's trail and sound on the clients; on the server it stays inert (no flight, collision, damage or time to live) |
 
 Positions are `[x, y, z]` in metres with `y` up; rotations are `[yaw, pitch, roll]` in degrees. The crew of one
 vehicle shares its root object (`rootId`): a script that acts on vehicles handles each `rootId` once.

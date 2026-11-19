@@ -290,12 +290,15 @@ public class AdminGameWriter : IGameWriter
         SendConsole($"object.setIsDisabledRecursive {(disabled ? 1 : 0)}");
     }
 
-    public bool SetVehicleCollision(Vehicle vehicle, bool hasCollision)
+    public bool SetVehicleCollision(Vehicle vehicle, bool hasCollision) =>
+        vehicle.RootVehicleId > 0 && SetObjectCollision((uint)vehicle.RootVehicleId, hasCollision);
+
+    public bool SetObjectCollision(uint netId, bool hasCollision)
     {
-        if (vehicle.RootVehicleId <= 0 || _server.Session is not { IsOpen: true } session || (session.Capabilities & Welcome.CapCollision) == 0)
+        if (netId == 0 || _server.Session is not { IsOpen: true } session || (session.Capabilities & Welcome.CapCollision) == 0)
             return false;
 
-        session.Fire(id => new CmdSetCollision(id, ObjectRef.Networkable((uint)vehicle.RootVehicleId), hasCollision ? CmdSetCollision.FlagCollision : (byte)0));
+        session.Fire(id => new CmdSetCollision(id, ObjectRef.Networkable(netId), hasCollision ? CmdSetCollision.FlagCollision : (byte)0));
         return true;
     }
 

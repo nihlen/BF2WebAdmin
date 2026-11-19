@@ -71,7 +71,7 @@ public sealed class ScriptRunner : IScriptRunner
 
     private static bool CanRun(AdminSession session) => (session.Capabilities & Welcome.CapScripts) != 0;
 
-    public async Task<IScriptRun> StartAsync(string name, object? args = null)
+    public async Task<IScriptRun> StartAsync(string name, object? args = null, byte api = CmdStartScript.Api)
     {
         var session = _server.Session;
         if (session is not { IsOpen: true })
@@ -96,7 +96,7 @@ public sealed class ScriptRunner : IScriptRunner
             // Registered before it is sent: the script's first events can be applied before the reply is awaited
             run = new ScriptRun(this, session, instance, name);
             _runs[instance] = run;
-            reply = session.RequestAsync(id => new CmdStartScript(id, instance, CmdStartScript.Api, 0, name, arguments, source));
+            reply = session.RequestAsync(id => new CmdStartScript(id, instance, api, 0, name, arguments, source));
         }
 
         try

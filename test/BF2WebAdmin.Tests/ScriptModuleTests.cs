@@ -65,7 +65,7 @@ public class ScriptModuleTests
         public List<FakeRun> Started { get; } = [];
         public Exception? Refuse { get; set; }
 
-        public Task<IScriptRun> StartAsync(string name, object? args = null)
+        public Task<IScriptRun> StartAsync(string name, object? args = null, byte api = CmdStartScript.Api)
         {
             if (Refuse != null)
                 return Task.FromException<IScriptRun>(Refuse);

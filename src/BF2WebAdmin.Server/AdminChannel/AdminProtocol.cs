@@ -1427,8 +1427,11 @@ public sealed record CmdDeleteObject(uint RequestId, ObjectRef Target) : AdminCo
 public sealed record CmdStartScript(uint RequestId, uint Instance, byte ApiVersion, byte Flags, string Name, string Arguments, string Source)
     : AdminCommand(RequestId)
 {
-    /// <summary>The script API version WebAdmin's scripts are written for.</summary>
+    /// <summary>The script API version WebAdmin's scripts need unless they ask for more (<see cref="ApiObjects"/>).</summary>
     public const byte Api = 1;
+
+    /// <summary>Script API 2: objects by networkable id and game.activateProjectile (the replay).</summary>
+    public const byte ApiObjects = 2;
 
     public const int MaxNameBytes = 64, MaxSourceBytes = 60000, MaxMessageBytes = 8192;
 

@@ -17,12 +17,16 @@ export function player(id, overrides = {}) {
 
 /**
  * Starts dist/<name>.js. `players` is the world: the test changes it between ticks, and the script's teleports and
- * speed changes are applied to it and recorded in `calls`.
+ * speed changes are applied to it and recorded in `calls`. `objects` are the objects of API 2 by networkable id
+ * ({ id, template, position, rotation, velocity, projectile }), present when `api` is 2: teleportObject moves them and
+ * records each move in the object's `moves`; `run.objects` has them, `run.activated` the projectiles activateProjectile
+ * was called for.
  */
-export function start(name, args, players = []) {
+export function start(name, args, players = [], objects = [], api = 1) {
     const world = new Map(players.map(p => [p.id, p]));
+    const things = new Map(objects.map(o => [o.id, o]));
     const handlers = { tick: [], message: [], stop: [] };
-    const run = { world, calls: [], emitted: [], logs: [], ended: null, result: undefined, tick: 0 };
+    const run = { world, objects: things, activated: [], calls: [], emitted: [], logs: [], ended: null, result: undefined, tick: 0 };
 
     const end = reason => {
         if (run.ended)
@@ -52,7 +56,7 @@ export function start(name, args, players = []) {
     const sharing = p => [...world.values()].filter(other => other === p || (other.alive && p.rootId !== 0 && other.rootId === p.rootId));
 
     const script = Object.freeze({
-        api: 1,
+        api,
         name,
         args: args === undefined ? null : JSON.parse(JSON.stringify(args)),
         onTick: fn => { handlers.tick.push(fn); },
@@ -97,6 +101,36 @@ export function start(name, args, players = []) {
             return true;
         },
         say: (text, to) => { record({ call: 'say', text, player: to }); },
+        ...(api >= 2 ? {
+            object: id => {
+                const o = things.get(id);
+                return o ? { id, template: o.template, position: [...o.position], rotation: [...o.rotation], velocity: [...(o.velocity ?? [0, 0, 0])] } : null;
+            },
+            teleportObject: (id, position, rotation) => {
+                const o = things.get(id);
+                if (!o)
+                    return false;
+                if (position) { o.position = [...position]; o.velocity = [0, 0, 0]; }
+                if (rotation) o.rotation = [...rotation];
+                (o.moves ??= []).push({ position: position && [...position], rotation: rotation && [...rotation] });
+                return true;
+            },
+            setObjectVelocity: (id, velocity) => {
+                const o = things.get(id);
+                if (!o)
+                    return false;
+                o.velocity = [...velocity];
+                return true;
+            },
+            setObjectAngularVelocity: id => things.has(id),
+            activateProjectile: id => {
+                const o = things.get(id);
+                if (!o?.projectile)
+                    return false;
+                run.activated.push(id);
+                return true;
+            },
+        } : {}),
     });
 
     const context = vm.createContext({ script, game });

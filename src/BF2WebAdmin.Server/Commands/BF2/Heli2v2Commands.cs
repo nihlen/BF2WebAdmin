@@ -125,3 +125,28 @@ public class ToggleTvLogCommand : BaseCommand
 public class NoFencesCommand : BaseCommand
 {
 }
+
+/// <summary>The last kill of the match by a TV missile, or without a match your own last TV missile, at real speed.</summary>
+[Command("replay", Auth.All)]
+public class ReplayCommand : BaseCommand
+{
+}
+
+/// <summary>As <see cref="ReplayCommand"/> at a speed (0.05 to 4; 0.5 is half speed).</summary>
+[Command("replay <Speed>", Auth.All)]
+public class ReplaySpeedCommand : BaseCommand
+{
+    public double Speed { get; set; }
+}
+
+/// <summary>As <see cref="ReplayCommand"/>, with the helicopters where the server tested the hit (rewound by the shooter's lag).</summary>
+[Command("replayhit", Auth.All)]
+public class ReplayHitCommand : BaseCommand
+{
+}
+
+[Command("replayhit <Speed>", Auth.All)]
+public class ReplayHitSpeedCommand : BaseCommand
+{
+    public double Speed { get; set; }
+}

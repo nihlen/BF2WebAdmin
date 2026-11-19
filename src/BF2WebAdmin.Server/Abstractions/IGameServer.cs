@@ -19,6 +19,9 @@ public interface IGameServer
     /// <summary>Game scripts on this server, where its module runs them (docs/scripts.md).</summary>
     IScriptRunner Scripts { get; }
 
+    /// <summary>The 3D viewer's feed: the last traced TV missiles and the vehicles' recent poses (a kill's replay).</summary>
+    AdminChannel.ViewerFeed Viewer { get; }
+
     ServerInfo ServerInfo { get; }
 
     /// <summary>The configured server id (Server.ServerId), also the module's adminServerId.</summary>

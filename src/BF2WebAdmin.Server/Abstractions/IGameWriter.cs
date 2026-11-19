@@ -95,6 +95,9 @@ public interface IGameWriter
     /// </summary>
     bool SetVehicleCollision(Vehicle vehicle, bool hasCollision);
 
+    /// <summary>As <see cref="SetVehicleCollision"/>, for an object by its networkable id (one WebAdmin spawned).</summary>
+    bool SetObjectCollision(uint netId, bool hasCollision);
+
     /// <summary>The world's gravity (physics.gravity, default <see cref="DefaultGravity"/>).</summary>
     void SetGravity(double gravity);
 

@@ -1,4 +1,4 @@
-// The host API a game script sees on the game server, version 1: the two global objects `script` and `game`.
+// The host API a game script sees on the game server, versions 1 and 2: the two global objects `script` and `game`.
 // The definition is the "Scripts" section of openbf2-server-ext docs/admin-channel.md; docs/scripts.md explains it.
 //
 // A script is one file of strict global code. The engine has the base objects, JSON, Map/Set, typed arrays and
@@ -39,7 +39,7 @@ interface GamePlayer {
 }
 
 interface Script {
-    /** The host API version, 1. */
+    /** The host API version of the game server's module: 1, or 2 with the object members of Game. */
     readonly api: number;
     readonly name: string;
     /** The arguments WebAdmin started the script with, null without any. */
@@ -89,6 +89,34 @@ interface Game {
     setAngularVelocity(id: number, velocity: Vec3): boolean;
     /** A chat line from the server to everyone, or to one player. */
     say(text: string, player?: number): void;
+
+    // API 2 (a script started with api 2; see ScriptRunner.StartAsync). Objects by networkable id (1-65535), each
+    // acting on the object's root: for objects WebAdmin spawned, which no player can name.
+
+    /** An object, or null when there is none with that networkable id. */
+    object(id: number): GameObject | null;
+    /** As teleport, on an object. False when there is no such object. */
+    teleportObject(id: number, position: Vec3 | null, rotation: Rot | null): boolean;
+    /** As setVelocity, on an object. False without the object or a physics body. */
+    setObjectVelocity(id: number, velocity: Vec3): boolean;
+    /** As setAngularVelocity, on an object. False without the object or a physics body. */
+    setObjectAngularVelocity(id: number, velocity: Vec3): boolean;
+    /**
+     * Starts a projectile's trail and looping sound on every client, not on the server, where it stays inert (no flight,
+     * collision, damage or time to live): for a projectile WebAdmin spawned and the script moves. False when the id names
+     * no projectile.
+     */
+    activateProjectile(id: number): boolean;
+}
+
+/** An object as the game server sees it now (API 2): its root object. */
+interface GameObject {
+    /** The root object's networkable id. */
+    readonly id: number;
+    readonly template: string;
+    readonly position: Vec3;
+    readonly rotation: Rot;
+    readonly velocity: Vec3;
 }
 
 declare const script: Script;

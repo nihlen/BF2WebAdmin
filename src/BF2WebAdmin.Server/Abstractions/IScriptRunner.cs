@@ -19,8 +19,10 @@ public interface IScriptRunner
     /// <c>script.args</c> (serialized to JSON, property names in camel case). Returns when the script's top-level code
     /// has run on the game server. Throws <see cref="AdminChannel.AdminCommandException"/> when the server cannot run
     /// scripts or refuses this one; a script that does not compile or throws at once is refused with its error and line.
+    /// <paramref name="api"/> is the script API version the script needs; a module with an older one refuses it
+    /// (<see cref="AdminChannel.AdminErrorCode.Unavailable"/>).
     /// </summary>
-    Task<IScriptRun> StartAsync(string name, object? args = null);
+    Task<IScriptRun> StartAsync(string name, object? args = null, byte api = AdminChannel.CmdStartScript.Api);
 }
 
 /// <summary>

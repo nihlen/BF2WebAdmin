@@ -166,8 +166,17 @@ public class ViewerFeed
 
     // ---------------------------------------------------------------- stream frames
 
+    /// <summary>The seated players' vehicles over the last 30 seconds, for a replay of a kill.</summary>
+    public RootPoseHistory Poses { get; } = new();
+
     public void OnPlayers(PlayerStream stream)
     {
+        Poses.Add(stream.Tick, stream.Players
+            .Where(p => p.State.Life == AdminPlayerState.LifeAlive && (p.State.Flags & AdminPlayerState.FlagSeated) != 0 && p.State.RootNetId != 0)
+            .Select(p => new RootPose(stream.Tick, p.Id, p.State.RootNetId,
+                _server.Vehicles.FirstOrDefault(v => v.RootVehicleId == (int)p.State.RootNetId)?.RootVehicleTemplate ?? "",
+                p.State.Position, p.State.Rotation)));
+
         if (!IsActive)
             return;
         var players = stream.Players.Select(p => new ViewerPlayerDto(p.Id, p.State.Team, p.State.Life, p.State.Flags, p.State.RootNetId,

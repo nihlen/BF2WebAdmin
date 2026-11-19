@@ -5,9 +5,7 @@ using BF2WebAdmin.AppHost;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-builder.AddDockerComposeEnvironment("compose");
-
-var server = builder.AddProject<Projects.BF2WebAdmin_Server>("server")
+var server = builder.AddDotnetProject("server", "../BF2WebAdmin.Server/BF2WebAdmin.Server.csproj")
     .WithExternalHttpEndpoints();
 
 if (builder.ExecutionContext.IsRunMode)

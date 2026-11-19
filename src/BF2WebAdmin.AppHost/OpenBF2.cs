@@ -1,4 +1,9 @@
+#pragma warning disable ASPIRECONTAINERRUNTIME001 // IContainerRuntimeResolver is experimental
+
+using Aspire.Hosting.Dotnet;
+using Aspire.Hosting.Publishing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -26,7 +31,7 @@ public static class OpenBF2
     // An index of its own, so it does not merge with servers configured in the server's appsecrets.json
     private const int GameServersIndex = 50;
 
-    public static void AddOpenBF2Server(this IDistributedApplicationBuilder builder, IResourceBuilder<ProjectResource> server, int adminChannelPort)
+    public static void AddOpenBF2Server(this IDistributedApplicationBuilder builder, IResourceBuilder<DotnetProjectResource> server, int adminChannelPort)
     {
         var config = builder.Configuration.GetSection("OpenBF2");
         var gamePort = config.GetValue("GamePort", DefaultGamePort);
@@ -60,21 +65,36 @@ public static class OpenBF2
             .WithEnvironment(prefix + "DiscordBot__NotificationChannel", "")
             .WithEnvironment(prefix + "DiscordBot__MatchResultChannel", "");
 
-        var adminConnect = $"host.docker.internal:{adminChannelPort}";
+        // The module dials WebAdmin on the host. Docker Desktop resolves host.docker.internal by itself, the --add-host
+        // covers Docker Engine on Linux. WSL containers (ASPIRE_CONTAINER_RUNTIME=wslc) reject --add-host and name the
+        // host host.wslc.internal instead. The runtime is known once the app starts
+        string? runtimeName = null;
+        builder.Eventing.Subscribe<BeforeStartEvent>(async (e, ct) =>
+            runtimeName = (await e.Services.GetRequiredService<IContainerRuntimeResolver>().ResolveAsync(ct)).Name);
+        bool IsWslc() => runtimeName?.Contains("wslc", StringComparison.OrdinalIgnoreCase) == true;
+
         builder.AddContainer("openbf2", image, tag)
             // A local image: never look for it in a registry
             .WithImagePullPolicy(ImagePullPolicy.Never)
             .WithExplicitStart()
             .WithParentRelationship(server)
             .WaitFor(server)
-            .WithContainerRuntimeArgs("--add-host", "host.docker.internal:host-gateway")
+            .WithContainerRuntimeArgs(context =>
+            {
+                if (!IsWslc())
+                {
+                    context.Args.Add("--add-host");
+                    context.Args.Add("host.docker.internal:host-gateway");
+                }
+            })
             .WithEnvironment("ENV_SERVER_NAME", config["ServerName"] ?? "BF2WebAdmin dev (OpenBF2)")
             .WithEnvironment("ENV_MAX_PLAYERS", "16")
             .WithEnvironment("ENV_SERVER_PORT", gamePort.ToString())
             .WithEnvironment("ENV_GAMESPY_PORT", queryPort.ToString())
             // Not announced to BF2Hub (the localtest image's default too)
             .WithEnvironment("ENV_INTERNET", "0")
-            .WithEnvironment("ENV_ADMIN_CONNECT", adminConnect)
+            .WithEnvironment(context => context.EnvironmentVariables["ENV_ADMIN_CONNECT"] =
+                $"{(IsWslc() ? "host.wslc.internal" : "host.docker.internal")}:{adminChannelPort}")
             .WithEnvironment("ENV_ADMIN_SERVER_ID", serverId)
             .WithEnvironment("ENV_ADMIN_KEY", adminKey)
             .WithEnvironment("ENV_ADMIN_CERT_SHA256", pin)

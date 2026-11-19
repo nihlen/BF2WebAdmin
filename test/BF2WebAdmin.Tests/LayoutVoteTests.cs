@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,9 +11,12 @@ using BF2WebAdmin.Data.Entities;
 using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.Abstractions;
 using BF2WebAdmin.Server.AdminChannel;
+using BF2WebAdmin.Server.Builder;
 using BF2WebAdmin.Server.Commands.BF2;
+using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Extensions;
 using BF2WebAdmin.Server.Modules;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
@@ -173,6 +177,70 @@ public class LayoutVoteTests
         server.GameWriter.Received(1).SendText(Arg.Is<string>(s => s.StartsWith("VOTE")));
     }
 
+    [Theory]
+    [InlineData("default", true)]
+    [InlineData("Clear", true)]
+    [InlineData(" RESET ", true)]
+    [InlineData("clearing", false)]
+    [InlineData("Towers", false)]
+    public void TheResetWordsAreReserved(string name, bool reserved) => Assert.Equal(reserved, MapBuilder.IsReservedName(name));
+
+    [Fact]
+    public async Task NoLayoutMayHaveAResetWordAsItsName()
+    {
+        var services = new ServiceCollection().AddLogging().BuildServiceProvider();
+        var server = new GameServer(new ServerInfo { ServerId = "127.0.0.1:16571" }, IPAddress.Loopback, services, CancellationToken.None);
+        var e = await Assert.ThrowsAsync<BuilderException>(() => server.Builder.SaveLayoutAsync("Reset", overwrite: true, "admin"));
+        Assert.Equal("'Reset' is reserved: .vote reset votes on removing the layout.", e.Message);
+    }
+
+    [Fact]
+    public async Task VoteDefaultResetsTheMap_WhenSomethingIsBuilt()
+    {
+        var (server, module, players, _) = Setup();
+        var test = (TestLayoutVoteModule)module;
+
+        test.Built = false;
+        await module.HandleAsync(VoteCommand(players[0], "clear"));
+        server.GameWriter.Received(1).SendPrivateMessage(players[0], "The map is already the default: no layout or objects to remove.");
+        await server.GameWriter.DidNotReceiveWithAnyArgs().StartClientVoteAsync(default!, default, default!);
+
+        test.Built = true;
+        await module.HandleAsync(VoteCommand(players[0], "default"));
+        await server.GameWriter.Received(1).StartClientVoteAsync("Reset the map to default?", LayoutVoteRules.VoteSeconds,
+            Arg.Any<IReadOnlyList<Player>>());
+        server.GameWriter.Received(1).SendText("CH Pilot started a vote: reset the map to default? 2 yes needed");
+
+        await module.HandleAsync(Ballot(players[0], VoteChoice.Yes));
+        await module.HandleAsync(Ballot(players[1], VoteChoice.Yes));
+        await module.HandleAsync(Ballot(players[2], VoteChoice.No));
+        Assert.Equal(0, test.Resets);
+        await module.HandleAsync(Ballot(players[3], VoteChoice.Yes));
+
+        server.GameWriter.Received(1).SendText("VOTE PASSED: reset the map to default (yes 3, no 1)");
+        Assert.Equal(1, test.Resets);
+        await _maps.DidNotReceiveWithAnyArgs().GetAsync(default(Guid));
+    }
+
+    private static LayoutVoteCommand VoteCommand(Player player, string name) =>
+        new() { Name = name, Message = new Message { Channel = ChatChannel.Global, Text = ".vote " + name, Type = MessageType.Player, Player = player } };
+
+    /// <summary>A substitute server has no map builder: the test says whether something is built and counts the resets.</summary>
+    private sealed class TestLayoutVoteModule(IGameServer server, IMapRepository maps, TimeProvider time)
+        : LayoutVoteModule(server, maps, time, NullLogger<LayoutVoteModule>.Instance, new CancellationTokenSource())
+    {
+        public bool Built { get; set; } = true;
+        public int Resets { get; private set; }
+
+        protected override bool HasBuilt() => Built;
+
+        protected override Task ResetAsync()
+        {
+            Resets++;
+            return Task.CompletedTask;
+        }
+    }
+
     private const uint RequestId = 77;
     private static readonly MapMod Layout = new() { Id = Guid.NewGuid(), Name = "Towers", Map = "dalian_2_v_2" };
 
@@ -198,7 +266,7 @@ public class LayoutVoteTests
         server.GameWriter.CanStartClientVotes.Returns(true);
         server.GameWriter.StartClientVoteAsync(default!, default, default!).ReturnsForAnyArgs(RequestId);
         var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var module = new LayoutVoteModule(server, _maps, time, NullLogger<LayoutVoteModule>.Instance, new CancellationTokenSource());
+        var module = new TestLayoutVoteModule(server, _maps, time);
         return (server, module, players, time);
     }
 }

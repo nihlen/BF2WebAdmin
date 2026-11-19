@@ -10,7 +10,10 @@ public class MapLoadCommand : BaseCommand
     public string Name { get; set; }
 }
 
-/// <summary>A vote on loading a layout of the running map (<see cref="Modules.LayoutVoteModule"/>); anyone may start one.</summary>
+/// <summary>
+/// A vote on loading a layout of the running map, or with <c>default</c>, <c>clear</c> or <c>reset</c> on removing what is
+/// built (<see cref="Modules.LayoutVoteModule"/>); anyone may start one.
+/// </summary>
 [Command("vote|votemap <Name>", Auth.All)]
 public class LayoutVoteCommand : BaseCommand
 {

@@ -23,6 +23,15 @@ public sealed class MapBuilder
     /// <summary>The most built items at once; more could crash the server (MapModule's old limit).</summary>
     public const int MaxItems = 1000;
 
+    /// <summary>
+    /// The words of <c>.vote default</c> (or clear, reset), a vote on removing what is built: no layout may have these
+    /// names.
+    /// </summary>
+    public static readonly IReadOnlyList<string> ReservedNames = ["default", "clear", "reset"];
+
+    public static bool IsReservedName(string name) =>
+        ReservedNames.Contains(name.Trim(), StringComparer.OrdinalIgnoreCase);
+
     private static readonly TimeSpan ResyncInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan ResyncRetryDelay = TimeSpan.FromSeconds(1);
 
@@ -339,6 +348,8 @@ public sealed class MapBuilder
         name = name.Trim();
         if (name.Length is 0 or > 50)
             throw new BuilderException("A layout name has 1 to 50 characters.");
+        if (IsReservedName(name))
+            throw new BuilderException($"'{name}' is reserved: .vote {name.ToLowerInvariant()} votes on removing the layout.");
 
         var map = CurrentMap() ?? throw new BuilderException("No map is running.");
         await _lock.WaitAsync(_cancellationToken);

@@ -15,7 +15,8 @@ namespace BF2WebAdmin.Server.Modules;
 /// (<see cref="LayoutVoteRequestEvent"/>, BF2v2's layout list), answered with PgUp and PgDn through the admin channel's
 /// client votes. The players get the question from the module; this module counts the ballots by
 /// <see cref="LayoutVoteRules"/>, ends the vote once its result is certain, announces it and loads the layout when it
-/// passes. Admins load layouts directly with <c>.load</c> or the web map builder.
+/// passes. <c>.vote default</c> (or clear, reset) votes on removing what is built, for players who do not want to play
+/// a layout any more. Admins load layouts directly with <c>.load</c> or the web map builder, and clear with <c>.clear</c>.
 /// </summary>
 [LoadedWith(typeof(MapModule))]
 public class LayoutVoteModule : BaseModule,
@@ -48,14 +49,24 @@ public class LayoutVoteModule : BaseModule,
             return;
         }
 
-        var layout = Builder == null ? null : await Builder.FindLayoutAsync(command.Name);
-        if (layout == null)
+        var starterKey = "player:" + (player.Hash ?? player.Name);
+        string? error;
+        if (MapBuilder.IsReservedName(command.Name))
         {
-            GameServer.GameWriter.SendText($"Error: no layout '{command.Name}' on this map");
-            return;
+            error = await StartAsync(null, starterKey, player.Name);
+        }
+        else
+        {
+            var layout = Builder == null ? null : await Builder.FindLayoutAsync(command.Name);
+            if (layout == null)
+            {
+                GameServer.GameWriter.SendText($"Error: no layout '{command.Name}' on this map");
+                return;
+            }
+
+            error = await StartAsync(layout, starterKey, player.Name);
         }
 
-        var error = await StartAsync(layout, "player:" + (player.Hash ?? player.Name), player.Name);
         if (error != null)
             GameServer.GameWriter.SendPrivateMessage(player, error);
     }
@@ -110,16 +121,19 @@ public class LayoutVoteModule : BaseModule,
                 await FinishAsync(vote, LayoutVoteRules.PassesAtEnd(e.Yes, e.No, vote.RequiredYes), e.Yes, e.No);
                 break;
             case EvVoteResult.OutcomeUnloaded:
-                Logger.LogInformation("Layout vote on {ServerId} for '{Layout}' ended by a map change", GameServer.Id, vote.LayoutName);
+                Logger.LogInformation("Layout vote on {ServerId} for '{Layout}' ended by a map change", GameServer.Id, vote.LayoutName ?? "default");
                 break;
             default:
-                GameServer.GameWriter.SendText($"VOTE CANCELLED: load layout '{vote.LayoutName}'");
+                GameServer.GameWriter.SendText($"VOTE CANCELLED: {vote.Subject}");
                 break;
         }
     }
 
-    /// <summary>Starts a vote on loading the layout. Returns null when it started, else why not.</summary>
-    private async Task<string?> StartAsync(MapMod layout, string starterKey, string starterName)
+    /// <summary>
+    /// Starts a vote on loading the layout, or with no layout on removing what is built. Returns null when it started,
+    /// else why not.
+    /// </summary>
+    private async Task<string?> StartAsync(MapMod? layout, string starterKey, string starterName)
     {
         var now = _time.GetUtcNow();
         if (_vote != null)
@@ -136,8 +150,15 @@ public class LayoutVoteModule : BaseModule,
             return $"Wait {Math.Ceiling((LayoutVoteRules.Cooldown - (now - last)).TotalSeconds)} s before you start another vote.";
 
         var map = GameServer.Map?.Name?.ToLowerInvariant();
-        if (map == null || (layout.Map != null && !string.Equals(layout.Map, map, StringComparison.OrdinalIgnoreCase)))
+        if (layout == null)
+        {
+            if (!HasBuilt())
+                return "The map is already the default: no layout or objects to remove.";
+        }
+        else if (map == null || (layout.Map != null && !string.Equals(layout.Map, map, StringComparison.OrdinalIgnoreCase)))
+        {
             return $"The layout '{layout.Name}' is for {layout.Map}; the server runs {map ?? "no map"}.";
+        }
 
         if (!GameServer.GameWriter.CanStartClientVotes)
             return "This server cannot run layout votes (its module has no client votes).";
@@ -152,21 +173,21 @@ public class LayoutVoteModule : BaseModule,
         uint requestId;
         try
         {
-            requestId = await GameServer.GameWriter.StartClientVoteAsync($"Load layout '{layout.Name}'?", LayoutVoteRules.VoteSeconds,
-                inMatch ? matchPlayers : []);
+            requestId = await GameServer.GameWriter.StartClientVoteAsync(layout == null ? "Reset the map to default?" : $"Load layout '{layout.Name}'?",
+                LayoutVoteRules.VoteSeconds, inMatch ? matchPlayers : []);
         }
         catch (AdminCommandException e)
         {
-            Logger.LogInformation("Layout vote on {ServerId} for '{Layout}' not started: {Error}", GameServer.Id, layout.Name, e.Message);
+            Logger.LogInformation("Layout vote on {ServerId} for '{Layout}' not started: {Error}", GameServer.Id, layout?.Name ?? "default", e.Message);
             return e.Code == AdminErrorCode.Refused ? "A vote is already running, or nobody can vote." : "The server did not start the vote.";
         }
 
-        _vote = new RunningVote(requestId, layout.Id, layout.Name, required, inMatch ? matchPlayers.Select(p => p.Index).ToHashSet() : null, now);
+        _vote = new RunningVote(requestId, layout?.Id, layout?.Name, required, inMatch ? matchPlayers.Select(p => p.Index).ToHashSet() : null, now);
         _lastStarts[starterKey] = now;
         Logger.LogInformation("Layout vote on {ServerId} for '{Layout}' started by {Starter} ({Required} yes needed{Match})",
-            GameServer.Id, layout.Name, starterName, required, inMatch ? ", match players only" : "");
+            GameServer.Id, layout?.Name ?? "default", starterName, required, inMatch ? ", match players only" : "");
         GameServer.GameWriter.SendText(
-            $"{starterName} started a vote: load layout '{layout.Name}'? {required} yes needed{(inMatch ? " from the match players" : "")}");
+            $"{starterName} started a vote: {_vote.Subject}? {required} yes needed{(inMatch ? " from the match players" : "")}");
         return null;
     }
 
@@ -175,23 +196,39 @@ public class LayoutVoteModule : BaseModule,
         _vote = null;
         if (!passed)
         {
-            GameServer.GameWriter.SendText($"VOTE FAILED: load layout '{vote.LayoutName}' (yes {yes}, no {no}, {vote.RequiredYes} yes needed)");
+            GameServer.GameWriter.SendText($"VOTE FAILED: {vote.Subject} (yes {yes}, no {no}, {vote.RequiredYes} yes needed)");
             return;
         }
 
-        GameServer.GameWriter.SendText($"VOTE PASSED: load layout '{vote.LayoutName}' (yes {yes}, no {no})");
-        if (Builder is not { } builder)
-            return;
-
+        GameServer.GameWriter.SendText($"VOTE PASSED: {vote.Subject} (yes {yes}, no {no})");
         try
         {
-            var result = await builder.LoadLayoutAsync(vote.LayoutId, "vote");
-            GameServer.GameWriter.SendText($"§C1001Loaded map '{vote.LayoutName}' ({result.Added.Count} objects)");
+            if (vote.LayoutId is not { } layoutId)
+            {
+                await ResetAsync();
+            }
+            else if (Builder is { } builder)
+            {
+                var result = await builder.LoadLayoutAsync(layoutId, "vote");
+                GameServer.GameWriter.SendText($"§C1001Loaded map '{vote.LayoutName}' ({result.Added.Count} objects)");
+            }
         }
         catch (BuilderException e)
         {
             GameServer.GameWriter.SendText($"Error: {e.Message}");
         }
+    }
+
+    /// <summary>Whether a layout or objects are built, so that a reset changes something. Virtual for the tests.</summary>
+    protected virtual bool HasBuilt() => Builder is { } builder && (builder.Items.Count > 0 || builder.Layout != null);
+
+    /// <summary>Removes what is built, as <c>.clear</c> does. Virtual for the tests.</summary>
+    protected virtual async Task ResetAsync()
+    {
+        if (Builder is not { } builder)
+            return;
+        await builder.ClearAsync("vote");
+        GameServer.GameWriter.SendText("§C1001Map reset to default");
     }
 
     /// <summary>The human players on a team, who get a vote for everyone.</summary>
@@ -220,11 +257,18 @@ public class LayoutVoteModule : BaseModule,
         return voters.Count(p => !vote.Ballots.ContainsKey(p.Index));
     }
 
-    private sealed class RunningVote(uint requestId, Guid layoutId, string layoutName, int requiredYes, HashSet<int>? voters, DateTimeOffset started)
+    private sealed class RunningVote(uint requestId, Guid? layoutId, string? layoutName, int requiredYes, HashSet<int>? voters, DateTimeOffset started)
     {
         public uint RequestId { get; } = requestId;
-        public Guid LayoutId { get; } = layoutId;
-        public string LayoutName { get; } = layoutName;
+
+        /// <summary>The layout to load; null for a reset to the default map.</summary>
+        public Guid? LayoutId { get; } = layoutId;
+
+        public string? LayoutName { get; } = layoutName;
+
+        /// <summary>What is voted on, in the announcements: "load layout 'X'" or "reset the map to default".</summary>
+        public string Subject => LayoutId == null ? "reset the map to default" : $"load layout '{LayoutName}'";
+
         public int RequiredYes { get; } = requiredYes;
 
         /// <summary>The match players who vote; null for every human on a team.</summary>

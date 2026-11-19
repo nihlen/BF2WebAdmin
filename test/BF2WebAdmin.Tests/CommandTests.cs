@@ -24,6 +24,23 @@ public class CommandTests
 {
     private readonly ModuleResolver _resolver = new(NullLogger<ModuleResolver>.Instance);
 
+    /// <summary>
+    /// BF2v2 shows the commands from <c>src/BF2WebAdmin.Server/commands.txt</c> on GitHub's master, so the file has to
+    /// change with them. A debug build of the server writes it at startup (in its working directory, the project's under
+    /// <c>dotnet run</c> and Aspire); or copy <see cref="ModuleResolver.CommandList"/>.
+    /// </summary>
+    [Fact]
+    public void CommandsTxtListsTheCommands()
+    {
+        var path = Path.Combine(RepoRoot(), "src", "BF2WebAdmin.Server", "commands.txt");
+        var file = File.ReadAllText(path).Replace("\r\n", "\n");
+        Assert.True(file == ModuleResolver.CommandList.Replace("\r\n", "\n"),
+            $"{path} is out of date: run a debug build of the server once, or write ModuleResolver.CommandList to it, and commit it");
+    }
+
+    private static string RepoRoot([System.Runtime.CompilerServices.CallerFilePath] string here = "") =>
+        Path.GetFullPath(Path.Combine(Path.GetDirectoryName(here)!, "..", ".."));
+
     private ICommand? Parse(string line)
     {
         var parts = line.TrimStart('.').Split(' ', StringSplitOptions.RemoveEmptyEntries);

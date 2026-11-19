@@ -16,6 +16,12 @@ public class ModuleResolver : IModuleResolver
 
     private static readonly StringBuilder CommandDocumentation;
 
+    /// <summary>
+    /// The commands, one per line: aliases and parameters, auth level, type. The same as <c>commands.txt</c> next to the
+    /// project, which BF2v2 reads from GitHub; a debug build writes it at startup and a test checks it.
+    /// </summary>
+    public static string CommandList => CommandDocumentation.ToString();
+
     // The modules a server group can enable; one that comes with another (LoadedWith) is not listed
     public static IEnumerable<string> AllModuleNames => _moduleTypes.Where(t => t.GetCustomAttribute<LoadedWithAttribute>() == null).Select(t => t.Name);
     public static IEnumerable<Type> AllModuleTypes => _moduleTypes;

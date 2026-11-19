@@ -47,7 +47,7 @@ result (`-p:SkipGameScripts=true` embeds what `GameScripts/dist` already holds).
 
 ```powershell
 dotnet build src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj
-dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 655 tests on 2026-11-19, some skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
+dotnet test test\BF2WebAdmin.Tests\BF2WebAdmin.Tests.csproj        # 656 tests on 2026-11-19, some skipped without BF2WA_TEST_SQLSERVER and BF2WA_TEST_POSTGRES
 dotnet publish src\BF2WebAdmin.Server\BF2WebAdmin.Server.csproj -c Release -o <dir>
 BF2WebAdmin.Server.exe --admin-pin                                    # prints the admin-channel certificate pin
 BF2WebAdmin.Server.exe --admin-cert-create [--pem]                     # prints a new certificate for the Certificate secret, and its pin
@@ -91,6 +91,8 @@ are included; it records the commit and the changed paths in its `app\source.txt
 - The author may have uncommitted work here. Never stage, commit, revert or modify files you did not change; commit
   with explicit paths.
 - Local commits are allowed. Don't push, and don't open PRs or issues, unless the author asks.
+- `src/BF2WebAdmin.Server/commands.txt` lists the chat commands; BF2v2 reads it from GitHub's `master`. Update it
+  with every command change (a debug build of the server writes it at startup); `CommandTests` fails when it is stale.
 - Port 16567 is reserved for the author's sessions. WebAdmin's admin-channel port must never be 16567.
 - In the localtest, run `play-2v2.ps1 -Mode Status` before you stop, restart or republish anything. The author may be
   playing.

@@ -131,6 +131,15 @@ public class AdminGameWriter : IGameWriter
 
     private const int ColorCodeLength = 6;
 
+    /// <summary>The text cut to at most <paramref name="maxBytes"/> bytes of UTF-8, never inside a character.</summary>
+    public static string FitUtf8(string text, int maxBytes)
+    {
+        var end = text.Length;
+        while (end > 0 && System.Text.Encoding.UTF8.GetByteCount(text.AsSpan(0, end)) > maxBytes)
+            end -= end >= 2 && char.IsSurrogatePair(text[end - 2], text[end - 1]) ? 2 : 1;
+        return text[..end];
+    }
+
     public void SendTeleport(Player player, Position position) =>
         Teleport(player, CmdTeleport.FlagPosition, position, null);
 
@@ -373,6 +382,38 @@ public class AdminGameWriter : IGameWriter
         catch (AdminCommandException e)
         {
             _logger.LogInformation("Admin channel {ServerId}: no resync for {Player}: {Error}", _server.Id, player?.Name ?? "all", e.Message);
+            return false;
+        }
+    }
+
+    public bool CanStartClientVotes => _server.Session is { IsOpen: true, ClientVotes: true };
+
+    public async Task<uint> StartClientVoteAsync(string question, int seconds, IReadOnlyList<Player> voters)
+    {
+        if (!CanStartClientVotes)
+            throw new AdminCommandException("the module has no client votes");
+
+        var ids = voters.Where(IsReal).Select(p => (byte)p.Index).Distinct().ToArray();
+        uint requestId = 0;
+        await RequestAsync(id =>
+        {
+            requestId = id;
+            return new CmdStartClientVote(id, FitUtf8(question, CmdStartClientVote.MaxQuestionBytes),
+                (ushort)Math.Clamp(seconds, CmdStartClientVote.MinSeconds, CmdStartClientVote.MaxSeconds), 0, ids);
+        });
+        return requestId;
+    }
+
+    public async Task<bool> CancelVoteAsync()
+    {
+        try
+        {
+            await RequestAsync(id => new CmdCancelVote(id));
+            return true;
+        }
+        catch (AdminCommandException e)
+        {
+            _logger.LogDebug("Admin channel {ServerId}: CancelVote: {Error}", _server.Id, e.Message);
             return false;
         }
     }

@@ -56,6 +56,9 @@ public sealed class AdminSession
     public IPEndPoint RemoteEndPoint { get; }
     public uint SessionNumber { get; private set; }
     public byte Capabilities { get; private set; }
+
+    /// <summary>The module answered Ok to the vote ballots stream: it has <see cref="CmdStartClientVote"/>.</summary>
+    public bool ClientVotes { get; set; }
     public int SequenceGaps { get; private set; }
     public DateTimeOffset ConnectedAt { get; } = DateTimeOffset.UtcNow;
 

@@ -130,6 +130,28 @@ before a round restart and were seated in its helicopter after one; layouts save
 cleared and loaded; a round restart was followed by the built items spawning again. What a retail client sees of a
 resync is measured in the contract (above); the builder's own resyncs have not been run with a human client yet.
 
+## Layout votes
+
+Any player can start a vote on loading a layout of the running map with `.vote <name>` (or `.votemap`), and a user of
+another site with `POST /api/servers/{serverId}/builder/layouts/{layoutId}/vote` (BF2v2's layout list; below). Admins
+load a layout directly with `.load` or the page. `LayoutVoteModule` runs the vote ([admin-channel.md](admin-channel.md),
+"Layout votes"):
+
+- The players see "VOTE: Load layout '<name>'? (PgUp yes / PgDn no, 30 s left)" and answer with PgUp or PgDn. A vote
+  lasts 30 s.
+- It passes with enough yes votes and more yes than no:
+  - 2 yes, or 1 when a single player is on the server, and every human player on a team votes;
+  - 3 yes while a 2v2 match is played (a running match with at least three of its players on the server), and only
+    the match players vote.
+- It ends as soon as its result is certain; WebAdmin then announces "VOTE PASSED" or "VOTE FAILED" with the counts,
+  and loads the layout when it passed.
+- One vote runs at a time, and whoever started one (a player by CD-key hash, a web user by id) waits two minutes
+  before the next.
+- Refused: a layout of another map, nobody on the server, and a server whose module has no client votes.
+
+The ballots have been tested only without a retail client (the module refuses a vote with no human player); a vote with
+players pressing PgUp and PgDn has not been run yet.
+
 ## API
 
 Under `/api/servers/{serverId}/builder` (the admin cookie), in `Builder/BuilderEndpoints.cs`:
@@ -144,6 +166,7 @@ Under `/api/servers/{serverId}/builder` (the admin cookie), in `Builder/BuilderE
 | `POST /layouts` | `{name, overwrite}`: saves what is built; 409 for an existing name without overwrite |
 | `POST /layouts/{id}/load` | replaces what is built with the layout |
 | `DELETE /layouts/{id}` | deletes the layout |
+| `POST /layouts/{id}/vote` | `{starterId, starterName}`: starts a players' vote on loading the layout ([Layout votes](#layout-votes)); 204, or 409 with the reason it did not start |
 
 Positions are BF2's `[x, height, z]` (z north), rotations `[yaw, pitch, roll]` in degrees. The hub sends
 `BuilderEvent` with the state to a server's subscribers whenever it changes.

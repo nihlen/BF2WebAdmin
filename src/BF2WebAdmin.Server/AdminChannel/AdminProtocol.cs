@@ -52,10 +52,12 @@ public enum AdminMessageType : ushort
     EvWeapons = 0x1218,
     EvProjectileCollision = 0x1219,
     EvProjectileTrace = 0x121A,
+    EvVoteResult = 0x121B,
     EvScriptFinished = 0x121C,
     EvScriptEvent = 0x121D,
     EvServerHealth = 0x121E,
     EvPlayerConnections = 0x121F,
+    EvVoteBallot = 0x1220,
 
     CmdConsole = 0x1301,
     CmdSay = 0x1302,
@@ -75,6 +77,7 @@ public enum AdminMessageType : ushort
     CmdSetObjectActive = 0x1310,
     CmdSpawnObject = 0x1311,
     CmdDeleteObject = 0x1312,
+    CmdCancelVote = 0x1314,
     CmdStartScript = 0x1318,
     CmdStopScript = 0x1319,
     CmdScriptMessage = 0x131A,
@@ -83,6 +86,7 @@ public enum AdminMessageType : ushort
     CmdSetCollision = 0x131D,
     CmdResyncClient = 0x131E,
     CmdSetControlPointTeam = 0x131F,
+    CmdStartClientVote = 0x1320,
 
     Ok = 0x1401,
     ConsoleResult = 0x1402,
@@ -127,6 +131,11 @@ public enum AdminStream : byte
     /// <see cref="Welcome.CapHealth"/>.
     /// </summary>
     Health = 21,
+    /// <summary>
+    /// VoteBallot events, one per ballot of a vote. The module's <c>Ok</c> to the subscription also tells WebAdmin that it
+    /// has <see cref="CmdStartClientVote"/>; an older module answers Error 7 (unknown stream) and keeps the link.
+    /// </summary>
+    VoteBallots = 22,
 }
 
 public enum ObjectRefKind : byte
@@ -229,6 +238,8 @@ public static class AdminProtocol
             AdminMessageType.EvServerHealth => new EvServerHealth(r.U32(), r.U32(), r.U16(), r.U32(), r.U8(), r.U32(), r.U32(), r.U32(),
                 r.U16(), r.U16(), r.U32(), r.U32(), r.U32(), r.U32(), r.U32(), r.U32(), r.U32(), r.U16(), r.U16(), r.U16(), r.U16(), r.U32()),
             AdminMessageType.EvPlayerConnections => EvPlayerConnections.Read(ref r),
+            AdminMessageType.EvVoteResult => new EvVoteResult(r.U32(), r.U32(), r.U32(), r.Str(), r.U8(), r.U16(), r.U16(), r.U16()),
+            AdminMessageType.EvVoteBallot => new EvVoteBallot(r.U32(), r.U32(), r.U32(), r.U8(), r.U8()),
             AdminMessageType.CmdConsole => new CmdConsole(r.U32(), r.Str()),
             AdminMessageType.CmdSay => new CmdSay(r.U32(), r.U8(), r.U8(), r.Str()),
             AdminMessageType.CmdTeleport => new CmdTeleport(r.U32(), ObjectRef.Read(ref r), r.U8(), r.Vec(), r.Vec()),
@@ -255,6 +266,8 @@ public static class AdminProtocol
             AdminMessageType.CmdSetCollision => new CmdSetCollision(r.U32(), ObjectRef.Read(ref r), r.U8()),
             AdminMessageType.CmdResyncClient => new CmdResyncClient(r.U32(), r.I16()),
             AdminMessageType.CmdSetControlPointTeam => new CmdSetControlPointTeam(r.U32(), ObjectRef.Read(ref r), r.U8()),
+            AdminMessageType.CmdCancelVote => new CmdCancelVote(r.U32()),
+            AdminMessageType.CmdStartClientVote => CmdStartClientVote.Read(ref r),
             AdminMessageType.Ok => new OkReply(r.U32()),
             AdminMessageType.ConsoleResult => ConsoleResult.Read(ref r),
             AdminMessageType.ObjectList => ObjectList.Read(ref r),
@@ -1213,6 +1226,32 @@ public sealed record AdminPlayerConnection(byte Player, byte Readings, ushort Pi
 }
 
 /// <summary>
+/// The end of a server vote (<see cref="CmdStartClientVote"/>): its request id, question, outcome and the ballots that
+/// counted at the end. A vote WebAdmin decides ends with <see cref="OutcomeTimeUp"/>, <see cref="OutcomeCancelled"/>
+/// (WebAdmin's own <see cref="CmdCancelVote"/>) or <see cref="OutcomeUnloaded"/>.
+/// </summary>
+public sealed record EvVoteResult(uint Seq, uint Tick, uint RequestId, string Question, byte Outcome, ushort Yes, ushort No, ushort Voters)
+    : AdminEvent(Seq, Tick)
+{
+    public const byte OutcomePassed = 1, OutcomeFailed = 2, OutcomeCancelled = 3, OutcomeUnloaded = 4, OutcomeTimeUp = 5;
+
+    public override AdminMessageType Type => AdminMessageType.EvVoteResult;
+    protected override void WriteFields(AdminWriter w) => w.U32(RequestId).Str(Question).Byte(Outcome).U16(Yes).U16(No).U16(Voters);
+}
+
+/// <summary>
+/// A player's ballot in the running vote (stream 22): <see cref="ChoiceYes"/> or <see cref="ChoiceNo"/>, the first one and
+/// every change, or <see cref="ChoiceNone"/> when it stops counting (the voter left the server or the voting teams).
+/// </summary>
+public sealed record EvVoteBallot(uint Seq, uint Tick, uint RequestId, byte Player, byte Choice) : AdminEvent(Seq, Tick)
+{
+    public const byte ChoiceNone = 0, ChoiceYes = 1, ChoiceNo = 2;
+
+    public override AdminMessageType Type => AdminMessageType.EvVoteBallot;
+    protected override void WriteFields(AdminWriter w) => w.U32(RequestId).Byte(Player).Byte(Choice);
+}
+
+/// <summary>
 /// The connections of the human players over the window of the <see cref="EvServerHealth"/> before it (stream 21): the
 /// next sequence number and the same tick. Bots and players who left during the window have no entry.
 /// </summary>
@@ -1471,6 +1510,46 @@ public sealed record CmdSetControlPointTeam(uint RequestId, ObjectRef Target, by
         w.U32(RequestId);
         Target.Write(w);
         w.Byte(Team);
+    }
+}
+
+/// <summary>Ends the running vote: <see cref="EvVoteResult"/> with outcome 3. A vote WebAdmin decides gets no result line.</summary>
+public sealed record CmdCancelVote(uint RequestId) : AdminCommand(RequestId)
+{
+    public override AdminMessageType Type => AdminMessageType.CmdCancelVote;
+    public override void Write(AdminWriter w) => w.U32(RequestId);
+}
+
+/// <summary>
+/// A server vote whose result WebAdmin decides from the <see cref="EvVoteBallot"/> events: the players get the question
+/// and their "you voted" lines, and press PgUp or PgDn. <see cref="Voters"/> lists the player ids who may vote (empty:
+/// every human on a voting team). The module ends it only when its time is up, on <see cref="CmdCancelVote"/> or on a
+/// level unload, and posts no result line. Only sent to a module that answered <c>Ok</c> to
+/// <see cref="AdminStream.VoteBallots"/>.
+/// </summary>
+public sealed record CmdStartClientVote(uint RequestId, string Question, ushort Seconds, byte Team, IReadOnlyList<byte> Voters)
+    : AdminCommand(RequestId)
+{
+    public const int MaxQuestionBytes = 96, MinSeconds = 5, MaxSeconds = 600, MaxVoters = 64;
+
+    public override AdminMessageType Type => AdminMessageType.CmdStartClientVote;
+
+    public static CmdStartClientVote Read(ref AdminReader r)
+    {
+        var request = r.U32();
+        var question = r.Str();
+        var seconds = r.U16();
+        var team = r.U8();
+        var voters = new byte[r.U8()];
+        for (var i = 0; i < voters.Length; i++)
+            voters[i] = r.U8();
+        return new CmdStartClientVote(request, question, seconds, team, voters);
+    }
+
+    public override void Write(AdminWriter w)
+    {
+        w.U32(RequestId).Str(Question).U16(Seconds).Byte(Team).Byte((byte)Voters.Count);
+        foreach (var v in Voters) w.Byte(v);
     }
 }
 

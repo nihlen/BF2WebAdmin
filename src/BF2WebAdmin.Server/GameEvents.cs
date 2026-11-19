@@ -32,6 +32,16 @@ public record RoundEndEvent(Modules.Heli2v2.Round Round, DateTimeOffset TimeStam
 public record GameStreamStartedEvent(Guid? MatchId, string StreamUrl, string BotName, DateTimeOffset TimeStamp) : IEvent;
 public record GameStreamStoppedEvent(Guid? MatchId, DateTimeOffset TimeStamp) : IEvent;
 
+// Server votes (the admin channel's StartClientVote): a ballot and the end of the vote. PlayerIndex is the player's id.
+public enum VoteChoice { None = 0, Yes = 1, No = 2 }
+public record VoteBallotEvent(uint RequestId, int PlayerIndex, VoteChoice Choice, DateTimeOffset TimeStamp) : IEvent;
+public record VoteResultEvent(uint RequestId, byte Outcome, int Yes, int No, int Voters, DateTimeOffset TimeStamp) : IEvent;
+
+// A layout vote asked for outside the game (the web API), answered by LayoutVoteModule on the modules' context:
+// Result gets null when the vote started, else why not
+public record LayoutVoteRequestEvent(Guid LayoutId, string StarterKey, string StarterName, TaskCompletionSource<string?> Result,
+    DateTimeOffset TimeStamp) : IEvent;
+
 // Game scripts (docs/scripts.md): what a running script emitted or logged, and its end
 public record ScriptDataEvent(IScriptRun Script, System.Text.Json.JsonElement Data, DateTimeOffset TimeStamp) : IEvent;
 public record ScriptLogEvent(IScriptRun Script, string Line, DateTimeOffset TimeStamp) : IEvent;

@@ -522,6 +522,51 @@ public class ServerHealthTests
     }
 
     [Fact]
+    public async Task Stream22IsAskedForOnEveryLink_ItsAnswerTellsWhetherTheModuleHasClientVotes()
+    {
+        Assert.Equal(22, (byte)AdminStream.VoteBallots);
+        foreach (var capabilities in new[] { BaseCapabilities, (byte)(BaseCapabilities | Welcome.CapHealth) })
+        {
+            var ballots = Assert.Single(await SubscriptionsAsync(capabilities), s => s.Stream == AdminStream.VoteBallots);
+            Assert.Empty(ballots.Filters);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OkToStream22MeansClientVotes_AnOlderModulesError7KeepsTheLink(bool hasClientVotes)
+    {
+        var server = Server(out _);
+        var (session, module, run) = await ConnectAsync(server, BaseCapabilities);
+        await WaitAsync(() => session.Capabilities == BaseCapabilities);
+        server.Applier.Subscribe(session, session.Capabilities);
+
+        Subscribe ballots;
+        while ((ballots = await module.ReadAsync() as Subscribe) is not { Stream: AdminStream.VoteBallots })
+        {
+        }
+
+        await module.SendAsync(hasClientVotes
+            ? new OkReply(ballots.RequestId)
+            : new ErrorMessage(ballots.RequestId, AdminErrorCode.InvalidValue, "unknown stream"));
+        if (hasClientVotes)
+            await WaitAsync(() => session.ClientVotes);
+
+        // A ping round trip: the answer has been handled, and the link is up
+        await module.SendAsync(new Ping(1, 5));
+        while (await module.ReadAsync() is not Pong { Clock: 5 })
+        {
+        }
+
+        Assert.Equal(hasClientVotes, session.ClientVotes);
+        Assert.Equal(hasClientVotes, server.GameWriter.CanStartClientVotes);
+        Assert.True(session.IsOpen);
+        session.Close("test");
+        await run;
+    }
+
+    [Fact]
     public async Task TheHistorySurvivesAReconnect()
     {
         var server = Server(out var store);

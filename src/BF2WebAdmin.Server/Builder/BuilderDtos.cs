@@ -44,3 +44,6 @@ public record BuilderApplyResult(BuilderStateDto State, IReadOnlyList<int> Added
 public record LayoutDto(Guid Id, string Name, string? Map, string CreatedBy, DateTime EditedDate);
 
 public record SaveLayoutRequest(string Name, bool Overwrite);
+
+/// <summary>Who starts a layout vote from another site: the user's id there and the name the players see.</summary>
+public record StartLayoutVoteRequest(string StarterId, string StarterName);

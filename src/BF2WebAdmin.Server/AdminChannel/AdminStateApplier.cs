@@ -141,9 +141,9 @@ public class AdminStateApplier : IAdminSessionHandler
     private byte TrackerRate => AdminGameWriter.RateHz(_server.GameWriter.CurrentTrackerInterval);
 
     /// <summary>
-    /// What a new link is subscribed to, after its Welcome: the position streams, the game state, the hit/miss replay and,
-    /// for a module with <see cref="Welcome.CapHealth"/>, the server health with the players' connections. Public for the
-    /// tests.
+    /// What a new link is subscribed to, after its Welcome: the position streams, the game state, the hit/miss replay,
+    /// for a module with <see cref="Welcome.CapHealth"/> the server health with the players' connections, and the vote
+    /// ballots, whose answer tells whether the module has client votes. Public for the tests.
     /// </summary>
     public void Subscribe(AdminSession session, byte capabilities)
     {
@@ -154,6 +154,28 @@ public class AdminStateApplier : IAdminSessionHandler
         // Only a module with the capability has the stream
         if ((capabilities & Welcome.CapHealth) != 0)
             session.Fire(id => new Subscribe(id, AdminStream.Health, 0, []));
+        _ = SubscribeBallotsAsync(session);
+    }
+
+    /// <summary>
+    /// Stream 22, the vote ballots. Welcome's capability byte is full, so the module's answer is the capability: Ok when it
+    /// has <see cref="CmdStartClientVote"/>, Error 7 (an unknown stream, and the link stays) when it is older.
+    /// </summary>
+    private async Task SubscribeBallotsAsync(AdminSession session)
+    {
+        try
+        {
+            await session.RequestAsync(id => new Subscribe(id, AdminStream.VoteBallots, 0, []));
+            session.ClientVotes = true;
+        }
+        catch (AdminCommandException e) when (e.Code == AdminErrorCode.InvalidValue)
+        {
+            _logger.LogInformation("Admin channel {ServerId}: the module has no client votes; layout votes are off", _server.Id);
+        }
+        catch (AdminCommandException e)
+        {
+            _logger.LogDebug("Admin channel {ServerId}: subscribing to the vote ballots failed: {Error}", _server.Id, e.Message);
+        }
     }
 
     /// <summary>
@@ -647,6 +669,14 @@ public class AdminStateApplier : IAdminSessionHandler
                 // The names as they are now: a player id is given to the next player who joins
                 if (_health != null)
                     await _health.AddConnectionsAsync(_server.Id, ev, id => FindPlayer(id)?.Name, time);
+                break;
+
+            case EvVoteBallot ev:
+                await _server.PublishAsync(new VoteBallotEvent(ev.RequestId, ev.Player, (VoteChoice)ev.Choice, time));
+                break;
+
+            case EvVoteResult ev:
+                await _server.PublishAsync(new VoteResultEvent(ev.RequestId, ev.Outcome, ev.Yes, ev.No, ev.Voters, time));
                 break;
 
             case EvDamage or EvProjectileFired or EvProjectileHit:

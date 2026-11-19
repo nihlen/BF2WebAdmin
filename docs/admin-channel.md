@@ -76,7 +76,8 @@ repositories, retry policies and Discord webhooks are shared. A module reload di
   queued. Subscriptions are made again after every
   `Welcome`: players and `agm114_hellfire_tv` projectiles at the module's tracker interval (default 0.25 s, Heli2v2's
   `.interval`), vehicles and game state at 1 Hz, the hit/miss replay (stream 20) for `agm114_hellfire_tv`, and the
-  server health with the players' connections (stream 21) when the module has capability bit 6.
+  server health with the players' connections (stream 21) when the module has capability bit 6, and the vote ballots
+  (stream 22, [Layout votes](#layout-votes)).
   While a 3D viewer is open on the server, players, vehicles, projectiles and aim (stream 5) run at 30 Hz; the
   applier still hands the modules players and projectiles at the tracker rate and vehicles at 1 Hz.
 - A player's team, alive state and vehicle come from events and snapshots. The player stream reports them too, and
@@ -122,6 +123,19 @@ engine spawns them in join order and the longest-connected player is pilot. Heli
 `.pilot`/`.fly` and `.gunner`/`.gun` (an admin can add a player's name). One teammate's preference is enough; the
 latest one wins (a teammate with the same preference is cleared). The module keeps a preference until the player
 disconnects, across admin-link reconnects; WebAdmin's copy is only for that clearing and starts empty after a restart.
+
+### Layout votes
+
+`LayoutVoteModule` (loaded with `MapModule`) runs the players' votes on loading a map builder layout
+([map-builder.md](map-builder.md), "Layout votes") with the module's client votes (openbf2-server-ext
+`docs/admin-channel.md`, "Votes the client decides"; a contract draft): `StartClientVote` puts the question on the
+players' screens, they answer with PgUp and PgDn, and each ballot comes back as a `VoteBallot` event (stream 22).
+WebAdmin counts them, ends the vote with `CancelVote` once its result is certain, and announces the result; the module
+posts no result line of its own. The `VoteResult` of a vote that ran its time carries the final counts.
+
+`Welcome`'s capability byte is full, so the module's answer to the stream 22 subscription is the capability: `Ok` sets
+`AdminSession.ClientVotes`, and an older module answers `Error` 7 (an unknown stream) and keeps the link. WebAdmin then
+refuses layout votes on that server.
 
 ### Collision
 

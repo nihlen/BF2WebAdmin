@@ -13,10 +13,11 @@ namespace BF2WebAdmin.Tests;
 /// (openbf2-server-ext tests/fixtures/admin-v1-golden.txt at cbf435c, written by
 /// tools/adminclient/adminclient.py golden_samples). Every frame is encoded from the same sample
 /// values and compared byte for byte, then decoded and re-encoded.
-/// The file here holds the messages WebAdmin has: the module's votes and R7 commands are not among them, and the
+/// The file here holds the messages WebAdmin has: the module's StartVote and R7 commands are not among them, and the
 /// seven script frames (cmd_start_script to ev_script_event) were added on 2026-11-14 from the contract's layouts.
 /// cmd_subscribe_health and ev_server_health are the module's frames at 8396330, ev_player_connections at dc50dbd,
-/// cmd_set_control_point_team at 2a920c0.
+/// cmd_set_control_point_team at 2a920c0, and the five vote frames (cmd_cancel_vote, ev_vote_result,
+/// cmd_subscribe_ballots, cmd_start_client_vote, ev_vote_ballot) at 2f5062a.
 /// </summary>
 public class AdminProtocolTests
 {
@@ -140,6 +141,11 @@ public class AdminProtocolTests
         ["cmd_resync_client"] = new CmdResyncClient(39, 3),
         ["cmd_resync_client_all"] = new CmdResyncClient(40, CmdResyncClient.AllPlayers),
         ["cmd_set_control_point_team"] = new CmdSetControlPointTeam(41, ObjectRef.Console(812), 2),
+        ["cmd_cancel_vote"] = new CmdCancelVote(28),
+        ["ev_vote_result"] = new EvVoteResult(27, 10, 27, "Enable mod §X?", EvVoteResult.OutcomePassed, 3, 1, 5),
+        ["cmd_subscribe_ballots"] = new Subscribe(42, AdminStream.VoteBallots, 0, []),
+        ["cmd_start_client_vote"] = new CmdStartClientVote(43, "Load layout §X?", 30, 0, [3, 7, 0, 255]),
+        ["ev_vote_ballot"] = new EvVoteBallot(32, 10, 43, 7, EvVoteBallot.ChoiceYes),
         ["script_list"] = new ScriptList(33, [(7, "nasa"), (9, "dance")]),
         ["ev_script_finished"] = new EvScriptFinished(28, 10, 7, "nasa", EvScriptFinished.ReasonFinished, "{\"ticks\":90}", 90, 1234, 56),
         ["ev_script_event"] = new EvScriptEvent(29, 10, 7, EvScriptEvent.KindData, "{\"player\":3,\"y\":301.5}"),
@@ -156,7 +162,7 @@ public class AdminProtocolTests
     [Fact]
     public void GoldenFileHasEveryFrame()
     {
-        Assert.Equal(84, Golden.Count);
+        Assert.Equal(89, Golden.Count);
         Assert.Equal(Golden.Keys.OrderBy(k => k), SampleMessages().Keys.OrderBy(k => k));
     }
 
@@ -312,7 +318,7 @@ public class AdminProtocolTests
     [Fact]
     public void RejectsUnknownType()
     {
-        Assert.Equal(AdminErrorCode.UnknownType, Assert.Throws<AdminProtocolException>(() => AdminProtocol.Decode((AdminMessageType)0x121B, [])).Code);
+        Assert.Equal(AdminErrorCode.UnknownType, Assert.Throws<AdminProtocolException>(() => AdminProtocol.Decode((AdminMessageType)0x1221, [])).Code);
         Assert.Equal(AdminErrorCode.UnknownType, Assert.Throws<AdminProtocolException>(() => AdminProtocol.Decode((AdminMessageType)0x0001, [])).Code);
     }
 

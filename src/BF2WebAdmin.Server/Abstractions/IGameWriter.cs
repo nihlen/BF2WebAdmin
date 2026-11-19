@@ -137,6 +137,20 @@ public interface IGameWriter
     /// </summary>
     Task<bool> SetControlPointTeamAsync(uint consoleId, int team);
 
+    /// <summary>Whether the module runs votes WebAdmin decides (<see cref="StartClientVoteAsync"/>).</summary>
+    bool CanStartClientVotes { get; }
+
+    /// <summary>
+    /// Starts a vote whose result WebAdmin decides from the ballot events: the players get the question and press PgUp or
+    /// PgDn. Only <paramref name="voters"/> vote (empty: every human on team 1 or 2). Returns the vote's request id, which
+    /// its ballots and result carry. Throws <see cref="AdminChannel.AdminCommandException"/> when the module refuses (a
+    /// vote runs, nobody can vote) or has no client votes.
+    /// </summary>
+    Task<uint> StartClientVoteAsync(string question, int seconds, IReadOnlyList<Player> voters);
+
+    /// <summary>Ends the running vote (its result event has outcome 3). False when none runs. Throws nothing.</summary>
+    Task<bool> CancelVoteAsync();
+
     /// <summary>Set the player and projectile stream interval in seconds (1/30 to 1).</summary>
     void SendTimerInterval(double timerInterval);
 

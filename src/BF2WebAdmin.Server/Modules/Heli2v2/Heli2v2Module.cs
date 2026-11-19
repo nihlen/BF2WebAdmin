@@ -56,6 +56,9 @@ public class Heli2v2Module : BaseModule,
     /// <summary>2v2 mode (.2v2 toggles it): ready lines start rounds, and the practice commands that need it work.</summary>
     public bool RoundsActive => _roundsActive;
 
+    /// <summary>The match being played: started and not ended. Read on the modules' context.</summary>
+    public Match? ActiveMatch => _tracker.ActiveMatch;
+
     /// <summary>The round of this server that was being played at <paramref name="utc"/> (start to end), or null.</summary>
     public LiveRound? FindRound(DateTime utc) => _tracker.FindRound(utc);
 

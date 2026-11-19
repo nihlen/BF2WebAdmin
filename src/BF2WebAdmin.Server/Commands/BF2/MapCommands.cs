@@ -10,6 +10,13 @@ public class MapLoadCommand : BaseCommand
     public string Name { get; set; }
 }
 
+/// <summary>A vote on loading a layout of the running map (<see cref="Modules.LayoutVoteModule"/>); anyone may start one.</summary>
+[Command("vote|votemap <Name>", Auth.All)]
+public class LayoutVoteCommand : BaseCommand
+{
+    public string Name { get; set; } = "";
+}
+
 [Command("save|mapsave <Name>", Auth.Admin)]
 public class MapSaveCommand : BaseCommand
 {

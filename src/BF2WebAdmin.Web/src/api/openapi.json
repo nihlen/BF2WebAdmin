@@ -1539,6 +1539,70 @@
         }
       }
     },
+    "/api/servers/{serverId}/builder/layouts/{layoutId}/vote": {
+      "post": {
+        "tags": [
+          "Map builder"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "layoutId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartLayoutVoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/modules": {
       "get": {
         "tags": [
@@ -4088,6 +4152,21 @@
           "Connected",
           "Disconnected"
         ]
+      },
+      "StartLayoutVoteRequest": {
+        "required": [
+          "starterId",
+          "starterName"
+        ],
+        "type": "object",
+        "properties": {
+          "starterId": {
+            "type": "string"
+          },
+          "starterName": {
+            "type": "string"
+          }
+        }
       },
       "TeamDto": {
         "type": "object",

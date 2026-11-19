@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Entities;
+using BF2WebAdmin.Server.Modules;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -20,6 +21,7 @@ public static class BuilderEndpoints
         builder.MapPost("/layouts", SaveLayoutAsync);
         builder.MapPost("/layouts/{layoutId:guid}/load", LoadLayoutAsync);
         builder.MapDelete("/layouts/{layoutId:guid}", DeleteLayoutAsync);
+        builder.MapPost("/layouts/{layoutId:guid}/vote", StartVoteAsync);
     }
 
     private static MapBuilder? Find(string serverId, IGameServerRegistry registry) =>
@@ -61,6 +63,31 @@ public static class BuilderEndpoints
     private static Task<Results<Ok<BuilderApplyResult>, NotFound, Conflict<ProblemDetails>, BadRequest<ProblemDetails>>> LoadLayoutAsync(
         string serverId, Guid layoutId, IGameServerRegistry registry, ClaimsPrincipal user) =>
         Run(serverId, registry, b => b.LoadLayoutAsync(layoutId, User(user)));
+
+    /// <summary>
+    /// Starts a vote among the players on loading the layout (<see cref="LayoutVoteModule"/>), for a user of another site
+    /// (BF2v2's layout list): <see cref="StartLayoutVoteRequest.StarterId"/> is that user's id, for the cooldown of two
+    /// minutes between their votes. 204 when it started, 409 with the reason when not (a vote runs, the cooldown, another
+    /// map, nobody online, a module without client votes, a server without the map builder).
+    /// </summary>
+    private static async Task<Results<NoContent, NotFound, Conflict<ProblemDetails>, BadRequest<ProblemDetails>>> StartVoteAsync(
+        string serverId, Guid layoutId, StartLayoutVoteRequest request, IGameServerRegistry registry)
+    {
+        if (string.IsNullOrWhiteSpace(request.StarterId) || string.IsNullOrWhiteSpace(request.StarterName))
+            return TypedResults.BadRequest(new ProblemDetails { Title = "A starter id and name are needed.", Status = 400 });
+        if (registry.GetGameServer(serverId) is not GameServer server)
+            return TypedResults.NotFound();
+        if (server.ModManager?.GetModule<LayoutVoteModule>() == null)
+            return TypedResults.Conflict(new ProblemDetails { Title = "This server has no layout votes (its map builder is off).", Status = 409 });
+
+        var result = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await server.PublishAsync(new LayoutVoteRequestEvent(layoutId, "web:" + request.StarterId.Trim(),
+            AdminGameWriter.FitUtf8(request.StarterName.Trim(), 32), result, DateTimeOffset.UtcNow));
+        var error = await result.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        return error == null
+            ? TypedResults.NoContent()
+            : TypedResults.Conflict(new ProblemDetails { Title = error, Status = 409 });
+    }
 
     private static async Task<Results<NoContent, NotFound>> DeleteLayoutAsync(string serverId, Guid layoutId, IGameServerRegistry registry)
     {

@@ -11,8 +11,8 @@ public class MapLoadCommand : BaseCommand
 }
 
 /// <summary>
-/// A vote on loading a layout of the running map, or with <c>default</c>, <c>clear</c> or <c>reset</c> on removing what is
-/// built (<see cref="Modules.LayoutVoteModule"/>); anyone may start one.
+/// A vote on loading a layout of the running map, or with <c>clear</c>, <c>reset</c> or <c>restart</c> on a map clear, a
+/// round reset or a server restart (<see cref="Modules.LayoutVoteModule"/>); anyone may start one.
 /// </summary>
 [Command("vote|votemap <Name>", Auth.All)]
 public class LayoutVoteCommand : BaseCommand

@@ -178,65 +178,101 @@ public class LayoutVoteTests
     }
 
     [Theory]
-    [InlineData("default", true)]
-    [InlineData("Clear", true)]
-    [InlineData(" RESET ", true)]
-    [InlineData("clearing", false)]
-    [InlineData("Towers", false)]
-    public void TheResetWordsAreReserved(string name, bool reserved) => Assert.Equal(reserved, MapBuilder.IsReservedName(name));
-
-    [Fact]
-    public async Task NoLayoutMayHaveAResetWordAsItsName()
+    [InlineData("clear", ServerVoteAction.MapClear)]
+    [InlineData(" Reset ", ServerVoteAction.RoundReset)]
+    [InlineData("RESTART", ServerVoteAction.ServerRestart)]
+    [InlineData("default", null)]
+    [InlineData("clearing", null)]
+    [InlineData("Towers", null)]
+    public void TheVoteWordsAreReservedNames(string word, ServerVoteAction? action)
     {
-        var services = new ServiceCollection().AddLogging().BuildServiceProvider();
-        var server = new GameServer(new ServerInfo { ServerId = "127.0.0.1:16571" }, IPAddress.Loopback, services, CancellationToken.None);
-        var e = await Assert.ThrowsAsync<BuilderException>(() => server.Builder.SaveLayoutAsync("Reset", overwrite: true, "admin"));
-        Assert.Equal("'Reset' is reserved: .vote reset votes on removing the layout.", e.Message);
+        Assert.Equal(action, LayoutVoteRules.ActionFor(word));
+        Assert.Equal(action != null, MapBuilder.IsReservedName(word));
     }
 
     [Fact]
-    public async Task VoteDefaultResetsTheMap_WhenSomethingIsBuilt()
+    public async Task NoLayoutMayHaveAVoteWordAsItsName()
+    {
+        var services = new ServiceCollection().AddLogging().BuildServiceProvider();
+        var server = new GameServer(new ServerInfo { ServerId = "127.0.0.1:16571" }, IPAddress.Loopback, services, CancellationToken.None);
+        var e = await Assert.ThrowsAsync<BuilderException>(() => server.Builder.SaveLayoutAsync("Restart", overwrite: true, "admin"));
+        Assert.Equal("'Restart' is reserved for .vote restart; pick another name.", e.Message);
+    }
+
+    [Fact]
+    public async Task VoteClearIsAMapClear_WhenSomethingIsBuilt()
     {
         var (server, module, players, _) = Setup();
         var test = (TestLayoutVoteModule)module;
 
         test.Built = false;
         await module.HandleAsync(VoteCommand(players[0], "clear"));
-        server.GameWriter.Received(1).SendPrivateMessage(players[0], "The map is already the default: no layout or objects to remove.");
+        server.GameWriter.Received(1).SendPrivateMessage(players[0], "Nothing is built to clear. Objects left from before can go with .vote reset.");
         await server.GameWriter.DidNotReceiveWithAnyArgs().StartClientVoteAsync(default!, default, default!);
 
         test.Built = true;
-        await module.HandleAsync(VoteCommand(players[0], "default"));
-        await server.GameWriter.Received(1).StartClientVoteAsync("Reset the map to default?", LayoutVoteRules.VoteSeconds,
-            Arg.Any<IReadOnlyList<Player>>());
-        server.GameWriter.Received(1).SendText("CH Pilot started a vote: reset the map to default? 2 yes needed");
+        await module.HandleAsync(VoteCommand(players[0], "clear"));
+        await server.GameWriter.Received(1).StartClientVoteAsync("Map clear?", LayoutVoteRules.VoteSeconds, Arg.Any<IReadOnlyList<Player>>());
+        server.GameWriter.Received(1).SendText("CH Pilot started a vote: map clear? 2 yes needed");
 
         await module.HandleAsync(Ballot(players[0], VoteChoice.Yes));
         await module.HandleAsync(Ballot(players[1], VoteChoice.Yes));
         await module.HandleAsync(Ballot(players[2], VoteChoice.No));
-        Assert.Equal(0, test.Resets);
+        Assert.Equal(0, test.Clears);
         await module.HandleAsync(Ballot(players[3], VoteChoice.Yes));
 
-        server.GameWriter.Received(1).SendText("VOTE PASSED: reset the map to default (yes 3, no 1)");
-        Assert.Equal(1, test.Resets);
+        server.GameWriter.Received(1).SendText("VOTE PASSED: map clear (yes 3, no 1)");
+        Assert.Equal(1, test.Clears);
+        await server.GameWriter.DidNotReceive().RestartMapAsync();
         await _maps.DidNotReceiveWithAnyArgs().GetAsync(default(Guid));
+    }
+
+    [Theory]
+    [InlineData("reset", "Round reset?", "round reset")]
+    [InlineData("restart", "Server restart?", "server restart")]
+    public async Task VoteResetRestartsTheRound_VoteRestartTheServer_BuiltOrNot(string word, string question, string subject)
+    {
+        var (server, module, players, _) = Setup();
+        ((TestLayoutVoteModule)module).Built = false;
+
+        await module.HandleAsync(VoteCommand(players[0], word));
+        await server.GameWriter.Received(1).StartClientVoteAsync(question, LayoutVoteRules.VoteSeconds, Arg.Any<IReadOnlyList<Player>>());
+        server.GameWriter.Received(1).SendText($"CH Pilot started a vote: {subject}? 2 yes needed");
+        foreach (var player in players.Take(3))
+            await module.HandleAsync(Ballot(player, VoteChoice.Yes));
+
+        server.GameWriter.Received(1).SendText($"VOTE PASSED: {subject} (yes 3, no 0)");
+        if (word == "reset")
+        {
+            await server.GameWriter.Received(1).RestartMapAsync();
+            await server.GameWriter.DidNotReceive().QuitAsync();
+        }
+        else
+        {
+            server.GameWriter.Received(1).SendText("The server restarts now and should be back in a minute");
+            await server.GameWriter.Received(1).QuitAsync();
+            await server.GameWriter.DidNotReceive().RestartMapAsync();
+        }
+        Assert.Equal(0, ((TestLayoutVoteModule)module).Clears);
     }
 
     private static LayoutVoteCommand VoteCommand(Player player, string name) =>
         new() { Name = name, Message = new Message { Channel = ChatChannel.Global, Text = ".vote " + name, Type = MessageType.Player, Player = player } };
 
-    /// <summary>A substitute server has no map builder: the test says whether something is built and counts the resets.</summary>
+    /// <summary>A substitute server has no map builder: the test says whether something is built and counts the clears.</summary>
     private sealed class TestLayoutVoteModule(IGameServer server, IMapRepository maps, TimeProvider time)
         : LayoutVoteModule(server, maps, time, NullLogger<LayoutVoteModule>.Instance, new CancellationTokenSource())
     {
         public bool Built { get; set; } = true;
-        public int Resets { get; private set; }
+        public int Clears { get; private set; }
+
+        protected override TimeSpan RestartDelay => TimeSpan.Zero;
 
         protected override bool HasBuilt() => Built;
 
-        protected override Task ResetAsync()
+        protected override Task ClearBuiltAsync()
         {
-            Resets++;
+            Clears++;
             return Task.CompletedTask;
         }
     }

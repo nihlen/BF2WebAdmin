@@ -24,10 +24,10 @@ public sealed class MapBuilder
     public const int MaxItems = 1000;
 
     /// <summary>
-    /// The words of <c>.vote default</c> (or clear, reset), a vote on removing what is built: no layout may have these
-    /// names.
+    /// The words of the other votes (<c>.vote clear</c>, <c>reset</c>, <c>restart</c>; LayoutVoteModule): no layout may have
+    /// these names.
     /// </summary>
-    public static readonly IReadOnlyList<string> ReservedNames = ["default", "clear", "reset"];
+    public static readonly IReadOnlyList<string> ReservedNames = ["clear", "reset", "restart"];
 
     public static bool IsReservedName(string name) =>
         ReservedNames.Contains(name.Trim(), StringComparer.OrdinalIgnoreCase);
@@ -349,7 +349,7 @@ public sealed class MapBuilder
         if (name.Length is 0 or > 50)
             throw new BuilderException("A layout name has 1 to 50 characters.");
         if (IsReservedName(name))
-            throw new BuilderException($"'{name}' is reserved: .vote {name.ToLowerInvariant()} votes on removing the layout.");
+            throw new BuilderException($"'{name}' is reserved for .vote {name.ToLowerInvariant()}; pick another name.");
 
         var map = CurrentMap() ?? throw new BuilderException("No map is running.");
         await _lock.WaitAsync(_cancellationToken);

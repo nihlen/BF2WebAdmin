@@ -9,7 +9,9 @@
 | `.replayhit`, `.replayhit <speed>` | The same, with the helicopters the trace has where the server tested the hit: rewound by the shooter's lag compensation |
 
 The speed is 0.05 to 4 (1 is real time, 0.5 half speed). The replay holds the first frame for half a second, plays to
-the impact and holds the impact for ten seconds; then the objects are removed. One replay runs at a time, never during
+the impact and holds the impact for ten seconds when the missile hit a vehicle (`KillReplay.HitsVehicle`: its first
+collision was a vehicle the trace follows or a part with a player in it), for two seconds when it hit the terrain or a
+static object or nothing; then the objects are removed. One replay runs at a time, never during
 a round. `ReplayModule` (`Modules/Heli2v2/`) loads with `Heli2v2Module`; anyone may use it.
 
 ## Where the frames come from

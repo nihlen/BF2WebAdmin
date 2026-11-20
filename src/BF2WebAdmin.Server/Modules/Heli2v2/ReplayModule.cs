@@ -10,8 +10,8 @@ namespace BF2WebAdmin.Server.Modules.Heli2v2;
 /// .replay: replays a kill shot in the game, where it happened, with objects spawned for it and moved by the game script
 /// <c>replay</c> (script API 2, so a module with game.activateProjectile). In a match, between rounds, it is the match's
 /// last kill if a TV missile made it: the missile and the four helicopters, empty, without collision. Without a match it
-/// is the player's own last TV missile, the missile alone. The replay holds the impact for ten seconds; then the objects
-/// are removed. One at a time; never during a round. Loaded with <see cref="Heli2v2Module"/>. docs/replay.md.
+/// is the player's own last TV missile, the missile alone. The replay holds the impact for ten seconds when the missile
+/// hit a vehicle, two when it hit the terrain or a static object; then the objects are removed. One at a time; never during a round. Loaded with <see cref="Heli2v2Module"/>. docs/replay.md.
 /// </summary>
 [LoadedWith(typeof(Heli2v2Module))]
 public class ReplayModule : BaseModule,
@@ -27,8 +27,11 @@ public class ReplayModule : BaseModule,
     /// <summary>How long the first frame is held before the replay plays (clients get the new objects meanwhile).</summary>
     public const int PrerollTicks = 15;
 
-    /// <summary>How long the impact is held: ten seconds.</summary>
+    /// <summary>How long the impact is held when the missile hit a vehicle: ten seconds.</summary>
     public const int HoldTicks = 300;
+
+    /// <summary>How long the impact is held when it hit the terrain or a static object, or nothing: two seconds.</summary>
+    public const int MissHoldTicks = 60;
 
     private const int TickRate = 30;
 
@@ -185,7 +188,7 @@ public class ReplayModule : BaseModule,
                 {
                     speed,
                     preroll = PrerollTicks,
-                    hold = HoldTicks,
+                    hold = plan.HitVehicle ? HoldTicks : MissHoldTicks,
                     frames = plan.Frames,
                     objects = spawned.Select(s => new { id = s.Object.NetId, missile = s.Item.Missile, f = s.Item.Frames }).ToArray(),
                 }, CmdStartScript.ApiObjects);

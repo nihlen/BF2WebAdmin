@@ -7,9 +7,10 @@ public sealed record ReplayItem(string Template, bool Missile, uint SourceNetId,
 
 /// <summary>
 /// A replay of a traced missile: <see cref="Frames"/> frames one tick apart, from the launch to the impact (the last
-/// frame, which the replay holds), for the missile and the helicopters in it.
+/// frame, which the replay holds), for the missile and the helicopters in it. <see cref="HitVehicle"/>: the missile's
+/// first collision was a vehicle (<see cref="KillReplay.HitsVehicle"/>), not the terrain or a static object.
 /// </summary>
-public sealed record ReplayPlan(int Frames, IReadOnlyList<ReplayItem> Items, string Outcome);
+public sealed record ReplayPlan(int Frames, IReadOnlyList<ReplayItem> Items, string Outcome, bool HitVehicle);
 
 /// <summary>Builds the frames of a replay from a missile's trace (<see cref="ViewerFeed"/>) and the vehicles' poses.</summary>
 public static class KillReplay
@@ -25,7 +26,7 @@ public static class KillReplay
     {
         var samples = missile.Samples;
         if (samples.Length == 0)
-            return new ReplayPlan(0, [], missile.Summary.Outcome);
+            return new ReplayPlan(0, [], missile.Summary.Outcome, false);
 
         // A collision in the sweep from sample k to k + 1 carries tick first + k: the frames are samples 0 to k, then the
         // impact (the missile at the collision point, the vehicles as sample k + 1 has them)
@@ -72,8 +73,16 @@ public static class KillReplay
                 items.Add(new ReplayItem(target >= 0 ? missile.Summary.Targets[target].Template : template, false, netId, f));
         }
 
-        return new ReplayPlan(frames, items, missile.Summary.Outcome);
+        return new ReplayPlan(frames, items, missile.Summary.Outcome, HitsVehicle(missile));
     }
+
+    /// <summary>
+    /// Whether the missile's first collision was a vehicle: an object that the trace follows (every vehicle near the
+    /// launch but the shooter's) or a part with a player in it. Not the terrain, a static object or no collision.
+    /// </summary>
+    public static bool HitsVehicle(MissileReplayDto missile) =>
+        missile.Collisions.FirstOrDefault() is { Kind: EvProjectileCollision.KindObject } hit &&
+        (hit.PartPlayer >= 0 || missile.Summary.Targets.Any(t => t.NetId == hit.Root));
 
     /// <summary>Yaw and pitch of a direction (roll 0), in the wire's convention: yaw 0 faces +z, positive pitch is nose down.</summary>
     public static float[] Heading(float[] v)

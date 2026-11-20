@@ -29,7 +29,8 @@ public class ReplayTests
     /// A missile flying along +z at 4 m per tick past a target (1799) that moves 1 m east per tick and is tested 6 m
     /// behind in z; it hits in the sweep after sample <paramref name="hitSample"/>.
     /// </summary>
-    private static MissileReplayDto Missile(int samples = 10, int? hitSample = 5, uint firstTick = 5000, int shooter = 2, int key = 1)
+    private static MissileReplayDto Missile(int samples = 10, int? hitSample = 5, uint firstTick = 5000, int shooter = 2, int key = 1,
+        int kind = EvProjectileCollision.KindObject, uint root = 1799, int partPlayer = -1)
     {
         var summary = new MissileSummaryDto(key, 1852, "agm114_hellfire_tv", shooter, "shooter", 1, "ahe_z10", firstTick, samples, 0,
             hitSample == null ? "miss" : "hit", null, null, -1, false, 150, [new MissileTargetDto(1799, "ahe_ah1z", [], 1, 1, true)],
@@ -37,7 +38,7 @@ public class ReplayTests
         var sampleDtos = Enumerable.Range(0, samples).Select(k => new MissileSampleDto([0, 100, 4 * k], [0, 0, 120], 0.15f,
             [[k, 100, 20, 90, 0, 0, k, 100, 14, 90, 0, 0]])).ToArray();
         var collisions = hitSample is { } h
-            ? new[] { new MissileCollisionDto(firstTick + (uint)h, 1, 1, 1799, "ahe_ah1z", "ahe_ah1z", -1, [1, 100, 21], [-1, 0, 0],
+            ? new[] { new MissileCollisionDto(firstTick + (uint)h, kind, 1, root, "ahe_ah1z", "ahe_ah1z", partPlayer, [1, 100, 21], [-1, 0, 0],
                 [0, 0, 120], 56, 0.15f, [], [], [], []) }
             : [];
         return new MissileReplayDto(summary, sampleDtos, collisions);
@@ -97,6 +98,18 @@ public class ReplayTests
         var plan = KillReplay.Build(Missile(samples: 8, hitSample: null), [], (_, _) => null);
         Assert.Equal(8, plan.Frames);
         Assert.Equal([0, 100, 28, 0, 0, 0], Frame(plan.Items.Single(), 7));
+    }
+
+    [Fact]
+    public void Build_TellsAVehicleHit_FromTheTerrainAStaticObjectOrNothing()
+    {
+        Assert.True(KillReplay.Build(Missile(), [], (_, _) => null).HitVehicle);
+        // A vehicle the trace does not follow, with a player in the part it hit
+        Assert.True(KillReplay.HitsVehicle(Missile(root: 2000, partPlayer: 4)));
+        Assert.False(KillReplay.HitsVehicle(Missile(kind: EvProjectileCollision.KindTerrain, root: 0)));
+        // A static object: no vehicle of the trace, nobody in it
+        Assert.False(KillReplay.HitsVehicle(Missile(root: 0)));
+        Assert.False(KillReplay.Build(Missile(hitSample: null), [], (_, _) => null).HitVehicle);
     }
 
     [Fact]
@@ -245,6 +258,20 @@ public class ReplayTests
         // And the next one may start
         module.Handle(Replay(player));
         Assert.Equal(2, scripts.Started.Count);
+    }
+
+    [Fact]
+    public void AMissileThatHitTheGround_IsHeldTwoSeconds()
+    {
+        var (module, _, scripts, _, real) = Module();
+        var player = new Player { Index = 2, Name = "gunner", Hash = "h2" };
+        real.Viewer.OnCollision(new EvProjectileCollision(1, 5003, 1852, "agm114_hellfire_tv", 2, EvProjectileCollision.KindTerrain, 0, 0, 0,
+            "", "", -1, new Vec3(0, 100, 14), new Vec3(0, 1, 0), new Vec3(0, 0, 120), 3, 0.15f, default, default, default, default));
+        real.Viewer.OnTrace(Trace(5000, 2), DateTimeOffset.UtcNow);
+
+        module.Handle(Replay(player));
+        using var args = JsonDocument.Parse(Assert.Single(scripts.Started).Args);
+        Assert.Equal(ReplayModule.MissHoldTicks, args.RootElement.GetProperty("hold").GetInt32());
     }
 
     [Fact]

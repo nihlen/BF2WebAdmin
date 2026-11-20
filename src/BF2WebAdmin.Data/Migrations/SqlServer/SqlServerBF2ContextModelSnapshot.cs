@@ -44,6 +44,7 @@ namespace BF2WebAdmin.Data.Migrations.SqlServer
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Map")
+                        .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
@@ -52,7 +53,14 @@ namespace BF2WebAdmin.Data.Migrations.SqlServer
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("OwnerId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Map", "Name")
+                        .IsUnique();
 
                     b.ToTable("MapMod", "dbo");
                 });

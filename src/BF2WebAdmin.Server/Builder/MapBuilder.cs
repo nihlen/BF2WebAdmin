@@ -5,6 +5,7 @@ using BF2WebAdmin.Server.AdminChannel;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Hubs;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 
 namespace BF2WebAdmin.Server.Builder;
 
@@ -356,49 +357,43 @@ public sealed class MapBuilder
     // -------------------------------------------------------------------------------------------------------------
     // Layouts
 
-    /// <summary>The saved layouts this map can load: its own, and those from before the builder (no map).</summary>
+    /// <summary>The saved layouts of this map.</summary>
     public async Task<IReadOnlyList<LayoutDto>> GetLayoutsAsync()
     {
-        var map = CurrentMap();
+        if (CurrentMap() is not { } map)
+            return [];
         using var scope = _services.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IMapRepository>();
-        var layouts = await repository.GetAsync();
-        return layouts
-            .Where(l => l.Map == null || string.Equals(l.Map, map, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(l => l.Map == null)
-            .ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+        return (await repository.GetSummariesAsync(map))
             .Select(l => new LayoutDto(l.Id, l.Name, l.Map, l.CreatedBy, l.EditedDate))
             .ToList();
     }
 
-    /// <summary>Saves what is built as a layout of this map. An existing name is replaced only with <paramref name="overwrite"/>.</summary>
+    /// <summary>
+    /// Saves what is built as a layout of this map. An existing name is replaced only with <paramref name="overwrite"/>
+    /// (admins may save over any layout); it keeps its id, author and owner.
+    /// </summary>
     public async Task<LayoutDto> SaveLayoutAsync(string name, bool overwrite, string user)
     {
-        name = name.Trim();
-        if (name.Length is 0 or > 50)
-            throw new BuilderException("A layout name has 1 to 50 characters.");
-        if (IsReservedName(name))
-            throw new BuilderException($"'{name}' is reserved for .vote {name.ToLowerInvariant()}; pick another name.");
-
+        name = LayoutService.CheckName(name);
         var map = CurrentMap() ?? throw new BuilderException("No map is running.");
         await _lock.WaitAsync(_cancellationToken);
         try
         {
             using var scope = _services.CreateScope();
             var repository = scope.ServiceProvider.GetRequiredService<IMapRepository>();
-            var existing = (await repository.GetAsync())
-                .FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)
-                                     && (l.Map == null || string.Equals(l.Map, map, StringComparison.OrdinalIgnoreCase)));
+            var existing = await repository.FindByNameAsync(map, name);
             if (existing != null && !overwrite)
                 throw new BuilderException($"A layout '{existing.Name}' exists. Save over it, or pick another name.", conflict: true);
 
             var now = DateTime.UtcNow;
             var layout = new MapMod
             {
-                Id = Guid.NewGuid(),
+                Id = existing?.Id ?? Guid.NewGuid(),
                 Name = name,
                 Map = map,
-                CreatedBy = user,
+                CreatedBy = existing?.CreatedBy ?? user,
+                OwnerId = existing?.OwnerId,
                 CreatedDate = existing?.CreatedDate ?? now,
                 EditedDate = now,
             };
@@ -413,10 +408,18 @@ public sealed class MapBuilder
                 Rotation = i.Rotation,
             }).ToList();
 
-            // Replacing is delete and create: the objects are a new set, and EF's update of a graph would keep the old rows
-            if (existing != null)
-                await repository.DeleteAsync(existing.Id);
-            await repository.CreateAsync(layout);
+            try
+            {
+                if (existing != null)
+                    await repository.ReplaceAsync(layout);
+                else
+                    await repository.CreateAsync(layout);
+            }
+            catch (DbUpdateException)
+            {
+                // The unique index: the same name saved at the same time from elsewhere (the layout API)
+                throw new BuilderException($"A layout '{name}' exists. Save over it, or pick another name.", conflict: true);
+            }
 
             Layout = (layout.Id, layout.Name);
             Revision++;
@@ -492,18 +495,13 @@ public sealed class MapBuilder
         }
     }
 
-    /// <summary>A layout by name for this map (the in-game <c>.load</c>), its own before one from before the builder.</summary>
+    /// <summary>A layout of this map by name, ignoring case (the in-game <c>.load</c> and <c>.vote</c>).</summary>
     public async Task<MapMod?> FindLayoutAsync(string name)
     {
-        var map = CurrentMap();
+        if (CurrentMap() is not { } map || string.IsNullOrWhiteSpace(name))
+            return null;
         using var scope = _services.CreateScope();
-        var repository = scope.ServiceProvider.GetRequiredService<IMapRepository>();
-        var match = (await repository.GetAsync())
-            .Where(l => string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)
-                        && (l.Map == null || string.Equals(l.Map, map, StringComparison.OrdinalIgnoreCase)))
-            .OrderBy(l => l.Map == null)
-            .FirstOrDefault();
-        return match == null ? null : await repository.GetAsync(match.Id);
+        return await scope.ServiceProvider.GetRequiredService<IMapRepository>().FindByNameAsync(map, name.Trim());
     }
 
     // -------------------------------------------------------------------------------------------------------------
@@ -743,7 +741,7 @@ public sealed class MapBuilder
             throw new BuilderException("The game server is not connected.");
     }
 
-    private static void Validate(MapModObjectKind kind, string template, int team, double[] position, double[] rotation)
+    internal static void Validate(MapModObjectKind kind, string template, int team, double[] position, double[] rotation)
     {
         switch (kind)
         {
@@ -773,16 +771,16 @@ public sealed class MapBuilder
     }
 
     /// <summary>A spawn point has no template of its own; a helipad's is the helicopter it spawns, the team's by default.</summary>
-    private static string TemplateFor(MapModObjectKind kind, string? template, int team) => kind switch
+    internal static string TemplateFor(MapModObjectKind kind, string? template, int team) => kind switch
     {
         MapModObjectKind.SpawnPoint => "spawnpoint",
         MapModObjectKind.Helipad => string.IsNullOrWhiteSpace(template) || template == "helipad" ? BuilderSpawning.DefaultHelicopter(team) : template.Trim(),
         _ => template?.Trim() ?? "",
     };
 
-    private static Position ToPosition(double[] v) => new(v[0], v[1], v[2]);
+    internal static Position ToPosition(double[] v) => new(v[0], v[1], v[2]);
 
-    private static Rotation ToRotation(double[] v) => new(v[0], v[1], v[2]);
+    internal static Rotation ToRotation(double[] v) => new(v[0], v[1], v[2]);
 
     private async Task PublishAsync()
     {
@@ -827,8 +825,9 @@ public sealed class BuiltItem(int id, MapModObjectKind kind, string template, in
         Kind == MapModObjectKind.Object || SpawnGroupReady);
 }
 
-public class BuilderException(string message, bool conflict = false, bool notFound = false) : Exception(message)
+public class BuilderException(string message, bool conflict = false, bool notFound = false, bool forbidden = false) : Exception(message)
 {
     public bool Conflict { get; } = conflict;
     public bool NotFound { get; } = notFound;
+    public bool Forbidden { get; } = forbidden;
 }

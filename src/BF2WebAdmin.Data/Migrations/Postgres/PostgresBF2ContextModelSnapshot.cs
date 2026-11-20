@@ -44,6 +44,7 @@ namespace BF2WebAdmin.Data.Migrations.Postgres
                         .HasColumnName("edited_date");
 
                     b.Property<string>("Map")
+                        .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("map");
 
@@ -51,8 +52,17 @@ namespace BF2WebAdmin.Data.Migrations.Postgres
                         .HasColumnType("text")
                         .HasColumnName("name");
 
+                    b.Property<string>("OwnerId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("owner_id");
+
                     b.HasKey("Id")
                         .HasName("pk_map_mod");
+
+                    b.HasIndex("Map", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_map_mod_map_name");
 
                     b.ToTable("map_mod", (string)null);
                 });

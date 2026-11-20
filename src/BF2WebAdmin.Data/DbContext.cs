@@ -37,6 +37,13 @@ public class BF2Context : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<MapMod>(e =>
+        {
+            e.Property(m => m.Map).IsRequired();
+            e.Property(m => m.OwnerId).HasMaxLength(MapModLimits.OwnerIdLength);
+            // Unique as written; the layout code also refuses a name that differs only in case
+            e.HasIndex(m => new { m.Map, m.Name }).IsUnique();
+        });
         modelBuilder.Entity<MatchRoundPlayer>().HasKey(c => new { c.RoundId, c.PlayerHash });
         modelBuilder.Entity<Match>().HasIndex(m => m.ChangeSeq).IsUnique();
         modelBuilder.Entity<ServerModule>().HasKey(c => new { c.ServerGroup, c.Module });

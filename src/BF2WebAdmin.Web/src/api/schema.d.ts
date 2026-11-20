@@ -1804,6 +1804,228 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/layouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    map?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LayoutSummaryDto"][];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateLayoutRequest"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LayoutDetailDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/layouts/{layoutId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    layoutId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LayoutDetailDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    layoutId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateLayoutRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LayoutDetailDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/modules": {
         parameters: {
             query?: never;
@@ -2274,6 +2496,13 @@ export interface components {
             command: string;
             output: string[];
         };
+        CreateLayoutRequest: {
+            name: string;
+            map: string;
+            ownerId: string;
+            ownerName: string;
+            objects: components["schemas"]["LayoutObjectDto"][];
+        };
         EventLogDto: {
             /** Format: uuid */
             id: string;
@@ -2438,14 +2667,49 @@ export interface components {
             end: null | string;
         };
         JsonElement: unknown;
+        LayoutDetailDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            map: string;
+            createdBy: string;
+            ownerId: null | string;
+            /** Format: date-time */
+            createdDate: string;
+            /** Format: date-time */
+            editedDate: string;
+            objects: components["schemas"]["LayoutObjectDto"][];
+        };
         LayoutDto: {
             /** Format: uuid */
             id: string;
             name: string;
-            map: null | string;
+            map: string;
             createdBy: string;
             /** Format: date-time */
             editedDate: string;
+        };
+        LayoutObjectDto: {
+            kind: components["schemas"]["MapModObjectKind"];
+            template: string;
+            /** Format: int32 */
+            team: number;
+            position: number[];
+            rotation: number[];
+        };
+        LayoutSummaryDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            map: string;
+            createdBy: string;
+            ownerId: null | string;
+            /** Format: date-time */
+            createdDate: string;
+            /** Format: date-time */
+            editedDate: string;
+            /** Format: int32 */
+            objectCount: number;
         };
         LoginRequest: {
             username: string;
@@ -2784,6 +3048,12 @@ export interface components {
             type: string;
             success: boolean;
             message?: null | string;
+        };
+        UpdateLayoutRequest: {
+            ownerId: string;
+            ownerName: string;
+            name: null | string;
+            objects: components["schemas"]["LayoutObjectDto"][];
         };
         UserDto: {
             name: string;

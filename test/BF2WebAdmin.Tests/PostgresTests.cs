@@ -10,6 +10,8 @@ using BF2WebAdmin.Data.Entities;
 using BF2WebAdmin.Data.Repositories;
 using Dapper;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using Xunit;
 using Match = BF2WebAdmin.Data.Entities.Match;
@@ -189,13 +191,38 @@ public class PostgresTests
         Assert.Single(await settings.GetServersAsync());
 
         var maps = new MapRepository(db.Factory);
-        var map = new MapMod { Id = Guid.NewGuid(), Name = "ramps", CreatedBy = "test", CreatedDate = Start, EditedDate = Start };
+        var map = new MapMod { Id = Guid.NewGuid(), Name = "ramps", Map = "dalian_2_v_2", CreatedBy = "test", CreatedDate = Start, EditedDate = Start };
         map.MapModObjects.Add(new MapModObject { Id = Guid.NewGuid(), MapModId = map.Id, TemplateName = "ramp", Position = new Position(1, 2, 3), Rotation = new Rotation(90, 0, 0) });
         await maps.CreateAsync(map);
         var read = await maps.GetAsync(map.Id);
         Assert.Equal("ramps", read.Name);
         Assert.Equal(new Position(1, 2, 3).ToString(), Assert.Single(read.MapModObjects).Position.ToString());
         Assert.Single(await maps.GetAsync());
+    }
+
+    [PostgresFact]
+    public async Task LayoutsWithoutAMapBecomeDalians_AndANameClashKeepsTheOldOneAsOld()
+    {
+        await using var db = await ScratchPostgres.CreateAsync();
+        await using (var context = db.Context())
+            await context.GetService<IMigrator>().MigrateAsync("20261117153717_MapBuilder");
+        await using (var connection = await db.OpenAsync())
+        {
+            foreach (var (name, map) in new[] { ("Towers", "dalian_2_v_2"), ("towers", null), ("Ramps", null) })
+                await connection.ExecuteAsync("INSERT INTO map_mod (id, name, map, created_by, created_date, edited_date) VALUES (gen_random_uuid(), @name, @map, 'test', now(), now())",
+                    new { name, map });
+        }
+
+        await using (var context = db.Context())
+        {
+            await context.Database.MigrateAsync();
+            var layouts = await context.MapMods.Select(m => new { m.Name, m.Map }).ToListAsync();
+            Assert.All(layouts, l => Assert.Equal("dalian_2_v_2", l.Map));
+            Assert.Equal(new[] { "Ramps", "Towers", "towers (old)" }, layouts.Select(l => l.Name).Order(StringComparer.Ordinal));
+        }
+
+        var maps = new MapRepository(db.Factory);
+        Assert.Equal("Towers", (await maps.FindByNameAsync("dalian_2_v_2", "TOWERS")).Name);
     }
 
     // ---------------------------------------------------------------- scratch databases

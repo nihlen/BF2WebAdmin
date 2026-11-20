@@ -33,12 +33,20 @@ namespace BF2WebAdmin.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Map")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OwnerId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Map", "Name")
+                        .IsUnique();
 
                     b.ToTable("MapMods");
                 });

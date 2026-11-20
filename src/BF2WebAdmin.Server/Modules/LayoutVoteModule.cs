@@ -154,7 +154,7 @@ public class LayoutVoteModule : BaseModule,
         var map = GameServer.Map?.Name?.ToLowerInvariant();
         if (action == ServerVoteAction.MapClear && !HasBuilt())
             return "Nothing is built to clear. Objects left from before can go with .vote reset.";
-        if (layout != null && (map == null || (layout.Map != null && !string.Equals(layout.Map, map, StringComparison.OrdinalIgnoreCase))))
+        if (layout != null && !string.Equals(layout.Map, map, StringComparison.OrdinalIgnoreCase))
             return $"The layout '{layout.Name}' is for {layout.Map}; the server runs {map ?? "no map"}.";
 
         if (!GameServer.GameWriter.CanStartClientVotes)

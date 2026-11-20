@@ -1603,6 +1603,224 @@
         }
       }
     },
+    "/api/layouts": {
+      "get": {
+        "tags": [
+          "Layouts"
+        ],
+        "parameters": [
+          {
+            "name": "map",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LayoutSummaryDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Layouts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLayoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutDetailDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/layouts/{layoutId}": {
+      "get": {
+        "tags": [
+          "Layouts"
+        ],
+        "parameters": [
+          {
+            "name": "layoutId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutDetailDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Layouts"
+        ],
+        "parameters": [
+          {
+            "name": "layoutId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLayoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutDetailDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/modules": {
       "get": {
         "tags": [
@@ -2407,6 +2625,36 @@
           }
         }
       },
+      "CreateLayoutRequest": {
+        "required": [
+          "name",
+          "map",
+          "ownerId",
+          "ownerName",
+          "objects"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "map": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": "string"
+          },
+          "ownerName": {
+            "type": "string"
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LayoutObjectDto"
+            }
+          }
+        }
+      },
       "EventLogDto": {
         "type": "object",
         "properties": {
@@ -3014,6 +3262,54 @@
         }
       },
       "JsonElement": { },
+      "LayoutDetailDto": {
+        "required": [
+          "id",
+          "name",
+          "map",
+          "createdBy",
+          "ownerId",
+          "createdDate",
+          "editedDate",
+          "objects"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "map": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "editedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LayoutObjectDto"
+            }
+          }
+        }
+      },
       "LayoutDto": {
         "required": [
           "id",
@@ -3032,10 +3328,7 @@
             "type": "string"
           },
           "map": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "createdBy": {
             "type": "string"
@@ -3043,6 +3336,88 @@
           "editedDate": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "LayoutObjectDto": {
+        "required": [
+          "kind",
+          "template",
+          "team",
+          "position",
+          "rotation"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MapModObjectKind"
+          },
+          "template": {
+            "type": "string"
+          },
+          "team": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "position": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "rotation": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            }
+          }
+        }
+      },
+      "LayoutSummaryDto": {
+        "required": [
+          "id",
+          "name",
+          "map",
+          "createdBy",
+          "ownerId",
+          "createdDate",
+          "editedDate",
+          "objectCount"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "map": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "editedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "objectCount": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -4201,6 +4576,35 @@
           }
         }
       },
+      "UpdateLayoutRequest": {
+        "required": [
+          "ownerId",
+          "ownerName",
+          "name",
+          "objects"
+        ],
+        "type": "object",
+        "properties": {
+          "ownerId": {
+            "type": "string"
+          },
+          "ownerName": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LayoutObjectDto"
+            }
+          }
+        }
+      },
       "UserDto": {
         "required": [
           "name"
@@ -4243,6 +4647,9 @@
     },
     {
       "name": "Map builder"
+    },
+    {
+      "name": "Layouts"
     },
     {
       "name": "Modules"

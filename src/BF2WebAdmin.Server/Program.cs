@@ -88,6 +88,7 @@ try
     builder.Services.AddHostedService(services => services.GetRequiredService<JoinHistoryWriter>());
     builder.Services.AddHostedService<BF2WebAdminService>();
     builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddScoped<BF2WebAdmin.Server.Builder.LayoutService>();
     builder.Services.AddHostedService<StaleMatchCloser>();
     // The web UI uses JSON with camelCase names and enums as strings, for both the API and the hub
     builder.Services.Configure<JsonOptions>(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));

@@ -1047,7 +1047,7 @@ function LayoutsTab({ serverId, state, hasDrafts, onLoaded }: { serverId: string
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium">{l.name}</div>
               <div className="truncate text-xs text-muted-foreground">
-                {l.map ?? 'any map (in-game .save)'} · {new Date(l.editedDate).toLocaleDateString()}
+                {l.createdBy} · {new Date(l.editedDate).toLocaleDateString()}
               </div>
             </div>
             <Button

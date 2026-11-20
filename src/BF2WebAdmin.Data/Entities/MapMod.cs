@@ -9,10 +9,21 @@ public class MapMod
     public Guid Id { get; set; }
     public string Name { get; set; }
 
-    /// <summary>The map it was built on (lower case, such as dalian_2_v_2); null for a layout from before the builder, offered on every map.</summary>
+    /// <summary>
+    /// The map it is for (lower case, such as dalian_2_v_2). A name is unique per map. Layouts from before the builder had
+    /// none; migration LayoutOwners gave them dalian_2_v_2.
+    /// </summary>
     public string Map { get; set; }
 
+    /// <summary>The author's name, as shown.</summary>
     public string CreatedBy { get; set; }
+
+    /// <summary>
+    /// Who may update it through the layout API: another site's user, such as "discord:123" for a BF2v2 user. Null for
+    /// a layout saved in WebAdmin's builder or in game, which only WebAdmin admins and in-game admins change.
+    /// </summary>
+    public string OwnerId { get; set; }
+
     public DateTime CreatedDate { get; set; }
     public DateTime EditedDate { get; set; }
 
@@ -35,6 +46,13 @@ public class MapModObject
 
     public Guid MapModId { get; set; }
     public MapMod MapMod { get; set; }
+}
+
+public static class MapModLimits
+{
+    public const int NameLength = 50;
+    public const int MapLength = 50;
+    public const int OwnerIdLength = 100;
 }
 
 public enum MapModObjectKind

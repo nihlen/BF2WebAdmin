@@ -169,8 +169,8 @@ Under `/api/servers/{serverId}/builder` (the admin cookie), in `Builder/BuilderE
 | `POST /apply` | `{revision, add, update, remove}`: drafts made against `revision`; 409 when the builder has changed since |
 | `POST /clear` | removes everything; `true` when it had to restart the round |
 | `POST /templates` | a list of template names (at most 4096): those the running level uses, the only ones that can be built |
-| `GET /layouts` | the layouts of the running map, and those from before the builder (no map), offered on every map |
-| `POST /layouts` | `{name, overwrite}`: saves what is built; 409 for an existing name without overwrite |
+| `GET /layouts` | the layouts of the running map |
+| `POST /layouts` | `{name, overwrite}`: saves what is built; 409 for an existing name without overwrite. Saving over a layout keeps its id, author and owner |
 | `POST /layouts/{id}/load` | replaces what is built with the layout |
 | `DELETE /layouts/{id}` | deletes the layout |
 | `POST /layouts/{id}/vote` | `{starterId, starterName}`: starts a players' vote on loading the layout ([Layout votes](#layout-votes)); 204, or 409 with the reason it did not start |
@@ -179,5 +179,34 @@ Positions are BF2's `[x, height, z]` (z north), rotations `[yaw, pitch, roll]` i
 `BuilderEvent` with the state to a server's subscribers whenever it changes.
 
 Layouts are the `MapMod` and `MapModObject` tables (`map_mod`, `map_mod_object` on Postgres). The builder added
-`MapMod.Map` and `MapModObject.Kind` and `Team` (migration `MapBuilder` for each provider). A layout saved in game before
-has no map and is listed on every map.
+`MapMod.Map` and `MapModObject.Kind` and `Team` (migration `MapBuilder` for each provider). Migration `LayoutOwners`
+made the map required and a name unique per map (a unique index on map and name; WebAdmin also refuses a name that
+differs only in case), and added `MapMod.OwnerId`. It gave the layouts saved before the builder, which had no map,
+`dalian_2_v_2`; one of them with the name of a Dalian layout became "<name> (old)".
+
+## Layout API
+
+For other sites, under `/api/layouts` with the admin API key (header `X-API-KEY`), in `Builder/LayoutEndpoints.cs` and
+`Builder/LayoutService.cs`. BF2v2's offline editor uses it: anyone may load any layout, only its author may change it,
+and the others save theirs under a new name. BF2v2 checks who its user is (Discord) and passes the user on as the
+owner; WebAdmin trusts it, as it does for the servers BF2v2 adds.
+
+| Request | Does |
+|---|---|
+| `GET /?map=<map>` | the layouts of a map (every map without `map`), by map and name: id, name, map, `createdBy` (the author's name), `ownerId`, the dates and the number of objects |
+| `GET /{id}` | a layout with its `objects`: `{kind, template, team, position, rotation}` |
+| `POST /` | `{name, map, ownerId, ownerName, objects}`: a new layout of that owner; 201. 409 when the map has a layout of that name (ignoring case) or the owner has 50 |
+| `PUT /{id}` | `{ownerId, ownerName, name, objects}`: replaces the objects, and the name when `name` is not null; the id stays. 403 unless `ownerId` is the layout's owner, 409 for a name the map has |
+
+- `ownerId` is the user on the other site, such as `discord:<id>`, at most 100 characters; `ownerName` is the name
+  shown as the author, at most 32. A layout saved in the builder or in game has no owner, so this API changes none of
+  them; admins change any layout in the builder.
+- `kind` is `Object`, `SpawnPoint` or `Helipad` (a request may also send 0, 1 or 2). An object's team is 0; a spawn
+  point's and a helipad's 1 or 2. A spawn point's template is `spawnpoint`, and a helipad's is the helicopter it spawns
+  (the team's default, `ahe_z10` or `ahe_ah1z`, when it is empty or `helipad`). Dates are UTC.
+- What is checked: a name of 1 to 50 characters that is not `clear`, `reset` or `restart`; a map name of lower-case
+  letters, digits and `_`; 1 to 1000 objects; a kind, a team, a template name without spaces, a position inside the
+  world (x and z within ±8192, height -1000 to 10000) and angles within ±360°. Whether the level uses a template is
+  not known without a game server, so the builder checks it when the layout loads (["Only the level's
+  templates"](#only-the-levels-templates)): an object of another template is not spawned and is reported.
+- Errors are problem details with the reason in `title`.

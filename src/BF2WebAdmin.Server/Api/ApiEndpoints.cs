@@ -96,6 +96,9 @@ public static class ApiEndpoints
         servers.MapGet("/{serverId}/missiles/{key:int}", GetMissile);
         servers.MapBuilderEndpoints();
 
+        // The saved layouts for other sites (BF2v2's offline editor)
+        api.MapGroup("/layouts").WithTags("Layouts").RequireAuthorization(AdminPolicy).MapLayoutEndpoints();
+
         var modules = api.MapGroup("/").WithTags("Modules").RequireAuthorization(AdminPolicy);
         modules.MapGet("/modules", () => ModuleResolver.AllModuleNames.Order().ToArray());
         modules.MapGet("/server-groups/{serverGroup}/modules", GetServerGroupModulesAsync);

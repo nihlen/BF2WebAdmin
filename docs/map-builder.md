@@ -151,13 +151,13 @@ load a layout directly with `.load` or the page. `LayoutVoteModule` runs the vot
 - Three words start the same vote on something else; no layout may have these names:
   - `.vote clear`, a "map clear": removes what the builder built, as an admin's `.clear` does; refused when nothing
     is built;
-  - `.vote reset`, a "round reset": restarts the round, which also removes objects the builder lost track of (after a
-    WebAdmin restart) and resets the scores; the builder spawns its own items again;
-  - `.vote restart`, a "server restart": the game server quits as with `.restartserver`, and its container's restart
-    policy starts it again.
+  - `.vote reset`, a "round reset": back to the plain level. The builder drops the layout and its items, and the round
+    restarts, which also removes objects the builder lost track of (after a WebAdmin restart) and resets the scores;
+  - `.vote restart`, a "server restart": the builder drops the layout and its items as for a reset, and the game server
+    quits as with `.restartserver`; its container's restart policy starts it again.
 
-The ballots have been tested only without a retail client (the module refuses a vote with no human player); a vote with
-players pressing PgUp and PgDn has not been run yet.
+Tested with a retail client on 2026-11-20: ballots from PgUp and PgDn arrive, a vote passes or fails, and it ends early
+once its result is certain.
 
 ## API
 

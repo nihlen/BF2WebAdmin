@@ -267,6 +267,25 @@ public class MapBuilderTests
     }
 
     [Fact]
+    public async Task DroppingAllForARestartDeletesWithoutAResync_AndTheRoundStartSpawnsNothingAgain()
+    {
+        var link = await ConnectAsync(Capabilities | Welcome.CapResync, [Human(3)]);
+        await AddObjectAsync(link, "house_01", 900);
+        var builder = link.Server.Builder;
+
+        await builder.DropAllAsync("vote");
+        var delete = await link.Module.ReadAsync<CmdDeleteObject>();
+        Assert.Equal(ObjectRef.Console(900), delete.Target);
+        var state = builder.GetState();
+        Assert.Empty(state.Items);
+        Assert.Empty(state.PendingResync);
+        Assert.Null(builder.Layout);
+
+        await builder.OnRoundStartAsync("dalian_2_v_2");
+        Assert.Empty(builder.GetState().Items);
+    }
+
+    [Fact]
     public async Task ADeadPlayersResyncWaitsUntilItIsAlive()
     {
         var link = await ConnectAsync(Capabilities | Welcome.CapResync, [Human(3, AdminPlayerState.LifeDead)]);

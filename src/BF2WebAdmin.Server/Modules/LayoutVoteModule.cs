@@ -212,10 +212,13 @@ public class LayoutVoteModule : BaseModule,
                     await ClearBuiltAsync();
                     break;
                 case ServerVoteAction.RoundReset:
-                    // The round start removes every spawned object; the builder spawns its own items again
+                    // The plain level: the round start removes every spawned object, and the builder has none to spawn again
+                    await DropBuiltAsync();
                     await GameServer.GameWriter.RestartMapAsync();
                     break;
                 case ServerVoteAction.ServerRestart:
+                    // Nor after the module connects again
+                    await DropBuiltAsync();
                     GameServer.GameWriter.SendText("The server restarts now and should be back in a minute");
                     // Time to read it before the link and the players' connections go
                     await Task.Delay(RestartDelay, _time);
@@ -247,6 +250,13 @@ public class LayoutVoteModule : BaseModule,
             return;
         await builder.ClearAsync("vote");
         GameServer.GameWriter.SendText("Cleared map");
+    }
+
+    /// <summary>Drops the layout and what is built before a restart (<see cref="MapBuilder.DropAllAsync"/>). Virtual for the tests.</summary>
+    protected virtual async Task DropBuiltAsync()
+    {
+        if (Builder is { } builder)
+            await builder.DropAllAsync("vote");
     }
 
     /// <summary>The human players on a team, who get a vote for everyone.</summary>

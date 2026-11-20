@@ -236,6 +236,35 @@ public sealed class MapBuilder
     }
 
     /// <summary>
+    /// Drops everything built and the layout without a resync, before a round restart or a server quit removes it from
+    /// the game (the votes <c>.vote reset</c> and <c>.vote restart</c>), so the map is the plain level afterwards. The
+    /// objects are deleted all the same, for the spawners, which outlive a round restart.
+    /// </summary>
+    public async Task DropAllAsync(string user)
+    {
+        await _lock.WaitAsync(_cancellationToken);
+        try
+        {
+            EnsureConnected();
+            var items = Items;
+            lock (_items)
+                _items.Clear();
+            lock (_pendingLock)
+                _pending.Clear();
+            foreach (var item in items)
+                DeleteParts(item);
+            Layout = null;
+            Revision++;
+            _logger.LogInformation("Builder {ServerId}: {User} dropped {Count} items for a restart", _server.Id, user, items.Count);
+            await PublishAsync();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    /// <summary>
     /// Removes the last <paramref name="count"/> items (the in-game <c>.undo</c>). Without a module that can resync
     /// clients the round restarts, and the round start spawns the rest again.
     /// </summary>

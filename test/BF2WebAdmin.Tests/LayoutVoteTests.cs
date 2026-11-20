@@ -223,6 +223,7 @@ public class LayoutVoteTests
 
         server.GameWriter.Received(1).SendText("VOTE PASSED: map clear (yes 3, no 1)");
         Assert.Equal(1, test.Clears);
+        Assert.Equal(0, test.Drops);
         await server.GameWriter.DidNotReceive().RestartMapAsync();
         await _maps.DidNotReceiveWithAnyArgs().GetAsync(default(Guid));
     }
@@ -253,7 +254,9 @@ public class LayoutVoteTests
             await server.GameWriter.Received(1).QuitAsync();
             await server.GameWriter.DidNotReceive().RestartMapAsync();
         }
+        // Both go back to the plain level: the builder forgets the layout and its items first
         Assert.Equal(0, ((TestLayoutVoteModule)module).Clears);
+        Assert.Equal(1, ((TestLayoutVoteModule)module).Drops);
     }
 
     private static LayoutVoteCommand VoteCommand(Player player, string name) =>
@@ -265,8 +268,15 @@ public class LayoutVoteTests
     {
         public bool Built { get; set; } = true;
         public int Clears { get; private set; }
+        public int Drops { get; private set; }
 
         protected override TimeSpan RestartDelay => TimeSpan.Zero;
+
+        protected override Task DropBuiltAsync()
+        {
+            Drops++;
+            return Task.CompletedTask;
+        }
 
         protected override bool HasBuilt() => Built;
 

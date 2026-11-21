@@ -32,9 +32,10 @@ public static class RconScript
         "ObjectTemplate.armor.hpLostWhileCriticalDamage 100",
         "ObjectTemplate.armor.criticalDamage 10",
 
-        // Improve helipads
+        // Improve helipads. The radius reaches .pad's teleport points on dalian_2_v_2 (the US one is 22.5 m from its
+        // supply object, which the helipad holds 5 m above itself)
         "ObjectTemplate.activeSafe SupplyObject concreteblock_helipad_SupplyObject_helipad",
-        "ObjectTemplate.radius 10",
+        "ObjectTemplate.radius 25",
         "ObjectTemplate.workOnSoldiers 1",
         "ObjectTemplate.workOnVehicles 1",
         "ObjectTemplate.healSpeed 3000",
@@ -243,6 +244,6 @@ public static class RconScript
 
     public static readonly string[] AutoRepairOff = {
         "ObjectTemplate.activeSafe SupplyObject concreteblock_helipad_SupplyObject_helipad",
-        "ObjectTemplate.radius 10",
+        "ObjectTemplate.radius 25",
     };
 }

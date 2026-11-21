@@ -103,7 +103,7 @@ Rules a script must follow:
 | `game.setVelocity(id, velocity)`, `game.setAngularVelocity(id, velocity)` | Set the root object's speed (m/s) or rotational speed (rad/s) |
 | `game.say(text, player?)` | A chat line to everyone or to one player |
 
-API 2 (a contract draft of openbf2-server-ext, "Host API, version 2") adds objects by networkable id, for objects
+API 2 (openbf2-server-ext, "Host API, version 2") adds objects by networkable id, for objects
 WebAdmin spawned that no player can name. A script that uses them is started with
 `StartAsync(name, args, CmdStartScript.ApiObjects)`; a module with API 1 refuses it (`AdminErrorCode.Unavailable`).
 

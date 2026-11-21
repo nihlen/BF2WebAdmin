@@ -128,7 +128,7 @@ disconnects, across admin-link reconnects; WebAdmin's copy is only for that clea
 
 `LayoutVoteModule` (loaded with `MapModule`) runs the players' votes on loading a map builder layout
 ([map-builder.md](map-builder.md), "Layout votes") with the module's client votes (openbf2-server-ext
-`docs/admin-channel.md`, "Votes the client decides"; a contract draft): `StartClientVote` puts the question on the
+`docs/admin-channel.md`, "Votes the client decides"): `StartClientVote` puts the question on the
 players' screens, they answer with PgUp and PgDn, and each ballot comes back as a `VoteBallot` event (stream 22).
 WebAdmin counts them, ends the vote with `CancelVote` once its result is certain, and announces the result; the module
 posts no result line of its own. The `VoteResult` of a vote that ran its time carries the final counts.

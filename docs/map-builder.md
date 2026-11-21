@@ -182,7 +182,8 @@ Layouts are the `MapMod` and `MapModObject` tables (`map_mod`, `map_mod_object` 
 `MapMod.Map` and `MapModObject.Kind` and `Team` (migration `MapBuilder` for each provider). Migration `LayoutOwners`
 made the map required and a name unique per map (a unique index on map and name; WebAdmin also refuses a name that
 differs only in case), and added `MapMod.OwnerId`. It gave the layouts saved before the builder, which had no map,
-`dalian_2_v_2`; one of them with the name of a Dalian layout became "<name> (old)".
+`dalian_2_v_2`; one of them with the name of a Dalian layout became "<name> (old)". Migration `ChopperMayhemLayouts`
+moved Chopper Mayhem's layouts (`dalian_mayhem*`, which `ChopperMayhemModule` loads on Dalian Plant) to `dalian_plant`.
 
 ## Layout API
 

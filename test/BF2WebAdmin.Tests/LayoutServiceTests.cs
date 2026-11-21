@@ -187,7 +187,7 @@ public class LayoutServiceTests : IAsyncLifetime
         var options = new DbContextOptionsBuilder<BF2Context>().UseSqlite(connection).Options;
         await using var context = new BF2Context(options);
         await context.GetService<IMigrator>().MigrateAsync("20261117153714_MapBuilder");
-        foreach (var (name, map) in new[] { ("Towers", Dalian), ("towers", null), ("Ramps", null), (new string('L', 50), Dalian), (new string('l', 50), null) })
+        foreach (var (name, map) in new[] { ("Towers", Dalian), ("towers", null), ("Ramps", null), (new string('L', 50), Dalian), (new string('l', 50), null), ("dalian_mayhem6", null) })
         {
             await context.Database.ExecuteSqlRawAsync(
                 @"INSERT INTO ""MapMods"" (""Id"", ""Name"", ""Map"", ""CreatedBy"", ""CreatedDate"", ""EditedDate"") VALUES ({0}, {1}, {2}, 'test', {3}, {3})",
@@ -196,6 +196,9 @@ public class LayoutServiceTests : IAsyncLifetime
 
         await context.Database.MigrateAsync();
         var layouts = await context.MapMods.OrderBy(m => m.Name).Select(m => new { m.Name, m.Map, m.OwnerId }).ToListAsync();
+        // Chopper Mayhem's layouts are Dalian Plant's (migration ChopperMayhemLayouts)
+        Assert.Equal("dalian_plant", layouts.Single(l => l.Name == "dalian_mayhem6").Map);
+        layouts.RemoveAll(l => l.Name == "dalian_mayhem6");
         Assert.All(layouts, l => Assert.Equal((Dalian, (string?)null), (l.Map, l.OwnerId)));
         Assert.Equal(
             new[] { new string('L', 50), "Ramps", "Towers", new string('l', 44) + " (old)", "towers (old)" }.Order(StringComparer.Ordinal),

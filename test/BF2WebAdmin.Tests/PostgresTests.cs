@@ -208,7 +208,7 @@ public class PostgresTests
             await context.GetService<IMigrator>().MigrateAsync("20261117153717_MapBuilder");
         await using (var connection = await db.OpenAsync())
         {
-            foreach (var (name, map) in new[] { ("Towers", "dalian_2_v_2"), ("towers", null), ("Ramps", null) })
+            foreach (var (name, map) in new[] { ("Towers", "dalian_2_v_2"), ("towers", null), ("Ramps", null), ("dalian_mayhem6", null) })
                 await connection.ExecuteAsync("INSERT INTO map_mod (id, name, map, created_by, created_date, edited_date) VALUES (gen_random_uuid(), @name, @map, 'test', now(), now())",
                     new { name, map });
         }
@@ -217,6 +217,9 @@ public class PostgresTests
         {
             await context.Database.MigrateAsync();
             var layouts = await context.MapMods.Select(m => new { m.Name, m.Map }).ToListAsync();
+            // Chopper Mayhem's layouts are Dalian Plant's (migration ChopperMayhemLayouts)
+            Assert.Equal("dalian_plant", layouts.Single(l => l.Name == "dalian_mayhem6").Map);
+            layouts.RemoveAll(l => l.Name == "dalian_mayhem6");
             Assert.All(layouts, l => Assert.Equal("dalian_2_v_2", l.Map));
             Assert.Equal(new[] { "Ramps", "Towers", "towers (old)" }, layouts.Select(l => l.Name).Order(StringComparer.Ordinal));
         }

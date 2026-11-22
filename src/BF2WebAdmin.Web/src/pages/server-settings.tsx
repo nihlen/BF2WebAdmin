@@ -1,6 +1,6 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
-import { Check, ChevronDown, ChevronRight, CircleCheck, Eye, EyeOff, KeyRound, Plus, Settings2, Sparkles } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, ChevronRight, CircleCheck, Eye, EyeOff, KeyRound, Plus, Settings2, Sparkles } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, errorMessage, type ServerSettings } from '@/api/client'
@@ -9,7 +9,10 @@ import { CopyButton } from '@/components/copy-button'
 import { ConfigLinesDisclosure, ConnectLines, NewServerConnect } from '@/components/server/connect-guide'
 import { ConnectionTestResults } from '@/components/server/connection-test'
 import { useServerPage } from '@/components/server/server-context'
-import { SetupChecklist } from '@/components/setup-checklist'
+import { ModulesForm } from '@/components/group/modules-form'
+import { PlayerAuthList } from '@/components/group/player-auth-list'
+import { SetupChecklist, SetupStepsSection } from '@/components/setup-checklist'
+import { Chip, Segmented } from '@/components/toggles'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,13 +24,15 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { playerAuthQuery } from '@/hooks/use-server-actions'
 import { useServers } from '@/hooks/use-servers'
+import { groupKind, isRecommended, type ServerKind } from '@/lib/modules'
 import { encodeServerId } from '@/lib/server-id'
 import { cn } from '@/lib/utils'
 
@@ -57,42 +62,64 @@ function generateKey() {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+const addSteps = ['Server', 'Connect', 'Modules', 'Admins', 'Done'] as const
+type AddStep = (typeof addSteps)[number]
+
 /**
- * Adding a server in two steps: its details, then connecting the game server. The second step is a state of this page,
- * not a page of its own: it needs the key the form just generated, which it has here without fetching it again. When
- * the owner leaves, the server's Live tab shows the same connect card until the server connects.
+ * Adding a server, in the steps the setup checklist names: its details, connecting the game server, its group's modules
+ * and a first admin, then where to go. The steps after the first are states of this page, not pages of their own: the
+ * connect step needs the key the form just generated, which it has here without fetching it again. Connecting can be
+ * skipped (the modules and admins do not need it), and so can the modules and admins. The Discord bot stays in the
+ * server's settings: it is optional. When the owner leaves, the server's Live tab shows the connect card until the
+ * server connects.
  */
 export function ServerAddPage() {
   // The key is generated when the page opens, so the owner has nothing to make up
   const [initial] = useState<ServerSettings>(() => ({ ...newServer, adminKey: generateKey() }))
   const [added, setAdded] = useState<ServerSettings | null>(null)
+  const [step, setStep] = useState<AddStep>('Server')
+
+  const intro: Record<AddStep, string> = {
+    Server: 'A game server that runs OpenBF2 with the server extension. After you add it here, the next step gives the lines for its configuration.',
+    Connect: 'The server is saved. Now the game server needs these lines to connect to this WebAdmin; it does so by itself once it has them.',
+    Modules: `The modules are what the server runs: the chat commands, game modes and tools. They are set for group ${added?.serverGroup}, so every server in it runs the same ones.`,
+    Admins: `Admin levels decide who may run which chat commands, on every server in group ${added?.serverGroup}. Add yourself first, by your player hash.`,
+    Done: 'The server is set up. You can change all of this later.',
+  }
 
   return (
     <div className="space-y-6">
       <title>BF2 Web Admin - Add server</title>
       <div className="space-y-3">
         <h1 className="text-3xl font-semibold">Add a server</h1>
-        <AddSteps current={added ? 2 : 1} />
-        <p className="max-w-3xl text-muted-foreground">
-          {added
-            ? 'The server is saved. Now the game server needs these lines to connect to this WebAdmin; it does so by itself once it has them.'
-            : 'A game server that runs OpenBF2 with the server extension. After you add it here, the next step gives the lines for its configuration.'}
-        </p>
+        <AddSteps current={addSteps.indexOf(step) + 1} />
+        <p className="max-w-3xl text-muted-foreground">{intro[step]}</p>
       </div>
-      {added ? (
-        <NewServerConnect serverId={added.serverId} address={`${added.ipAddress}:${added.gamePort}`} adminKey={added.adminKey} />
+      {!added ? (
+        <ServerSettingsForm
+          initial={initial}
+          onCreated={(settings) => {
+            setAdded(settings)
+            setStep('Connect')
+          }}
+        />
+      ) : step === 'Connect' ? (
+        <NewServerConnect serverId={added.serverId} address={`${added.ipAddress}:${added.gamePort}`} adminKey={added.adminKey} onContinue={() => setStep('Modules')} />
+      ) : step === 'Modules' ? (
+        <AddModulesStep added={added} onContinue={() => setStep('Admins')} />
+      ) : step === 'Admins' ? (
+        <AddAdminsStep serverGroup={added.serverGroup} onContinue={() => setStep('Done')} />
       ) : (
-        <ServerSettingsForm initial={initial} onCreated={setAdded} />
+        <AddDoneStep added={added} />
       )}
     </div>
   )
 }
 
-function AddSteps({ current }: { current: 1 | 2 }) {
-  const steps = ['Server', 'Connect']
+function AddSteps({ current }: { current: number }) {
   return (
-    <ol className="flex flex-wrap items-center gap-2 text-sm" aria-label="Steps">
-      {steps.map((label, i) => {
+    <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" aria-label="Steps">
+      {addSteps.map((label, i) => {
         const n = i + 1
         const done = n < current
         return (
@@ -107,7 +134,8 @@ function AddSteps({ current }: { current: 1 | 2 }) {
             >
               {done ? <Check className="size-3.5" aria-label="Done" /> : n}
             </span>
-            <span className={cn(n === current ? 'font-medium' : 'text-muted-foreground')}>{label}</span>
+            {/* On a phone only the current step is named, so the five fit on a line or two */}
+            <span className={cn(n === current ? 'font-medium' : 'text-muted-foreground max-sm:sr-only')}>{label}</span>
           </li>
         )
       })}
@@ -115,16 +143,143 @@ function AddSteps({ current }: { current: 1 | 2 }) {
   )
 }
 
+const kindOptions = [
+  { value: '2v2', label: '2v2 helicopter' },
+  { value: 'public', label: 'Public' },
+  { value: 'other', label: 'Something else' },
+] as const
+
+/**
+ * Step 3: the group's modules. A group that already has its modules shows them as they are, since a change here changes
+ * its other servers too. A new group starts from the modules usually run by its kind of server, which the owner picks
+ * (guessed from the group's name or the server's map): all but the Discord bot, which needs a token from the server's
+ * settings first.
+ */
+function AddModulesStep({ added, onContinue }: { added: ServerSettings; onContinue: () => void }) {
+  const serverGroup = added.serverGroup
+  const servers = useServers()
+  const groupModules = api.useQuery('get', '/api/server-groups/{serverGroup}/modules', { params: { path: { serverGroup } } })
+  const defaultModules = api.useQuery('get', '/api/server-groups/{serverGroup}/modules', { params: { path: { serverGroup: defaultGroup } } })
+  const allModules = api.useQuery('get', '/api/modules')
+  const groupServers = (servers.data ?? []).filter((s) => s.serverGroup === serverGroup)
+  const isNewGroup = !groupServers.some((s) => s.id !== added.serverId)
+  const [kind, setKind] = useState<ServerKind | 'other'>(() => (/2v2/i.test(serverGroup) ? '2v2' : (groupKind(groupServers, []) ?? 'other')))
+
+  if (serverGroup === defaultGroup)
+    return (
+      <Card className="max-w-3xl">
+        <CardHeader>
+          <CardTitle className="text-lg">The default group</CardTitle>
+          <CardDescription>The default group runs the base modules only, and they cannot be changed. Give the server a group of its own in its settings to choose them.</CardDescription>
+        </CardHeader>
+        <CardFooter>
+          <Button onClick={onContinue}>
+            Continue
+            <ArrowRight data-icon="inline-end" />
+          </Button>
+        </CardFooter>
+      </Card>
+    )
+  if (!groupModules.data || !defaultModules.data || !allModules.data) return <Skeleton className="h-96 max-w-3xl" />
+  const recommended = kind === 'other' ? [] : allModules.data.filter((m) => m !== 'DiscordModule' && isRecommended(m, kind))
+
+  return (
+    <div className="max-w-3xl space-y-4">
+      <h2 className="text-xl font-semibold">Modules of group {serverGroup}</h2>
+      {isNewGroup ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+          <span className="font-medium">What kind of server is it?</span>
+          <Segmented label="Kind of server" options={kindOptions} value={kind} onChange={setKind} />
+          <span className="w-full text-muted-foreground">
+            {kind === 'other' ? 'Tick the modules it needs.' : `The modules a ${kindOptions.find((k) => k.value === kind)?.label.toLowerCase()} server usually runs are ticked. The Discord bot comes later, with its token in the server's settings.`}
+          </span>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Group {serverGroup} already has its modules. A change here changes them on its other {groupServers.length - 1 === 1 ? 'server' : 'servers'} too.
+        </p>
+      )}
+      <ModulesForm
+        // A new kind starts the ticks over
+        key={kind}
+        serverGroup={serverGroup}
+        active={groupModules.data}
+        defaults={defaultModules.data}
+        all={allModules.data}
+        servers={servers.data ?? []}
+        initialSelected={isNewGroup ? [...new Set([...groupModules.data, ...recommended])] : undefined}
+        onContinue={onContinue}
+      />
+    </div>
+  )
+}
+
+/** Step 4: the group's admin levels, with what each level may do, to add the first admin by hash. */
+function AddAdminsStep({ serverGroup, onContinue }: { serverGroup: string; onContinue: () => void }) {
+  const auth = useQuery(playerAuthQuery(serverGroup))
+  const any = (auth.data?.length ?? 0) > 0
+  return (
+    <div className="max-w-3xl space-y-4">
+      <h2 className="text-xl font-semibold">Admins of group {serverGroup}</h2>
+      <PlayerAuthList serverGroup={serverGroup} />
+      <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+        <Button variant={any ? 'default' : 'outline'} onClick={onContinue}>
+          {any ? 'Continue' : 'Skip for now'}
+          {any && <ArrowRight data-icon="inline-end" />}
+        </Button>
+        <span className="text-sm text-muted-foreground">{any ? `${auth.data?.length} ${auth.data?.length === 1 ? 'player has' : 'players have'} a level in group ${serverGroup}.` : 'A player can also be given a level later, from their menu on the server page.'}</span>
+      </div>
+    </div>
+  )
+}
+
+/** The end of the flow: where the setup stands, the optional Discord bot, and the way to the server. */
+function AddDoneStep({ added }: { added: ServerSettings }) {
+  const server = useServers().data?.find((s) => s.id === added.serverId)
+  const params = { serverId: encodeServerId(added.serverId) }
+  return (
+    <Card className="max-w-3xl">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <CircleCheck className="size-5 shrink-0 text-emerald-500" />
+          {server?.name ?? added.serverId} is added
+        </CardTitle>
+        <CardDescription>
+          {server?.socketState === 'Connected' ? 'It is connected and runs the modules of its group.' : 'It connects by itself once the game server has the lines from step 2; its Live tab shows them until then.'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        {server && <SetupStepsSection server={server} />}
+        <p className="text-muted-foreground">
+          <span className="font-medium text-foreground">Discord bot (optional):</span> a bot token and channels, for the game in Discord and admin commands from
+          there, are in the{' '}
+          <Link to="/server/$serverId/edit" params={params} className="font-medium text-foreground underline-offset-4 hover:underline">
+            server's settings
+          </Link>
+          .
+        </p>
+      </CardContent>
+      <CardFooter className="gap-2">
+        <Button nativeButton={false} render={<Link to="/server/$serverId" params={params} />}>
+          Go to the server
+          <ArrowRight data-icon="inline-end" />
+        </Button>
+      </CardFooter>
+    </Card>
+  )
+}
+
 /** The Settings tab of a server. */
 export function ServerEditPage() {
   const { serverId } = useServerPage()
   const settings = api.useQuery('get', '/api/servers/{serverId}/settings', { params: { path: { serverId } } })
+  const [version, setVersion] = useState(0)
 
   return (
     <div className="space-y-6">
       {settings.isPending && <Skeleton className="h-96 max-w-2xl" />}
       {settings.isError && <p className="text-destructive">{errorMessage(settings.error)}</p>}
-      {settings.data && <ServerSettingsForm key={serverId} initial={settings.data} serverId={serverId} />}
+      {settings.data && <ServerSettingsForm key={`${serverId}#${version}`} initial={settings.data} serverId={serverId} onDiscard={() => setVersion((v) => v + 1)} />}
     </div>
   )
 }
@@ -135,7 +290,18 @@ type FieldName = 'serverGroup' | 'ipAddress' | 'gamePort' | 'queryPort' | 'admin
  * The settings of a new server (no serverId) or an existing one, whose address and game port are fixed. A new one is
  * handed to onCreated once saved, for the connect step.
  */
-function ServerSettingsForm({ initial, serverId, onCreated }: { initial: ServerSettings; serverId?: string; onCreated?: (settings: ServerSettings) => void }) {
+function ServerSettingsForm({
+  initial,
+  serverId,
+  onCreated,
+  onDiscard,
+}: {
+  initial: ServerSettings
+  serverId?: string
+  onCreated?: (settings: ServerSettings) => void
+  /** Starts the form over from the saved settings (a new key remounts it, so the secret fields close again too) */
+  onDiscard?: () => void
+}) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [form, setForm] = useState(initial)
@@ -304,9 +470,26 @@ function ServerSettingsForm({ initial, serverId, onCreated }: { initial: ServerS
 
         <OptionalSection form={form} initial={initial} set={set} />
 
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {/* At the bottom of the window while the form is longer than it, so Save is in reach from every field; on a
+            server's Settings tab on a phone, above the bottom tab bar */}
+        <div
+          role="region"
+          aria-label="Save or cancel"
+          className={cn(
+            'sticky bottom-4 z-10 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur supports-backdrop-filter:bg-background/80',
+            serverId && 'max-md:bottom-[calc(4.25rem+env(safe-area-inset-bottom))]',
+          )}
+        >
           <Button type="submit" disabled={saving || (!!serverId && !dirty)}>
             {serverId ? 'Save changes' : 'Add server'}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={saving || (!!serverId && !dirty)}
+            onClick={() => (serverId ? onDiscard?.() : void navigate({ to: '/' }))}
+          >
+            {serverId ? 'Discard' : 'Cancel'}
           </Button>
           <Button type="button" variant="outline" disabled={test.isPending} onClick={() => test.mutate({ body: toDto() })}>
             Test connection
@@ -493,9 +676,9 @@ function GroupPicker({ value, onChange, onBlur, invalid }: { value: string; onCh
           <div className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
             Suggested:
             {suggestedGroups.map((name) => (
-              <Button key={name} type="button" variant={value === name ? 'secondary' : 'outline'} size="xs" aria-pressed={value === name} onClick={() => onChange(name)}>
+              <Chip key={name} pressed={value === name} onClick={() => onChange(name)}>
                 {name}
-              </Button>
+              </Chip>
             ))}
           </div>
         )}

@@ -8,6 +8,7 @@ import { teamTextColor } from '@/lib/teams'
 import { cn } from '@/lib/utils'
 import { LogList, Time } from './log-list'
 
+/** The chat log and the box under it, as one piece (the map builder's chat column). */
 export function ChatPanel({
   chatLog,
   players,
@@ -27,16 +28,35 @@ export function ChatPanel({
   onPlayer?: (player: Player) => void
   /** Opens the command palette from a button beside the box */
   onCommands?: () => void
-  /** The list's size: a fixed height on the server page, the rest of a column in the map builder */
+  /** The list's size: a fixed height, or the rest of a column */
   listClassName?: string
 }) {
   return (
     <>
-      <LogList className={listClassName} items={chatLog} itemKey={(entry) => entry.message.id} empty="No chat yet.">
-        {(entry) => <ChatLine key={entry.message.id} entry={entry} players={players} teams={teams} onPlayer={onPlayer} />}
-      </LogList>
+      <ChatLog chatLog={chatLog} players={players} teams={teams} onPlayer={onPlayer} className={listClassName} />
       <ChatInput players={players} commands={commands} onSend={onSend} onCommands={onCommands} />
     </>
+  )
+}
+
+/** The chat lines, scrolling, kept at the bottom while new lines arrive. */
+export function ChatLog({
+  chatLog,
+  players,
+  teams,
+  onPlayer,
+  className,
+}: {
+  chatLog: ChatLogEntry[]
+  players: Player[]
+  teams: Team[]
+  onPlayer?: (player: Player) => void
+  className?: string
+}) {
+  return (
+    <LogList className={className} items={chatLog} itemKey={(entry) => entry.message.id} empty="No chat yet.">
+      {(entry) => <ChatLine key={entry.message.id} entry={entry} players={players} teams={teams} onPlayer={onPlayer} />}
+    </LogList>
   )
 }
 
@@ -123,16 +143,18 @@ function suggest(text: string, players: Player[], commands: CommandInfo[]): Sugg
 const chatHelp = 'A message is said in game. ".command" runs a chat command, "!command" an admin command, and "!" with a console line runs it on the server. ↑ and ↓ go through what you sent, Tab completes commands and player names.'
 
 /** One line: chat, ".command" or "!command" (an admin command or a console line). Up and down go through what was sent; Tab takes the selected suggestion. */
-function ChatInput({
+export function ChatInput({
   players,
   commands,
   onSend,
   onCommands,
+  className,
 }: {
   players: Player[]
   commands: CommandInfo[]
   onSend: (message: string) => void
   onCommands?: () => void
+  className?: string
 }) {
   const helpId = useId()
   const [text, setText] = useState('')
@@ -158,7 +180,7 @@ function ChatInput({
 
   return (
     <form
-      className="relative flex gap-2 border-t p-2"
+      className={cn('relative flex gap-2 border-t p-2', className)}
       onSubmit={(e) => {
         e.preventDefault()
         if (!text.trim()) return

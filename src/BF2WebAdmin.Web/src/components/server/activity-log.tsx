@@ -7,6 +7,7 @@ import { RelativeTime } from '@/components/relative-time'
 import { Button } from '@/components/ui/button'
 import { commandLogQuery } from '@/hooks/use-server-live'
 import { formatTime } from '@/lib/format'
+import { Chip } from '@/components/toggles'
 import { cn } from '@/lib/utils'
 
 type Category = 'web' | 'chat' | 'kills' | 'joins' | 'rounds' | 'other'
@@ -99,13 +100,13 @@ export function ActivityLog({ serverId, events, players, onPlayer }: { serverId:
   return (
     <div className="space-y-3">
       <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5 px-4">
-        <Chip pressed={selected.size === 0} onClick={() => setSelected(new Set())} count={items.length}>
+        <FilterChip pressed={selected.size === 0} onClick={() => setSelected(new Set())} count={items.length}>
           All
-        </Chip>
+        </FilterChip>
         {chips.map((f) => (
-          <Chip key={f.id} pressed={selected.has(f.id)} onClick={() => toggle(f.id)} count={counts.get(f.id) ?? 0} title={f.hint} destructive={f.id === 'failures'}>
+          <FilterChip key={f.id} pressed={selected.has(f.id)} onClick={() => toggle(f.id)} count={counts.get(f.id) ?? 0} title={f.hint} destructive={f.id === 'failures'}>
             {f.label}
-          </Chip>
+          </FilterChip>
         ))}
       </div>
 
@@ -142,7 +143,7 @@ function useMinuteTick() {
   }, [])
 }
 
-function Chip({
+function FilterChip({
   pressed,
   onClick,
   count,
@@ -158,20 +159,10 @@ function Chip({
   children: React.ReactNode
 }) {
   return (
-    <button
-      type="button"
-      aria-pressed={pressed}
-      title={title}
-      onClick={onClick}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
-        pressed ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted',
-        pressed && destructive && 'border-destructive bg-destructive text-white',
-      )}
-    >
+    <Chip pressed={pressed} title={title} onClick={onClick} className={cn(pressed && destructive && 'border-destructive bg-destructive text-white')}>
       {children}
       <span className={cn('tabular-nums', !pressed && 'text-muted-foreground')}>{count}</span>
-    </button>
+    </Chip>
   )
 }
 

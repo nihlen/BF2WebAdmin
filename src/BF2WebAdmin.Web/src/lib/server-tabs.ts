@@ -1,4 +1,4 @@
-import { Ban, Box, Hammer, HeartPulse, History, Radio, Settings } from 'lucide-react'
+import { Ban, Box, Hammer, HeartPulse, History, Layers, Radio, Settings } from 'lucide-react'
 
 /**
  * A server's pages, in the order of the desktop tab bar; the breadcrumb names the open one from here as well. The
@@ -11,5 +11,6 @@ export const serverTabs = [
   { to: '/server/$serverId/activity', label: 'Activity', short: 'Activity', icon: History, phone: false },
   { to: '/server/$serverId/viewer', label: '3D viewer', short: '3D', icon: Box, phone: true },
   { to: '/server/$serverId/builder', label: 'Map builder', short: 'Builder', icon: Hammer, phone: true },
+  { to: '/server/$serverId/group', label: 'Group', short: 'Group', icon: Layers, phone: false },
   { to: '/server/$serverId/edit', label: 'Settings', short: 'Settings', icon: Settings, phone: false },
 ] as const

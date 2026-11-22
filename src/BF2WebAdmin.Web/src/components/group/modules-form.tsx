@@ -35,6 +35,9 @@ function commandSources(servers: Server[], serverGroup: string) {
  * kind usually runs (2v2 or public, when the page can tell from its servers and modules). A filter finds a module by
  * its name, description or a command. Saving keeps the change for the next reload; Save and reload restarts the modules
  * on the group's servers.
+ *
+ * In the add server flow (onContinue) it starts from the given selection, and its bar is always there with the step's
+ * own buttons: Save and continue (or Continue without changes) and Skip for now.
  */
 export function ModulesForm({
   serverGroup,
@@ -42,6 +45,8 @@ export function ModulesForm({
   defaults,
   all,
   servers,
+  initialSelected,
+  onContinue,
 }: {
   serverGroup: string
   active: string[]
@@ -49,9 +54,13 @@ export function ModulesForm({
   all: string[]
   /** Every server, for the command lists; the group's own are those with this serverGroup */
   servers: Server[]
+  /** The ticked modules to start from, when not the saved ones (the recommended ones for a new group) */
+  initialSelected?: string[]
+  /** The next step of the add server flow, after saving or skipping */
+  onContinue?: () => void
 }) {
   const queryClient = useQueryClient()
-  const [selected, setSelected] = useState(() => new Set(active))
+  const [selected, setSelected] = useState(() => new Set(initialSelected ?? active))
   const [filter, setFilter] = useState('')
   const readOnly = serverGroup === defaultGroup
   const params = { path: { serverGroup } }
@@ -110,6 +119,21 @@ export function ModulesForm({
     }
   }
 
+  // In the add flow: saved, then reloaded where a server of the group is connected (an offline one loads them when it
+  // connects), then the next step
+  const saveAndContinue = async () => {
+    try {
+      if (dirty) {
+        await save.mutateAsync({ params, body: [...selected] })
+        if (groupServers.some((s) => s.socketState === 'Connected')) await reload.mutateAsync({ params })
+        toast.success('The modules are saved')
+      }
+      onContinue?.()
+    } catch {
+      // The mutation cache shows the error
+    }
+  }
+
   const toggle = (name: string, checked: boolean) => {
     toggled.current = name
     setSelected((s) => {
@@ -133,7 +157,7 @@ export function ModulesForm({
 
   return (
     <div className="space-y-4">
-      {readOnly ? (
+      {onContinue ? null : readOnly ? (
         <p className="text-muted-foreground">
           The default group runs the base modules and cannot be changed. To choose modules, give the server a group of its own in its settings.
         </p>
@@ -217,8 +241,28 @@ export function ModulesForm({
         </CardContent>
       </Card>
 
+      {onContinue && (
+        <div
+          role="region"
+          aria-label="Modules step"
+          className="sticky bottom-4 z-10 flex flex-wrap items-center gap-2 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur supports-backdrop-filter:bg-background/80"
+        >
+          <span className="w-full text-sm font-medium sm:mr-auto sm:w-auto">
+            {dirty ? `${selected.size} ${selected.size === 1 ? 'module' : 'modules'} ticked, not saved yet` : 'No changes'}
+          </span>
+          <div className="ml-auto flex gap-2">
+            <Button variant="ghost" size="sm" disabled={busy} onClick={onContinue}>
+              Skip for now
+            </Button>
+            <Button size="sm" disabled={busy} onClick={() => void saveAndContinue()}>
+              {dirty ? 'Save and continue' : 'Continue'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* While there are changes, the bar stays at the bottom of the window, so Save is in reach from anywhere in the list */}
-      {dirty && (
+      {dirty && !onContinue && (
         <div
           role="region"
           aria-label="Unsaved module changes"

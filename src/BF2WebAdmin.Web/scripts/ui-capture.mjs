@@ -113,6 +113,30 @@ const addedServerConnects = async (page, log) =>
     await page.waitForTimeout(400)
   })
 
+/** Opens the header's round menu (the split button's chevron, since r06) and picks an item from it */
+const roundMenuItem = (name, label) => async (page, log) =>
+  tryStep(log, label, async () => {
+    await page.getByRole('button', { name: /^More round actions/ }).first().click({ timeout: 4000 })
+    await page.waitForTimeout(400)
+    await page.getByRole('menuitem', { name }).first().click({ timeout: 4000 })
+    await page.waitForTimeout(600)
+  })
+
+/** On a phone, opens Live's Players view (since r06 Live opens on the chat there); on desktop the teams are always shown */
+const playersView = async (page, log) =>
+  tryStep(log, 'open the players view', async () => {
+    const players = page.getByRole('tab', { name: /^Players/ })
+    if (await players.count()) await players.click({ timeout: 4000 })
+    await page.waitForTimeout(300)
+  })
+
+/** Presses a button of the add server flow and waits for the next step's heading text */
+const addFlowStep = (button, label) => async (page, log) =>
+  tryStep(log, label, async () => {
+    await page.getByRole('button', { name: button }).last().click({ timeout: 4000 })
+    await page.waitForTimeout(800)
+  })
+
 /** The shots: name, path, scenario (ui-fixture cookie), viewports, and the steps to the state */
 const shots = [
   { name: 'login', path: '/login', scenario: 'loggedout', viewports: ['desktop', 'phone'] },
@@ -146,6 +170,24 @@ const shots = [
   { name: 'server-add-connect', path: '/server/add', viewports: ['desktop', 'phone'], steps: [addServer] },
   // ... which turns into the connected state when the hub reports the new server (the fake hub sends it)
   { name: 'server-add-connected', path: '/server/add', viewports: ['desktop', 'phone'], steps: [addServer, addedServerConnects] },
+  // Since r06 the add flow goes on after connecting: the group's modules, a first admin, then done. In the 2v2 group,
+  // which has its modules and admins already
+  { name: 'server-add-modules', path: '/server/add', viewports: ['desktop', 'phone'], steps: [addServer, addedServerConnects, addFlowStep(/^Continue: modules/, 'continue to modules')] },
+  {
+    name: 'server-add-admins',
+    path: '/server/add',
+    viewports: ['desktop', 'phone'],
+    steps: [addServer, addedServerConnects, addFlowStep(/^Continue: modules/, 'continue to modules'), addFlowStep(/^Continue$/, 'continue to admins')],
+  },
+  {
+    name: 'server-add-done',
+    path: '/server/add',
+    viewports: ['desktop'],
+    steps: [addServer, addedServerConnects, addFlowStep(/^Continue: modules/, 'continue to modules'), addFlowStep(/^Continue$/, 'continue to admins'), addFlowStep(/^Continue$/, 'continue to done')],
+  },
+  // The first server, in a new group, with connecting skipped: the modules step asks for the kind of server and ticks
+  // the modules it usually runs
+  { name: 'server-add-modules-new-group', path: '/server/add', scenario: 'empty', viewports: ['desktop'], steps: [addServer, addFlowStep(/^Skip for now$/, 'skip connecting')] },
   { name: 'server-edit', path: `${heli1}/edit`, viewports: ['desktop'] },
   { name: 'server-group', path: '/servergroup/2v2', viewports: ['desktop', 'phone'] },
   // The unsaved-changes bar sticks to the window's bottom, so the shot is of the screen
@@ -203,7 +245,8 @@ const shots = [
   },
   { name: 'server', path: heli1, viewports: ['desktop', 'phone'] },
   // Since r03 the maps are a dialog; since r04 "Change map…" is a button of its own in the header
-  { name: 'server-tab-maps', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Change map/, 'change map')] },
+  // Since r06 "Change map…" is in the Restart round split button's menu
+  { name: 'server-tab-maps', path: heli1, viewports: ['desktop'], overlay: true, steps: [roundMenuItem(/^Change map/, 'change map')] },
   // Since r03 the commands are a palette, opened by Commands beside the chat box (or Ctrl+K)
   { name: 'server-tab-commands', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Commands$/, 'open commands')] },
   // Since r04: the selected command's arguments beside the list, a player argument with the online players to pick
@@ -232,6 +275,8 @@ const shots = [
     path: heli1,
     viewports: ['desktop', 'phone'],
     steps: [
+      // Since r06 a phone opens Live on the chat view: the Players view keeps the new lines out of sight
+      playersView,
       async (page, log) =>
         tryStep(log, 'scroll the chat up', async () => {
           const chatLog = page.locator('h2:text-is("Chat") + ul')
@@ -276,8 +321,12 @@ const shots = [
   // one menu button beside the name
   { name: 'server-round-menu', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton('Server actions', 'server menu')] },
   // Since r05: away from Live the round actions are one labelled Round menu
-  { name: 'server-round-tab-menu', path: `${heli1}/health`, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Round/, 'round menu')] },
-  { name: 'server-actions', path: heli1, viewports: ['phone'], overlay: true, steps: [clickButton('Round and server actions', 'actions menu')] },
+  // Since r06 every tab has the same round actions: Restart round… with Pause and Change map… in its split menu
+  { name: 'server-round-tab-menu', path: `${heli1}/health`, viewports: ['desktop'], overlay: true, steps: [clickButton(/^More round actions/, 'round menu')] },
+  // Since r06 a phone has the same header actions as desktop; this opens the round menu
+  { name: 'server-actions', path: heli1, viewports: ['phone'], overlay: true, steps: [clickButton(/^More round actions/, 'round menu')] },
+  // Since r06: the group's modules and admin levels as a tab of the server
+  { name: 'server-tab-group', path: `${heli1}/group`, viewports: ['desktop', 'phone'] },
   // Bans, activity and health are pages of their own under the server's tab bar since r01
   { name: 'server-tab-bans', path: `${heli1}/bans`, viewports: ['desktop', 'phone'] },
   // Since r03: the search field over names, hashes, addresses and reasons
@@ -328,6 +377,7 @@ const shots = [
     viewports: ['desktop', 'phone'],
     overlay: true,
     steps: [
+      playersView,
       async (page, log) =>
         tryStep(log, 'open player Kestrel', async () => {
           await page.getByText('Kestrel', { exact: true }).first().click({ timeout: 4000 })
@@ -355,6 +405,7 @@ const shots = [
     viewports: ['desktop', 'phone'],
     overlay: true,
     steps: [
+      playersView,
       clickButton('Actions for mr.Hellcat', 'player menu'),
       async (page, log) =>
         tryStep(log, 'ban with a reason and a length', async () => {

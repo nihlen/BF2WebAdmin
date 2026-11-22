@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Chip } from '@/components/toggles'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { ServerActions } from '@/hooks/use-server-actions'
 import { authLevelName } from '@/lib/auth-levels'
@@ -283,16 +284,9 @@ function CommandForm({
               {isPlayerArgument(parameter) && players.length > 0 && (
                 <div className="flex flex-wrap gap-1" role="group" aria-label={`Online players for ${parameter}`}>
                   {players.slice(0, 12).map((p) => (
-                    <Button
-                      key={p.index}
-                      type="button"
-                      variant={values[i] === p.name ? 'secondary' : 'outline'}
-                      size="xs"
-                      aria-pressed={values[i] === p.name}
-                      onClick={() => setValue(i, p.name)}
-                    >
+                    <Chip key={p.index} pressed={values[i] === p.name} onClick={() => setValue(i, p.name)}>
                       {p.name}
-                    </Button>
+                    </Chip>
                   ))}
                 </div>
               )}

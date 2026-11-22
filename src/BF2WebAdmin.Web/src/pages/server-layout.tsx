@@ -1,7 +1,7 @@
 import { HubConnectionState } from '@microsoft/signalr'
 import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet, useMatches, useMatchRoute } from '@tanstack/react-router'
-import { ChevronDown, ChevronUp, Copy, Ellipsis, EllipsisVertical, Loader2, Map as MapIcon, Pause, Play, Power, RotateCcw, Settings, Settings2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, Copy, Ellipsis, Loader2, Map as MapIcon, Pause, Play, Power, RotateCcw, Settings, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { errorMessage, type Server, type ServerSnapshot } from '@/api/client'
@@ -29,50 +29,55 @@ import { cn } from '@/lib/utils'
 import { serverRoute } from '@/router'
 
 /**
- * Every page of a server: one compact header (name, status and health on a line, the facts under it on desktop, the
- * round and server actions at its end), the server's pages as tabs (at the top on desktop, a bar at the bottom on a
+ * Every page of a server: one header (name, status and health on a line, the facts under it on desktop, and the same
+ * action group at its end on every tab), the server's pages as tabs (at the top on desktop, a bar at the bottom on a
  * phone), and a one-line setup reminder while a required step is open. The server's live data is subscribed here,
  * once, for as long as any of its pages is open.
  *
- * The 3D pages (route staticData.fullHeight) fill the window on desktop: the facts line goes, and on a wide screen the
- * tabs sit in the header's row.
+ * Some pages fill the window instead of scrolling, so what matters stays in view: the 3D pages (route
+ * staticData.fullHeight) on desktop, and a connected server's Live tab on desktop and phone, whose chat box would
+ * otherwise be below the fold.
  */
 export function ServerLayout() {
   const serverId = decodeServerId(serverRoute.useParams().serverId)
   const live = useServerLive(serverId)
   const servers = useServers()
   const matchRoute = useMatchRoute()
-  const compact = useMatches({ select: (matches) => matches.some((m) => m.staticData.fullHeight) })
+  const fullHeight = useMatches({ select: (matches) => matches.some((m) => m.staticData.fullHeight) })
   // The server list knows the server before its snapshot has loaded, so the header shows at once
   const server = live.snapshot.data?.server ?? servers.data?.find((s) => s.id === serverId)
   const snapshot = live.snapshot.data
   const connected = server?.socketState === 'Connected'
   const params = { serverId: encodeServerId(serverId) }
+  const onLive = !!matchRoute({ to: '/server/$serverId', params })
+  // An offline server's Live tab is the connect card, a page that scrolls
+  const liveFill = onLive && connected && !!snapshot
   // Settings has the full checklist, and an offline server's Live tab the connect card with the steps in it
-  const setupElsewhere = !!matchRoute({ to: '/server/$serverId/edit', params }) || (!connected && !!matchRoute({ to: '/server/$serverId', params }))
+  const setupElsewhere = !!matchRoute({ to: '/server/$serverId/edit', params }) || (!connected && onLive)
 
   return (
     <ServerPageContext value={{ ...live, serverId }}>
-      {/* A page with a 3D view fills the window below the header on desktop: the app bar is 3rem, the padding 3rem. On a
-          phone the page ends above the bottom tab bar */}
+      {/* A page that fills the window: the app bar is 3rem and the page's padding 2rem on a phone, 3rem from sm up. On a
+          phone the page ends above the bottom tab bar (the padding at the end) */}
       <div
         className={cn(
           'flex flex-col gap-4 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0',
-          compact && 'lg:h-[calc(100svh-6rem)] lg:min-h-[640px] lg:gap-3',
+          (fullHeight || liveFill) && 'lg:h-[calc(100svh-6rem)] lg:min-h-[640px]',
+          liveFill && 'max-md:min-h-[560px] max-sm:h-[calc(100svh-5rem)] sm:max-md:h-[calc(100svh-6rem)]',
         )}
       >
         {server && <title>{`BF2 Web Admin - ${server.name}`}</title>}
-        <div className={cn('flex flex-wrap items-center gap-x-4 gap-y-3', compact && 'xl:flex-nowrap xl:items-end xl:border-b')}>
-          {server ? <ServerHeader server={server} compact={compact} /> : <Skeleton className="h-12 flex-1" />}
-          {server && <ServerMenus server={server} snapshot={connected ? snapshot : undefined} compact={compact} />}
-          <ServerTabBar serverId={serverId} compact={compact} />
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+          {server ? <ServerHeader server={server} /> : <Skeleton className="h-12 flex-1" />}
+          {server && <ServerActions server={server} snapshot={connected ? snapshot : undefined} />}
         </div>
+        <ServerTabBar serverId={serverId} />
         {server && !setupElsewhere && <SetupStrip server={server} />}
         <HubAlert />
         {live.snapshot.isError ? (
           <p className="text-destructive">{errorMessage(live.snapshot.error)}</p>
         ) : (
-          <div className={cn('flex min-w-0 flex-col', compact && 'lg:min-h-0 lg:flex-1')}>
+          <div className={cn('flex min-w-0 flex-col', (fullHeight || liveFill) && 'lg:min-h-0 lg:flex-1', liveFill && 'max-md:min-h-0 max-md:flex-1')}>
             <Outlet />
           </div>
         )}
@@ -96,9 +101,10 @@ function HubAlert() {
 
 /**
  * The name, the status and the health on one line (the status wraps under a long name). On desktop a quiet second
- * line has the map, players, address and group; on a phone the address and group are in the header's menu.
+ * line has the map, players, address and group; on a phone the address and group are in the "⋯" menu. The health chip
+ * leads to the Health tab.
  */
-function ServerHeader({ server, compact }: { server: Server; compact: boolean }) {
+function ServerHeader({ server }: { server: Server }) {
   const { serverId } = useServerPage()
   const status = serverStatus(server)
   const connected = server.socketState === 'Connected'
@@ -107,9 +113,9 @@ function ServerHeader({ server, compact }: { server: Server; compact: boolean })
   const hasHealth = !!useQuery({ ...healthQuery(serverId), staleTime: Infinity }).data?.latest
 
   return (
-    <header className={cn('min-w-0 flex-[1_1_16rem] space-y-1', compact && 'xl:flex-[0_1_auto] xl:pb-2.5')}>
+    <header className="min-w-0 flex-[1_1_18rem] space-y-1">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-        <h1 className={cn('max-w-full truncate text-xl font-semibold sm:text-2xl', compact && 'lg:text-lg xl:max-w-72')} title={server.name}>
+        <h1 className="max-w-full truncate text-xl font-semibold sm:text-2xl" title={server.name}>
           {server.name}
         </h1>
         <span className="flex shrink-0 items-center gap-2 text-sm">
@@ -119,13 +125,19 @@ function ServerHeader({ server, compact }: { server: Server; compact: boolean })
           </span>
           {/* Problems show on every tab; the chip leads to the details */}
           {connected && hasHealth && (
-            <Link to="/server/$serverId/health" params={{ serverId: encodeServerId(serverId) }} className="rounded-full focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
+            <Link
+              to="/server/$serverId/health"
+              params={{ serverId: encodeServerId(serverId) }}
+              title="Open the Health tab"
+              className="group/health inline-flex items-center rounded-full pr-1 transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
               <HealthChip serverId={serverId} connected={connected} />
+              <ChevronRight aria-hidden className="size-3.5 text-muted-foreground group-hover/health:text-foreground" />
             </Link>
           )}
         </span>
       </div>
-      <p className={cn('hidden flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground md:flex', compact && 'lg:hidden')}>
+      <p className="hidden flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground md:flex">
         <Separated>
           {connected && server.map && <span>{server.map}</span>}
           {connected && (
@@ -147,23 +159,19 @@ function ServerHeader({ server, compact }: { server: Server; compact: boolean })
 }
 
 /**
- * The round and server actions. On desktop, Live (where the match is run) has each round action as a button of its own
- * (Restart round, Pause or Resume, Change map…); the other tabs, the 3D pages among them, have one labelled Round menu
- * with the same three, so the header stays short where the page is about something else. A "⋯" button holds the server
- * actions: Settings, Copy address, the group's settings and, apart at the end, Restart server, which disconnects
- * everyone. On a phone one menu button holds all of them. The round actions and Restart server need the connection (the
- * snapshot is given then); the rest are there while offline too. Every action shows its progress until the game
- * confirms it.
+ * The round and server actions, the same on every tab and at every width, so they are always in the same place: a
+ * split button, Restart round… with Pause or Resume and Change map… in its menu, and a "⋯" button with the server
+ * actions: Settings, Copy address, the group's page and, apart at the end, Restart server, which disconnects everyone.
+ * The round actions and Restart server need the connection (the snapshot is given then); the rest are there while
+ * offline too. Every action shows its progress until the game confirms it.
  */
-function ServerMenus({ server, snapshot, compact }: { server: Server; snapshot: ServerSnapshot | undefined; compact: boolean }) {
+function ServerActions({ server, snapshot }: { server: Server; snapshot: ServerSnapshot | undefined }) {
   const { serverId } = useServerPage()
   const actions = useServerActions(serverId, snapshot)
   const { confirm, dialog } = useConfirm()
   const pending = usePendingActions(serverId)
-  const matchRoute = useMatchRoute()
   const [mapsOpen, setMapsOpen] = useState(false)
   const params = { serverId: encodeServerId(serverId) }
-  const onLive = !!matchRoute({ to: '/server/$serverId', params })
   const address = `${server.ipAddress}:${server.gamePort}`
   const players = snapshot?.players.length ?? 0
   const paused = snapshot?.server.gameState === 'Paused'
@@ -171,7 +179,6 @@ function ServerMenus({ server, snapshot, compact }: { server: Server; snapshot: 
 
   // A key ending in a colon stands for all of its kind, such as map: for a change to any map
   const busy = (...keys: string[]) => [...pending].some((key) => keys.some((k) => (k.endsWith(':') ? key.startsWith(k) : key === k)))
-  const roundBusy = busy('restart-map', 'pause', 'next-map', 'map:')
 
   const restartRound = () =>
     confirm({
@@ -199,111 +206,69 @@ function ServerMenus({ server, snapshot, compact }: { server: Server; snapshot: 
       () => toast.error('Could not copy the address'),
     )
 
-  const roundItems = (
-    <>
-      <DropdownMenuItem disabled={busy('restart-map')} onClick={restartRound}>
-        <RotateCcw />
-        Restart round…
-      </DropdownMenuItem>
-      <DropdownMenuItem disabled={busy('pause')} onClick={() => void actions.togglePause()}>
-        {paused ? <Play /> : <Pause />}
-        {paused ? 'Resume' : 'Pause'}
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => setMapsOpen(true)}>
-        <MapIcon />
-        Change map…
-      </DropdownMenuItem>
-    </>
-  )
-  const serverItems = (
-    <>
-      <DropdownMenuItem render={<Link to="/server/$serverId/edit" params={params} />}>
-        <Settings />
-        Settings
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => void copyAddress()}>
-        <Copy />
-        Copy {address}
-      </DropdownMenuItem>
-      <DropdownMenuItem render={<Link to="/servergroup/$serverGroup" params={{ serverGroup: server.serverGroup }} />}>
-        <Settings2 />
-        Group {server.serverGroup} settings
-      </DropdownMenuItem>
-      {snapshot && (
-        <>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" disabled={busy('restart-server')} onClick={restartServer}>
-            <Power />
-            Restart server…
-          </DropdownMenuItem>
-        </>
-      )}
-    </>
-  )
-
   return (
-    <>
-      <div className={cn('hidden shrink-0 items-center gap-1.5 md:flex', compact && 'xl:order-last xl:mb-1.5')}>
-        {snapshot &&
-          (onLive ? (
-            <>
-              <Button variant="outline" disabled={busy('restart-map')} onClick={restartRound}>
-                {busy('restart-map') ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <RotateCcw data-icon="inline-start" />}
-                Restart round…
-              </Button>
-              <Button variant="outline" disabled={busy('pause')} onClick={() => void actions.togglePause()}>
-                {busy('pause') ? <Loader2 data-icon="inline-start" className="animate-spin" /> : paused ? <Play data-icon="inline-start" /> : <Pause data-icon="inline-start" />}
+    <div className="flex shrink-0 items-center gap-1.5">
+      {snapshot && (
+        <div className="flex" role="group" aria-label="Round actions">
+          <Button variant="outline" className="rounded-r-none" disabled={busy('restart-map')} onClick={restartRound}>
+            {busy('restart-map') ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <RotateCcw data-icon="inline-start" />}
+            Restart round…
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="outline" size="icon" className="-ml-px rounded-l-none" aria-label={paused ? 'More round actions: resume, change map' : 'More round actions: pause, change map'} />}
+            >
+              {busy('pause', 'next-map', 'map:') ? <Loader2 className="animate-spin" /> : <ChevronDown />}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-auto min-w-44">
+              <DropdownMenuItem disabled={busy('pause')} onClick={() => void actions.togglePause()}>
+                {paused ? <Play /> : <Pause />}
                 {paused ? 'Resume' : 'Pause'}
-              </Button>
-              <Button variant="outline" onClick={() => setMapsOpen(true)}>
-                {busy('next-map', 'map:') ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <MapIcon data-icon="inline-start" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMapsOpen(true)}>
+                <MapIcon />
                 Change map…
-              </Button>
-            </>
-          ) : (
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="outline" />}>
-                {roundBusy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : paused ? <Pause data-icon="inline-start" /> : <RotateCcw data-icon="inline-start" />}
-                {paused ? 'Round: paused' : 'Round'}
-                <ChevronDown data-icon="inline-end" className="text-muted-foreground" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-auto min-w-44">
-                {roundItems}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ))}
-        {/* Apart from the round actions, so the action that disconnects everyone is never a stray click */}
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger render={<DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label="Server actions" />} />}>
-              {busy('restart-server') ? <Loader2 className="animate-spin" /> : <Ellipsis />}
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Server actions</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="end" className="w-auto min-w-52">
-            {serverItems}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+      {/* Apart from the round actions, so the action that disconnects everyone is never a stray click */}
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="outline" size="icon" className="ml-auto self-start md:hidden" aria-label="Round and server actions" />}>
-          {roundBusy || busy('restart-server') ? <Loader2 className="animate-spin" /> : <EllipsisVertical />}
-        </DropdownMenuTrigger>
+        <Tooltip>
+          <TooltipTrigger render={<DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label="Server actions" />} />}>
+            {busy('restart-server') ? <Loader2 className="animate-spin" /> : <Ellipsis />}
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Server actions</TooltipContent>
+        </Tooltip>
         <DropdownMenuContent align="end" className="w-auto min-w-52">
+          <DropdownMenuItem render={<Link to="/server/$serverId/edit" params={params} />}>
+            <Settings />
+            Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void copyAddress()}>
+            <Copy />
+            Copy {address}
+          </DropdownMenuItem>
+          <DropdownMenuItem render={<Link to="/servergroup/$serverGroup" params={{ serverGroup: server.serverGroup }} />}>
+            <Settings2 />
+            Group {server.serverGroup} page
+          </DropdownMenuItem>
           {snapshot && (
             <>
-              {roundItems}
               <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" disabled={busy('restart-server')} onClick={restartServer}>
+                <Power />
+                Restart server…
+              </DropdownMenuItem>
             </>
           )}
-          {serverItems}
         </DropdownMenuContent>
       </DropdownMenu>
 
       {snapshot && <ChangeMapDialog open={mapsOpen} onOpenChange={setMapsOpen} serverId={serverId} snapshot={snapshot} actions={actions} />}
       {dialog}
-    </>
+    </div>
   )
 }
 
@@ -314,35 +279,28 @@ const tabClass =
   'relative flex shrink-0 items-center gap-1.5 px-2 py-2.5 sm:px-2.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:rounded-full hover:text-foreground focus-visible:rounded-md focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none data-[status=active]:text-foreground data-[status=active]:after:bg-primary [&_svg]:size-4'
 
 /**
- * The server's pages as a row of links, from md up (a phone has the bottom bar). Where the row is too narrow for all
- * seven (a desktop window with the sidebar), the first three stay and the rest are in a More menu, which shows the
- * current page's name when it is one of them. Beside the compact header on a wide screen the tabs leave out their
- * icons, so all seven fit there.
+ * The server's pages as a row of links, from md up (a phone has the bottom bar), the same on every tab. Where the row
+ * is too narrow for all of them (a desktop window with the sidebar), the first three stay and the rest are in a More
+ * menu, which shows the current page's name when it is one of them.
  */
-function ServerTabBar({ serverId, compact }: { serverId: string; compact: boolean }) {
+function ServerTabBar({ serverId }: { serverId: string }) {
   const matchRoute = useMatchRoute()
   const params = { serverId: encodeServerId(serverId) }
   const more = serverTabs.slice(alwaysShown)
   const current = more.find((tab) => matchRoute({ to: tab.to, params }))
 
   return (
-    <nav aria-label="Server pages" className={cn('@container hidden basis-full border-b md:block', compact && 'xl:min-w-0 xl:flex-1 xl:basis-auto xl:border-b-0')}>
+    <nav aria-label="Server pages" className="@container hidden border-b md:block">
       <div className="flex gap-1">
         {serverTabs.map((tab, i) => (
-          <Link
-            key={tab.to}
-            to={tab.to}
-            params={params}
-            activeOptions={{ exact: 'exact' in tab }}
-            className={cn(tabClass, i >= alwaysShown && 'hidden @2xl:flex', i >= alwaysShown && compact && 'xl:@xl:flex', compact && 'xl:[&>svg]:hidden')}
-          >
+          <Link key={tab.to} to={tab.to} params={params} activeOptions={{ exact: 'exact' in tab }} className={cn(tabClass, i >= alwaysShown && 'hidden @3xl:flex')}>
             <tab.icon />
             {tab.label}
           </Link>
         ))}
         <DropdownMenu>
           <DropdownMenuTrigger
-            className={cn(tabClass, 'cursor-pointer @2xl:hidden', compact && 'xl:@xl:hidden')}
+            className={cn(tabClass, 'cursor-pointer @3xl:hidden')}
             data-status={current ? 'active' : undefined}
             aria-label={current ? `${current.label}, more pages` : 'More pages'}
           >
@@ -369,7 +327,7 @@ const phoneTabClass =
 
 /**
  * Below md the server's pages are a bar fixed to the bottom of the screen, where a thumb reaches: Live, Health, 3D,
- * Builder, and More with Bans, Activity and Settings. While one of those is open, the More slot is named after it with a
+ * Builder, and More with Bans, Activity, Group and Settings. While one of those is open, the More slot is named after it with a
  * small chevron and lit, so the bar says where you are and the slot still reads as a menu. It keeps clear of the
  * phone's home indicator (the safe area).
  */

@@ -5,10 +5,10 @@ import type { HealthRound, Player, PlayerConnection, ServerConnections, ServerHe
 import { PlayerLink } from '@/components/server/player-link'
 import { type Band, type Series, StatusStrip, TimeChart, type TimeRange } from '@/components/server/health-charts'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Segmented } from '@/components/toggles'
 import { healthConnectionsQuery, healthMinutes, healthQuery, healthRoundsQuery } from '@/hooks/use-server-live'
 import { clock, connectionReasonsText, currentConnections, ms, overallHealth, reasonsText, sentence, statusColors, statusHelp, statusLabels } from '@/lib/health'
 import { nearestIndex } from '@/lib/nearest-index'
@@ -175,19 +175,7 @@ export function HealthPanel({
           <CardHeader>
             <CardTitle>History</CardTitle>
             <CardAction>
-              <div className="flex items-center gap-1" role="group" aria-label="Part of the history">
-                {ranges.map((r) => (
-                  <Button
-                    key={r.minutes}
-                    size="xs"
-                    variant={minutes === r.minutes ? 'secondary' : 'ghost'}
-                    aria-pressed={minutes === r.minutes}
-                    onClick={() => setMinutes(r.minutes)}
-                  >
-                    {r.label}
-                  </Button>
-                ))}
-              </div>
+              <Segmented label="Part of the history" options={ranges.map((r) => ({ value: r.minutes, label: r.label }))} value={minutes} onChange={setMinutes} />
             </CardAction>
           </CardHeader>
           <CardContent className="space-y-4">

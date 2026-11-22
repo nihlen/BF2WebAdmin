@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { Player } from '@/api/client'
 import type { PlayerPosition } from '@/hooks/use-server-live'
 import { teamCanvasColor } from '@/lib/teams'
+import { cn } from '@/lib/utils'
 
 const minimapUrl = (map: string) => `https://static.nihlen.net/bf2/minimaps/${map.toLowerCase()}.png`
 const zoomStep = 0.2
@@ -18,10 +19,13 @@ export function ServerMap({
   map,
   players,
   positions,
+  className = 'h-[600px]',
 }: {
   map: string | null
   players: Player[]
   positions: React.RefObject<Map<number, PlayerPosition>>
+  /** The map's size: a fixed height, or the rest of a column */
+  className?: string
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -84,7 +88,7 @@ export function ServerMap({
   const drag = useRef<{ x: number; y: number } | null>(null)
 
   return (
-    <div ref={containerRef} className="h-[600px] overflow-hidden rounded-xl border bg-card">
+    <div ref={containerRef} className={cn('overflow-hidden rounded-xl border bg-card', className)}>
       <canvas
         ref={canvasRef}
         className="cursor-grab active:cursor-grabbing"

@@ -125,9 +125,10 @@ function Waiting({ address }: { address: string }) {
 /**
  * The connected state: where to go now, and where the setup stands. A server added to a group that has its modules and
  * admins already has those steps done, so the done ones are named with the reason; "every step is done" only shows
- * when the optional ones are done too, and an open optional step stays listed as optional.
+ * when the optional ones are done too, and an open optional step stays listed as optional. In the add flow (inFlow)
+ * the flow's next steps follow instead, so only what is done shows.
  */
-function Connected({ server }: { server: Server }) {
+function Connected({ server, inFlow }: { server: Server; inFlow?: boolean }) {
   const steps = useSetupSteps(server)
   const next = steps && setupProgress(steps).next
   const optional = steps?.filter((s) => s.optional && !s.done) ?? []
@@ -151,7 +152,7 @@ function Connected({ server }: { server: Server }) {
             ))}
         </ul>
       )}
-      {next ? (
+      {inFlow ? null : next ? (
         <p className="text-muted-foreground">
           <span className="font-medium text-foreground">Next: {next.label}.</span> {next.hint} {next.link}
         </p>
@@ -163,16 +164,18 @@ function Connected({ server }: { server: Server }) {
           </p>
         )
       )}
-      {optional.map((step) => (
+      {!inFlow && optional.map((step) => (
         <p key={step.id} className="text-muted-foreground">
           <span className="font-medium text-foreground">{step.label}</span> <span className="rounded-full border px-1.5 text-[0.7rem]">Optional</span> {step.hint}{' '}
           {step.link}
         </p>
       ))}
-      <Button nativeButton={false} render={<Link to="/server/$serverId" params={{ serverId: encodeServerId(server.id) }} />}>
-        Go to server
-        <ArrowRight data-icon="inline-end" />
-      </Button>
+      {!inFlow && (
+        <Button nativeButton={false} render={<Link to="/server/$serverId" params={{ serverId: encodeServerId(server.id) }} />}>
+          Go to server
+          <ArrowRight data-icon="inline-end" />
+        </Button>
+      )}
     </div>
   )
 }
@@ -193,10 +196,11 @@ export function ConfigLinesDisclosure({ serverId, adminKey }: { serverId: string
 }
 
 /**
- * Step 2 of adding a server: the lines for the game server, then a live wait for it to connect, then where to go. The
- * new server's settings come from the form that saved them, so the generated key is in hand without another request.
+ * Step 2 of adding a server: the lines for the game server, then a live wait for it to connect, then the flow's next
+ * step (onContinue): at once when it connects, or skipped to while it waits. The new server's settings come from the
+ * form that saved them, so the generated key is in hand without another request.
  */
-export function NewServerConnect({ serverId, address, adminKey }: { serverId: string; address: string; adminKey: string | null }) {
+export function NewServerConnect({ serverId, address, adminKey, onContinue }: { serverId: string; address: string; adminKey: string | null; onContinue: () => void }) {
   const server = useServers().data?.find((s) => s.id === serverId)
   const connected = server?.socketState === 'Connected'
 
@@ -207,19 +211,29 @@ export function NewServerConnect({ serverId, address, adminKey }: { serverId: st
         <CardDescription>The game server dials WebAdmin with these lines; nothing connects to the game server.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {connected && server ? <Connected server={server} /> : <Waiting address={address} />}
+        {connected && server ? <Connected server={server} inFlow /> : <Waiting address={address} />}
         {connected ? <ConfigLinesDisclosure serverId={serverId} adminKey={adminKey} /> : <ConnectLines serverId={serverId} adminKey={adminKey} />}
       </CardContent>
-      {!connected && (
-        <CardFooter className="text-sm text-muted-foreground">
-          <p>
-            You can leave this page: the server's Live tab shows these lines until it connects.{' '}
-            <Link to="/server/$serverId" params={{ serverId: encodeServerId(serverId) }} className="font-medium text-foreground underline-offset-4 hover:underline">
-              Open the server
-            </Link>
-          </p>
-        </CardFooter>
-      )}
+      <CardFooter className="flex-wrap gap-x-4 gap-y-3 text-sm text-muted-foreground">
+        {connected ? (
+          <Button onClick={onContinue}>
+            Continue: modules
+            <ArrowRight data-icon="inline-end" />
+          </Button>
+        ) : (
+          <>
+            <Button variant="outline" onClick={onContinue}>
+              Skip for now
+            </Button>
+            <p className="min-w-0 flex-[1_1_16rem]">
+              The modules and admins can be set before it connects. The server's Live tab shows these lines until it does.{' '}
+              <Link to="/server/$serverId" params={{ serverId: encodeServerId(serverId) }} className="font-medium text-foreground underline-offset-4 hover:underline">
+                Open the server
+              </Link>
+            </p>
+          </>
+        )}
+      </CardFooter>
     </Card>
   )
 }

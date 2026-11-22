@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Chip } from '@/components/toggles'
 import { banPeriods, type ServerActions } from '@/hooks/use-server-actions'
 import { cn } from '@/lib/utils'
 
@@ -119,18 +120,9 @@ function Chips({ label, options, value, onChange }: { label: string; options: { 
   return (
     <div role="group" aria-label={label} className="flex flex-wrap gap-1.5">
       {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          aria-pressed={value === o.value}
-          onClick={() => onChange(o.value)}
-          className={cn(
-            'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
-            value === o.value ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted',
-          )}
-        >
+        <Chip key={o.value} pressed={value === o.value} onClick={() => onChange(o.value)}>
           {o.label}
-        </button>
+        </Chip>
       ))}
     </div>
   )

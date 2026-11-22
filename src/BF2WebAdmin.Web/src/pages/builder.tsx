@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleHelp, Crosshair, Ellipsis, Loader2, MessageSquare, Move3d, PanelBottomOpen, RotateCw, Trash2, Undo2, X } from 'lucide-react'
+import { CircleHelp, Crosshair, Ellipsis, Loader2, MessageSquare, Move3d, PanelBottomOpen, RotateCw, Save, Trash2, Undo2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { toast } from 'sonner'
 import { api, ApiError, errorMessage, fetchClient } from '@/api/client'
@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Segmented } from '@/components/toggles'
 import { useServerActions } from '@/hooks/use-server-actions'
 import { normalizeDegrees, type Vec } from '@/builder/coords'
 import { BUILDER_CAMERA_KEYS, FLY_WHILE_LOOKING } from '@/builder/keys'
@@ -498,10 +499,17 @@ export function BuilderPage() {
     setIntroDismissed(!introDismissed)
     writeFlag(introKey, !introDismissed)
   }
+  // Saving needs a name, which the Layouts tab asks for beside the saved layouts: the button opens it (in the sheet
+  // below lg) and puts the cursor in the name
+  const openSaveLayout = () => {
+    setTab('layouts')
+    if (!wide) setPanelsOpen(true)
+    setTimeout(() => document.getElementById('layout-name')?.focus(), 100)
+  }
 
   const panels = (
     <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="flex min-h-0 flex-1 flex-col">
-      <TabsList variant="line" className="w-full justify-start">
+      <TabsList className="w-full">
         <TabsTrigger value="objects">Objects</TabsTrigger>
         <TabsTrigger value="spawns">Spawns</TabsTrigger>
         <TabsTrigger value="built">Built</TabsTrigger>
@@ -549,8 +557,11 @@ export function BuilderPage() {
           </Badge>
         )}
         <ResyncStatus state={builder} />
+        <Button className="ml-auto" variant="outline" size="sm" title="Save what is built as a layout of this map, to load again" onClick={openSaveLayout}>
+          <Save />
+          Save layout
+        </Button>
         <Button
-          className="ml-auto"
           variant={introDismissed ? 'ghost' : 'secondary'}
           size="icon-sm"
           aria-label="How building works"
@@ -904,16 +915,19 @@ function Palette({
         </SelectContent>
       </Select>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
-        <div role="group" aria-labelledby="palette-sort" className="flex items-center gap-1">
-          <span id="palette-sort" className="mr-0.5 text-muted-foreground">
-            Sort:
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground" aria-hidden>
+            Sort
           </span>
-          <Button size="xs" variant={bySize ? 'default' : 'outline'} aria-pressed={bySize} onClick={() => setBySize(true)}>
-            Size
-          </Button>
-          <Button size="xs" variant={!bySize ? 'default' : 'outline'} aria-pressed={!bySize} onClick={() => setBySize(false)}>
-            Name
-          </Button>
+          <Segmented
+            label="Sort"
+            options={[
+              { value: 'size', label: 'Size' },
+              { value: 'name', label: 'Name' },
+            ]}
+            value={bySize ? 'size' : 'name'}
+            onChange={(v) => setBySize(v === 'size')}
+          />
         </div>
         {groundCount > 0 && (
           <div className="flex items-center gap-2" title="Roads, airstrips and water planes: flat pieces that lie on the terrain">
@@ -1238,7 +1252,7 @@ function LayoutsTab({ serverId, state, hasDrafts, onLoaded }: { serverId: string
       <div className="space-y-1">
         <div className="text-xs text-muted-foreground">Save what is built (applied changes only) as a layout of {state?.map ?? 'this map'}</div>
         <div className="flex gap-2">
-          <Input placeholder="Layout name" maxLength={50} value={name} onChange={(e) => setName(e.target.value)} />
+          <Input id="layout-name" placeholder="Layout name" aria-label="Layout name" maxLength={50} value={name} onChange={(e) => setName(e.target.value)} />
           <Button disabled={busy || !name.trim()} onClick={() => void save(false)}>
             Save
           </Button>

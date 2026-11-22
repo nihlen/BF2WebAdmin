@@ -629,7 +629,8 @@ export function fixtureResponse(request: FixtureRequest): FixtureResponse {
   if (m) {
     const [, group, kind, reload] = m
     if (reload || method !== 'GET') return noContent
-    if (!serverGroups.includes(group) && group !== 'default') return ok([])
+    // A new install has no groups yet: a group named in the add flow starts without modules or admins
+    if ((!serverGroups.includes(group) || scenario === 'empty') && group !== 'default') return ok([])
     return ok(kind === 'modules' ? groupModules(group === 'default' ? 'public' : group) : auth(group))
   }
 

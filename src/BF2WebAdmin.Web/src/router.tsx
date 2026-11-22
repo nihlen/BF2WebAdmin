@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { DashboardPage } from '@/pages/dashboard'
 import { LoginPage } from '@/pages/login'
 import { ServerActivityPage, ServerBansPage, ServerHealthPage, ServerLivePage } from '@/pages/server'
-import { ServerGroupPage } from '@/pages/server-group'
+import { ServerGroupPage, ServerGroupTabPage } from '@/pages/server-group'
 import { ServerLayout } from '@/pages/server-layout'
 import { ServerAddPage, ServerEditPage } from '@/pages/server-settings'
 
@@ -114,6 +114,13 @@ export const serverActivityRoute = createRoute({
   component: ServerActivityPage,
 })
 
+// The group's modules and admin levels, as on the group's own page
+export const serverGroupTabRoute = createRoute({
+  getParentRoute: () => serverRoute,
+  path: '/group',
+  component: ServerGroupTabPage,
+})
+
 // The settings: "edit" as before, so links to it keep working
 export const serverEditRoute = createRoute({
   getParentRoute: () => serverRoute,
@@ -148,7 +155,7 @@ const routeTree = rootRoute.addChildren([
   appRoute.addChildren([
     dashboardRoute,
     serverAddRoute,
-    serverRoute.addChildren([serverLiveRoute, serverHealthRoute, serverBansRoute, serverActivityRoute, serverEditRoute, viewerRoute, builderRoute]),
+    serverRoute.addChildren([serverLiveRoute, serverHealthRoute, serverBansRoute, serverActivityRoute, serverGroupTabRoute, serverEditRoute, viewerRoute, builderRoute]),
     serverGroupRoute,
   ]),
 ])

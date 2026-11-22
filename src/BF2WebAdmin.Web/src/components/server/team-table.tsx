@@ -40,6 +40,7 @@ export function TeamTable({
   actions,
   onModerate,
   onDetails,
+  className,
 }: {
   team: Team
   players: Player[]
@@ -51,6 +52,8 @@ export function TeamTable({
   actions: ServerActions
   onModerate: (kind: ModerationKind, player: Player) => void
   onDetails: (player: Player) => void
+  /** Such as a height limit, within which the card scrolls */
+  className?: string
 }) {
   // Pings arrive with the positions, which do not re-render: read them once a second
   const [, setTick] = useState(0)
@@ -60,7 +63,7 @@ export function TeamTable({
   }, [])
 
   return (
-    <Card className="py-0">
+    <Card className={cn('py-0', className)}>
       <Table>
         <TableHeader>
           <TableRow>

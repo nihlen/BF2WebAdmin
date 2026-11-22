@@ -52,7 +52,10 @@ Three personas, each in its own fresh subagent (`subagent_type: general-purpose`
 |---|---|---|
 | `designer` | opus | A strict principal product designer: hierarchy, consistency, typography, spacing, colour, craft |
 | `operator` | sonnet | A server admin on duty during a match, often on a phone: how fast the common tasks are |
-| `newcomer` | opus | A first-time owner setting WebAdmin up: login, adding a server, connecting it, modules and auth, and whether the structure (pages, navigation, the server page vs. the map builder and 3D viewer) makes sense |
+| `newcomer` | opus for reviews, fable for A/B votes | A first-time owner setting WebAdmin up: login, adding a server, connecting it, modules and auth, and whether the structure (pages, navigation, the server page vs. the map builder and 3D viewer) makes sense |
+
+Fable votes as the newcomer: a model of another family than the other two, so the council does not share one
+family's blind spots, at no extra cost per round.
 
 Rules from the people who ran this before, all of them binding:
 
@@ -81,8 +84,10 @@ Round N (N >= 1) builds on the last accepted round, A (r00 at the start).
 5. **Decide.** Accept when at least two of the three judges pick the new build overall, and the measured checks are
    not worse (no new console errors or failed steps, no new horizontal scroll, serious+critical axe nodes not up by
    more than 2). Otherwise reject.
-   - Accepted: `git switch ui-climb && git merge --ff-only ui-climb-rNN`, tag `ui-climb/rNN`, then start the three
-     judges with `judge.md` on `rNN/shots` (one message) - their reviews drive round N+1.
+   - Accepted: `git switch ui-climb && git merge --ff-only ui-climb-rNN`, tag `ui-climb/rNN`. Fresh reviews
+     (`judge.md`, the three judges in one message, on `rNN/shots`) only when the backlog of reviewed changes is used up:
+     a round's plan comes from the latest reviews minus what accepted rounds already did. Reviews are the most
+     expensive part after the builder; the votes keep each round honest in the meantime.
    - Rejected: tag the branch tip `ui-climb/rNN-rejected`, switch back to `ui-climb`. The next round plans from the
      same reviews of A, minus what was tried.
 6. **Record.** Write `rNN/round.json`, a line in `log.md`, update `state.json`, run `ui-gallery.mjs`.

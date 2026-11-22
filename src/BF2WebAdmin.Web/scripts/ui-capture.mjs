@@ -95,7 +95,7 @@ const shots = [
   },
   { name: 'dashboard', path: '/', viewports: ['desktop', 'phone'] },
   { name: 'dashboard-empty', path: '/', scenario: 'empty', viewports: ['desktop', 'phone'] },
-  { name: 'nav-open', path: '/', viewports: ['phone'], steps: [openNav] },
+  { name: 'nav-open', path: '/', viewports: ['phone'], overlay: true, steps: [openNav] },
   { name: 'server-add', path: '/server/add', viewports: ['desktop', 'phone'] },
   { name: 'server-add-tested', path: '/server/add', viewports: ['desktop'], steps: [testConnection] },
   { name: 'server-edit', path: `${heli1}/edit`, viewports: ['desktop'] },
@@ -109,6 +109,7 @@ const shots = [
     name: 'server-player',
     path: heli1,
     viewports: ['desktop', 'phone'],
+    overlay: true,
     steps: [
       async (page, log) =>
         tryStep(log, 'open player Kestrel', async () => {
@@ -121,6 +122,7 @@ const shots = [
     name: 'server-confirm',
     path: heli1,
     viewports: ['desktop'],
+    overlay: true,
     steps: [
       async (page, log) =>
         tryStep(log, 'restart map dialog', async () => {
@@ -157,6 +159,7 @@ async function cachedRoute(route) {
 
 /** Covers every WebGL canvas (one that has no 2D context) with a labelled panel: the 3D view is not scored */
 const coverWebGl = () => {
+  let covered = 0
   for (const canvas of document.querySelectorAll('canvas')) {
     let webgl = false
     try {
@@ -186,7 +189,9 @@ const coverWebGl = () => {
     })
     cover.textContent = '3D view (WebGL, not scored)'
     document.body.appendChild(cover)
+    covered++
   }
+  return covered
 }
 
 async function main() {
@@ -222,11 +227,13 @@ async function main() {
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {})
       await page.waitForTimeout(300)
       await page.addStyleTag({ content: stillCss }).catch(() => {})
-      await page.evaluate(coverWebGl).catch((e) => log.push(`cover: ${e.message}`))
+      const covered = await page.evaluate(coverWebGl).catch((e) => (log.push(`cover: ${e.message}`), 0))
       await page.waitForTimeout(200)
-      // Freeze the page: the render loops (3D views, minimap) stop, so the screenshot neither waits on them nor moves
-      await page.evaluate(() => (window.requestAnimationFrame = () => 0)).catch(() => {})
-      await page.waitForTimeout(100)
+      // A page with a 3D view is frozen: its render loop would keep the screenshot waiting. The 2D minimap keeps drawing
+      if (covered > 0) {
+        await page.evaluate(() => (window.requestAnimationFrame = () => 0)).catch(() => {})
+        await page.waitForTimeout(100)
+      }
 
       const layout = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
@@ -235,17 +242,25 @@ async function main() {
         url: location.pathname,
       }))
 
+      // A long page is shot with the viewport as tall as the page, so fixed parts (the sidebar) reach its bottom as they
+      // do while scrolling. A shot of an overlay (sheet, dialog, menu) shows the screen as the user sees it
+      const tall = !shot.overlay && layout.scrollHeight > viewport.height
+      if (tall) {
+        await page.setViewportSize({ width: viewport.width, height: Math.min(layout.scrollHeight, 8000) })
+        await page.waitForTimeout(500)
+        layout.scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
+      }
       const file = path.join(out, `${id}.png`)
       try {
-        await page.screenshot({ path: file, fullPage: true, timeout: 60000 })
+        await page.screenshot({ path: file, fullPage: !shot.overlay, timeout: 60000 })
       } catch (error) {
         log.push(`screenshot: ${String(error?.message ?? error).split('\n')[0]}`)
         await page.screenshot({ path: file, timeout: 60000 }).catch(() => {})
       }
       // Long pages also in viewport-high slices, which stay readable when a reviewer opens them
       const parts = []
-      const sliceCount = Math.min(6, Math.ceil(layout.scrollHeight / viewport.height))
-      if (sliceCount > 1) {
+      const sliceCount = Math.min(8, Math.ceil(layout.scrollHeight / viewport.height))
+      if (tall && sliceCount > 1) {
         for (let i = 0; i < sliceCount; i++) {
           const y = i * viewport.height
           const height = Math.min(viewport.height, layout.scrollHeight - y)

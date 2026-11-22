@@ -1,4 +1,4 @@
-import { MoreVertical, ShieldCheck } from 'lucide-react'
+import { MoreVertical, ShieldCheck, Skull } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Player, Team } from '@/api/client'
 import type { InputRequest } from '@/components/input-dialog'
@@ -100,7 +100,14 @@ export function TeamTable({
                       title="Player details"
                     >
                       {player.country && <span className={`fi fi-${player.country.toLowerCase()} shrink-0`} title={player.country} />}
-                      <span className={cn('truncate', !player.isAlive && 'text-muted-foreground/50')}>{player.name}</span>
+                      <span className="truncate">{player.name}</span>
+                      {/* Dead is a moment of the round, not a reason to grey out the name the admin is looking for */}
+                      {!player.isAlive && (
+                        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground" title="Dead, waiting to respawn">
+                          <Skull className="size-3.5" />
+                          dead
+                        </span>
+                      )}
                       {level !== undefined && level > defaultAuthLevel && (
                         <Badge variant="outline" className="shrink-0" title={`Auth level ${level}`}>
                           <ShieldCheck data-icon="inline-start" />

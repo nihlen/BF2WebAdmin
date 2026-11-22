@@ -12,12 +12,13 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 
-/** A destructive button that asks first. */
+/** A button for a destructive action that asks first. The confirm button is red whatever the button looks like. */
 export function ConfirmButton({
   title,
   description,
   confirmLabel,
   onConfirm,
+  variant = 'destructive',
   className,
   children,
 }: {
@@ -25,6 +26,7 @@ export function ConfirmButton({
   description: string
   confirmLabel: string
   onConfirm: () => void
+  variant?: React.ComponentProps<typeof Button>['variant']
   className?: string
   children: React.ReactNode
 }) {
@@ -32,7 +34,7 @@ export function ConfirmButton({
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
-      <AlertDialogTrigger render={<Button type="button" variant="destructive" className={className} />}>{children}</AlertDialogTrigger>
+      <AlertDialogTrigger render={<Button type="button" variant={variant} className={className} />}>{children}</AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>

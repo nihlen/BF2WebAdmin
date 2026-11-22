@@ -4,19 +4,21 @@ import { Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { api, errorMessage, type PlayerAuth } from '@/api/client'
+import { LevelSelect } from '@/components/auth-level-select'
 import { useConfirm } from '@/components/confirm-dialog'
-import { NativeSelect } from '@/components/native-select'
+import { ServerStatusDot } from '@/components/server-status'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Field, FieldLabel } from '@/components/ui/field'
+import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { playerAuthQuery } from '@/hooks/use-server-actions'
 import { useServers } from '@/hooks/use-servers'
-import { authLevelName, authLevels, defaultAuthLevel } from '@/lib/auth-levels'
+import { authLevelName, defaultAuthLevel } from '@/lib/auth-levels'
+import { moduleDescription, moduleName } from '@/lib/modules'
 import { encodeServerId } from '@/lib/server-id'
 import { serverGroupRoute } from '@/router'
 
@@ -34,24 +36,34 @@ export function ServerGroupPage() {
 
   return (
     <div className="space-y-8">
-      <title>{`BF2 Web Admin - ${serverGroup}`}</title>
+      <title>{`BF2 Web Admin - Server group ${serverGroup}`}</title>
       <div className="space-y-2">
-        <h1 className="text-3xl font-semibold">{serverGroup}</h1>
+        <h1 className="text-3xl font-semibold">Server group {serverGroup}</h1>
         <p className="text-muted-foreground">
           {groupServers.length === 0
-            ? 'No server is in this group.'
-            : groupServers.map((s, i) => (
-                <span key={s.id}>
-                  {i > 0 && ', '}
-                  <Link to="/server/$serverId" params={{ serverId: encodeServerId(s.id) }} className="hover:underline">
-                    {s.name}
-                  </Link>
-                </span>
-              ))}
+            ? 'Modules and admin levels for the servers of this group. No server is in it yet.'
+            : `Modules and admin levels shared by ${groupServers.length === 1 ? 'one server' : `${groupServers.length} servers`}:`}
         </p>
+        {groupServers.length > 0 && (
+          <ul className="flex flex-wrap gap-2">
+            {groupServers.map((s) => (
+              <li key={s.id} className="min-w-0">
+                <Link
+                  to="/server/$serverId"
+                  params={{ serverId: encodeServerId(s.id) }}
+                  className="flex max-w-80 items-center gap-2 rounded-full border px-3 py-1 text-sm transition-colors hover:bg-muted"
+                  title={s.name}
+                >
+                  <ServerStatusDot socketState={s.socketState} />
+                  <span className="truncate">{s.name}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
-      <div className="grid gap-8 xl:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,32rem)_minmax(0,1fr)]">
         <section className="space-y-4">
           <h2 className="text-xl font-medium">Modules</h2>
           {!loaded && <Skeleton className="h-96" />}
@@ -68,7 +80,7 @@ export function ServerGroupPage() {
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-xl font-medium">Player auth levels</h2>
+          <h2 className="text-xl font-medium">Admin levels</h2>
           <PlayerAuthList serverGroup={serverGroup} />
         </section>
       </div>
@@ -125,7 +137,9 @@ function ModulesForm({
   return (
     <div className="space-y-4">
       {readOnly ? (
-        <p className="text-muted-foreground">The default server group cannot be changed. Give your server a group of its own to choose its modules.</p>
+        <p className="text-muted-foreground">
+          The default group runs the base modules and cannot be changed. To choose modules, give the server a group of its own in its settings.
+        </p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => void saveAndReload()} disabled={save.isPending || reload.isPending || serverCount === 0}>
@@ -144,9 +158,10 @@ function ModulesForm({
       {!readOnly && <p className="text-sm text-muted-foreground">A reload restarts the modules on the {servers} in this group. Their state, such as a running match, is lost.</p>}
 
       <Card>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           {all.map((name) => {
             const always = defaults.includes(name)
+            const description = moduleDescription(name)
             return (
               <Field key={name} orientation="horizontal">
                 <Checkbox
@@ -155,10 +170,13 @@ function ModulesForm({
                   disabled={readOnly || always}
                   onCheckedChange={(checked) => toggle(name, checked)}
                 />
-                <FieldLabel htmlFor={`module-${name}`}>
-                  {name}
-                  {always && <span className="font-normal text-muted-foreground">(always on)</span>}
-                </FieldLabel>
+                <FieldContent>
+                  <FieldLabel htmlFor={`module-${name}`} title={name}>
+                    {moduleName(name)}
+                    {always && <span className="font-normal text-muted-foreground">(always on)</span>}
+                  </FieldLabel>
+                  {description && <FieldDescription>{description}</FieldDescription>}
+                </FieldContent>
               </Field>
             )
           })}
@@ -228,18 +246,12 @@ function PlayerAuthList({ serverGroup }: { serverGroup: string }) {
                     {entry.playerHash}
                   </TableCell>
                   <TableCell>
-                    <NativeSelect
-                      aria-label={`Auth level of ${entry.name ?? entry.playerHash}`}
-                      value={String(entry.authLevel)}
+                    <LevelSelect
+                      label={`Admin level of ${entry.name ?? entry.playerHash}`}
+                      value={entry.authLevel}
                       disabled={set.isPending}
-                      onChange={(e) => setLevel(entry, Number(e.target.value))}
-                    >
-                      {authLevels.map((l) => (
-                        <option key={l.value} value={l.value} title={l.description}>
-                          {l.name}
-                        </option>
-                      ))}
-                    </NativeSelect>
+                      onChange={(level) => setLevel(entry, level)}
+                    />
                   </TableCell>
                   <TableCell>
                     <Button
@@ -299,15 +311,7 @@ function AddPlayerAuth({ onAdd, pending }: { onAdd: (playerHash: string, level: 
           </Field>
           <Field className="w-44">
             <FieldLabel htmlFor="auth-level">Level</FieldLabel>
-            <NativeSelect id="auth-level" value={String(level)} onChange={(e) => setLevel(Number(e.target.value))}>
-              {authLevels
-                .filter((l) => l.value !== defaultAuthLevel)
-                .map((l) => (
-                  <option key={l.value} value={l.value}>
-                    {l.name}
-                  </option>
-                ))}
-            </NativeSelect>
+            <LevelSelect id="auth-level" label="Level" value={level} onChange={setLevel} withoutDefault />
           </Field>
           <Button type="submit" disabled={pending || !hash.trim()}>
             Add

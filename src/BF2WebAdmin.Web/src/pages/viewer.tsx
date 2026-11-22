@@ -1,17 +1,17 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Pause, Play, Radio } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Pause, Play, Radio } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, errorMessage, fetchClient, type MissileSummary } from '@/api/client'
 import { useHubEvent, useViewerSubscription } from '@/api/hub'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useServerPage } from '@/components/server/server-context'
 import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useServerLive } from '@/hooks/use-server-live'
-import { decodeServerId, encodeServerId } from '@/lib/server-id'
 import { cn } from '@/lib/utils'
-import { viewerRoute } from '@/router'
 import { LiveBuffer, TICK_RATE } from '@/viewer/buffer'
 import { isHelicopter } from '@/viewer/cameras'
 import { isSpectatorMoveKey, SPECTATOR_KEYS } from '@/viewer/keys'
@@ -39,8 +39,7 @@ const missilesQuery = (serverId: string) => api.queryOptions('get', '/api/server
  * missiles' hit/miss replays (the target where the gunner saw it in red, where the server tested it in blue).
  */
 export function ViewerPage() {
-  const serverId = decodeServerId(viewerRoute.useParams().serverId)
-  const { snapshot } = useServerLive(serverId)
+  const { serverId, snapshot } = useServerPage()
   useViewerSubscription(serverId)
   const queryClient = useQueryClient()
   const missiles = useQuery(missilesQuery(serverId))
@@ -171,7 +170,6 @@ export function ViewerPage() {
     }
   }, [scene, cameraMode])
 
-  if (snapshot.isError) return <p className="text-destructive">{errorMessage(snapshot.error)}</p>
   if (!snapshot.data) return <Skeleton className="h-[600px]" />
 
   const { server } = snapshot.data
@@ -180,130 +178,127 @@ export function ViewerPage() {
   const playerNames = new Map(players.map((p) => [p.index, p.name]))
   const outcomeOf = (m: MissileSummary) => missileOutcome(m, teams, playerNames)
 
+  // Desktop: the 3D view beside the panels, the timeline under both. Below lg one column: the view, the timeline under
+  // it, then the panels
   return (
-    <div className="flex h-[calc(100svh-6rem)] min-h-[520px] flex-col gap-3">
+    <div className="grid gap-3 [grid-template-areas:'view'_'timeline'_'aside'] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[minmax(0,1fr)_auto] lg:[grid-template-areas:'view_aside'_'timeline_timeline']">
       <title>{`BF2 Web Admin - ${server.name} - 3D viewer`}</title>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          nativeButton={false}
-          render={<Link to="/server/$serverId" params={{ serverId: encodeServerId(serverId) }} />}
-        >
-          <ArrowLeft />
-        </Button>
-        <h1 className="truncate text-xl font-semibold">{server.name}</h1>
-        {server.map && <Badge variant="secondary">{server.map}</Badge>}
-        <Badge variant="secondary">{server.socketState}</Badge>
-        <FrameRate buffer={buffer} />
-      </div>
-
-      <div className="flex min-h-0 flex-1 gap-3">
-        <div className="relative min-w-0 flex-1 overflow-hidden rounded-lg border bg-black">
-          <div ref={containerRef} className={cn('absolute inset-0', viewInfo?.tv && cameraMode === 'player' && 'grayscale')} />
-          {(cameraMode === 'missile' || (viewInfo?.tv && cameraMode === 'player')) && <TvCrosshair />}
-          {cameraMode === 'player' && viewInfo && <ViewOverlay info={viewInfo} />}
-          {selected && <MissileOverlay missile={selected} outcome={outcomeOf(selected)} playback={playback} onJump={() => scene?.seekImpact()} />}
-          {selected && <Legend />}
-          {!scene && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading the 3D view…</div>}
+      <div className="relative h-[min(55svh,30rem)] min-h-[280px] min-w-0 overflow-hidden rounded-lg border bg-black [grid-area:view] lg:h-auto lg:min-h-0">
+        <div ref={containerRef} className={cn('absolute inset-0', viewInfo?.tv && cameraMode === 'player' && 'grayscale')} />
+        {(cameraMode === 'missile' || (viewInfo?.tv && cameraMode === 'player')) && <TvCrosshair />}
+        {cameraMode === 'player' && viewInfo && <ViewOverlay info={viewInfo} />}
+        {selected && <MissileOverlay missile={selected} outcome={outcomeOf(selected)} playback={playback} onJump={() => scene?.seekImpact()} />}
+        {selected && <Legend />}
+        <div className="pointer-events-none absolute right-2 bottom-2">
+          <FrameRate buffer={buffer} />
         </div>
-
-        <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-hidden">
-          <Card className="gap-2 p-3">
-            <div className="text-sm font-medium">Camera</div>
-            <div className="grid grid-cols-2 gap-1">
-              <CameraButton mode="free" current={cameraMode} onSelect={setCameraMode} label="Free" title="Fly freely: drag to look, WASD/QE to move (Shift faster, Alt slower)" />
-              <CameraButton
-                mode="orbit"
-                current={cameraMode}
-                onSelect={setCameraMode}
-                label="Orbit"
-                title="Circle the selected player, or the selected missile: drag to turn, wheel to zoom"
-                disabled={subject < 0 && !selected}
-              />
-              <CameraButton
-                mode="player"
-                current={cameraMode}
-                onSelect={setCameraMode}
-                label="Player view"
-                title="What the selected player's camera shows, live or at the timeline's tick: his view mode and camera as the server reports them every tick (the TV launcher, his TV missile; inferred when the server keeps him in the launcher)"
-                disabled={subject < 0}
-              />
-              <CameraButton
-                mode="missile"
-                current={cameraMode}
-                onSelect={setCameraMode}
-                label="Missile TV"
-                title="The selected missile's own TV camera, rebuilt from its recorded flight (a replay; no player needed)"
-                disabled={!selected}
-              />
-            </div>
-            <div className="max-h-48 space-y-0.5 overflow-y-auto">
-              {players.length === 0 && <p className="text-xs text-muted-foreground">No players</p>}
-              {players.map((p) => (
-                <button
-                  key={p.index}
-                  type="button"
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-muted',
-                    subject === p.index && 'bg-muted',
-                  )}
-                  onClick={() => {
-                    setSubject(p.index)
-                    if (cameraMode === 'free' || cameraMode === 'missile') setCameraMode('player')
-                  }}
-                >
-                  <span className="size-2 shrink-0 rounded-full" style={{ background: teamColor(p.team) }} />
-                  <span className="truncate">{p.name}</span>
-                  {!p.isAlive && <span className="ml-auto text-xs text-muted-foreground">dead</span>}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-3 text-xs text-muted-foreground">
-              <label className="flex items-center gap-1" title="Names and labels in the 3D view">
-                <input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} /> Names
-              </label>
-              <label className="flex items-center gap-1">
-                <input type="checkbox" checked={trails} onChange={(e) => setTrails(e.target.checked)} /> Trails
-              </label>
-              <label className="flex items-center gap-1" title="The missiles' motor glow and the explosion. Off while a missile is selected">
-                <input type="checkbox" checked={effects} onChange={(e) => setEffects(e.target.checked)} /> Exhaust &amp; explosion
-              </label>
-              <label className="flex items-center gap-1" title="The helicopters' collision meshes on the live view: hull blue, parts orange">
-                <input type="checkbox" checked={hitboxes} onChange={(e) => setHitboxes(e.target.checked)} /> Hitboxes
-              </label>
-            </div>
-          </Card>
-
-          <Card className="min-h-0 flex-1 gap-2 p-3">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium">TV missiles</div>
-              {selectedMissile !== null && (
-                <Button variant="ghost" size="xs" onClick={() => selectMissile(null)}>
-                  Clear
-                </Button>
-              )}
-            </div>
-            {missileError && <p className="text-xs text-destructive">{missileError}</p>}
-            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
-              {missiles.isError && <p className="text-xs text-muted-foreground">No missiles: the server is not connected</p>}
-              {missiles.data?.length === 0 && <p className="text-xs text-muted-foreground">No TV missiles yet. The last 20 are kept.</p>}
-              {missiles.data?.map((m) => (
-                <MissileItem
-                  key={m.key}
-                  missile={m}
-                  outcome={outcomeOf(m)}
-                  selected={m.key === selectedMissile}
-                  onSelect={() => selectMissile(m.key === selectedMissile ? null : m.key)}
-                />
-              ))}
-            </div>
-          </Card>
-        </aside>
+        {!scene && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading the 3D view…</div>}
       </div>
 
-      <Timeline scene={scene} playback={playback} onLive={() => selectMissile(null)} />
+      <aside className="flex min-w-0 flex-col gap-3 [grid-area:aside] lg:min-h-0 lg:overflow-hidden">
+        <Card className="gap-2 p-3">
+          <div className="text-sm font-medium">Camera</div>
+          <div className="grid grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2">
+            <CameraButton mode="free" current={cameraMode} onSelect={setCameraMode} label="Free" title="Fly freely: drag to look, WASD/QE to move (Shift faster, Alt slower)" />
+            <CameraButton
+              mode="orbit"
+              current={cameraMode}
+              onSelect={setCameraMode}
+              label="Orbit"
+              title="Circle the selected player, or the selected missile: drag to turn, wheel to zoom"
+              disabled={subject < 0 && !selected}
+            />
+            <CameraButton
+              mode="player"
+              current={cameraMode}
+              onSelect={setCameraMode}
+              label="Player view"
+              title="What the selected player's camera shows, live or at the timeline's tick: his view mode and camera as the server reports them every tick (the TV launcher, his TV missile; inferred when the server keeps him in the launcher)"
+              disabled={subject < 0}
+            />
+            <CameraButton
+              mode="missile"
+              current={cameraMode}
+              onSelect={setCameraMode}
+              label="Missile TV"
+              title="The selected missile's own TV camera, rebuilt from its recorded flight (a replay; no player needed)"
+              disabled={!selected}
+            />
+          </div>
+          <div className="max-h-48 space-y-0.5 overflow-y-auto">
+            {players.length === 0 && <p className="text-xs text-muted-foreground">No players</p>}
+            {players.map((p) => (
+              <button
+                key={p.index}
+                type="button"
+                className={cn('flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-muted', subject === p.index && 'bg-muted')}
+                onClick={() => {
+                  setSubject(p.index)
+                  if (cameraMode === 'free' || cameraMode === 'missile') setCameraMode('player')
+                }}
+              >
+                <span className="size-2 shrink-0 rounded-full" style={{ background: teamColor(p.team) }} />
+                <span className="truncate">{p.name}</span>
+                {!p.isAlive && <span className="ml-auto text-xs text-muted-foreground">dead</span>}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:flex sm:flex-wrap lg:grid">
+            <Toggle id="viewer-names" checked={labels} onChange={setLabels} label="Names" title="Names and labels in the 3D view" />
+            <Toggle id="viewer-trails" checked={trails} onChange={setTrails} label="Trails" />
+            <Toggle
+              id="viewer-effects"
+              checked={effects}
+              onChange={setEffects}
+              label="Exhaust & explosion"
+              title="The missiles' motor glow and the explosion. Off while a missile is selected"
+            />
+            <Toggle id="viewer-hitboxes" checked={hitboxes} onChange={setHitboxes} label="Hitboxes" title="The helicopters' collision meshes on the live view: hull blue, parts orange" />
+          </div>
+        </Card>
+
+        <Card className="gap-2 p-3 lg:min-h-0 lg:flex-1">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">TV missiles</div>
+            {selectedMissile !== null && (
+              <Button variant="ghost" size="xs" onClick={() => selectMissile(null)}>
+                Clear
+              </Button>
+            )}
+          </div>
+          {missileError && <p className="text-xs text-destructive">{missileError}</p>}
+          <div className="max-h-[60svh] space-y-1 overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
+            {missiles.isError && <p className="text-xs text-muted-foreground">No missiles: the server is not connected</p>}
+            {missiles.data?.length === 0 && <p className="text-xs text-muted-foreground">No TV missiles yet. The last 20 are kept.</p>}
+            {missiles.data?.map((m) => (
+              <MissileItem
+                key={m.key}
+                missile={m}
+                outcome={outcomeOf(m)}
+                selected={m.key === selectedMissile}
+                onSelect={() => selectMissile(m.key === selectedMissile ? null : m.key)}
+              />
+            ))}
+          </div>
+        </Card>
+      </aside>
+
+      <div className="min-w-0 [grid-area:timeline]">
+        <Timeline scene={scene} playback={playback} onLive={() => selectMissile(null)} />
+      </div>
+    </div>
+  )
+}
+
+/** A labelled checkbox of the viewer's display options */
+function Toggle({ id, checked, onChange, label, title }: { id: string; checked: boolean; onChange: (checked: boolean) => void; label: string; title?: string }) {
+  return (
+    <div className="flex items-center gap-2" title={title}>
+      <Checkbox id={id} checked={checked} onCheckedChange={onChange} />
+      <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
+        {label}
+      </Label>
     </div>
   )
 }
@@ -616,10 +611,11 @@ function TimelineTrack({ scene, playback }: { scene: ViewerScene | null; playbac
 
 function Timeline({ scene, playback, onLive }: { scene: ViewerScene | null; playback: PlaybackState | null; onLive: () => void }) {
   if (!playback) return <div className="h-10" />
+  const speedItems = speeds.map((s) => ({ value: s, label: `${s}x` }))
   const { tick, start, end, playing, live, speed, missile } = playback
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Button variant="outline" size="icon" title="Play / pause (space)" onClick={() => scene?.togglePlay()}>
         {playing ? <Pause /> : <Play />}
       </Button>
@@ -647,20 +643,23 @@ function Timeline({ scene, playback, onLive }: { scene: ViewerScene | null; play
         <Radio data-icon="inline-start" />
         Live
       </Button>
-      <select
-        className="h-8 rounded-md border bg-background px-1 text-sm"
-        value={speed}
-        title="Playback speed"
-        onChange={(e) => scene?.setSpeed(Number(e.target.value))}
-      >
-        {speeds.map((s) => (
-          <option key={s} value={s}>
-            {s}x
-          </option>
-        ))}
-      </select>
-      <TimelineTrack scene={scene} playback={playback} />
-      <div className="w-44 shrink-0 text-right font-mono text-xs text-muted-foreground">
+      <Select items={speedItems} value={speed} onValueChange={(value) => value !== null && scene?.setSpeed(value)}>
+        <SelectTrigger className="w-20" aria-label="Playback speed" title="Playback speed">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {speedItems.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {/* On a phone the track gets a line of its own under the buttons */}
+      <div className="order-last flex basis-full sm:order-none sm:basis-0 sm:flex-1">
+        <TimelineTrack scene={scene} playback={playback} />
+      </div>
+      <div className="ml-auto shrink-0 text-right font-mono text-xs text-muted-foreground sm:ml-0 sm:w-44">
         {missile
           ? `${formatTicks(tick - missile.first)} · tick ${Math.round(tick - missile.first)}/${missile.last - missile.first}`
           : `${formatTicks(tick - start)} / ${formatTicks(end - start)}`}

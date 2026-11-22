@@ -12,6 +12,9 @@ const kindLabels: Record<CommandLogEntry['kind'], string> = {
   Action: 'action',
 }
 
+// The server logs the round restart under its old name; the UI calls it Restart round everywhere
+const commandNames: Record<string, string> = { 'Restart map': 'Restart round' }
+
 /**
  * What web users sent to this server and the answers, from every browser. WebAdmin keeps the last entries in memory,
  * so the list starts empty after WebAdmin restarts.
@@ -21,7 +24,7 @@ export function ActivityLog({ serverId }: { serverId: string }) {
   const log = useQuery({ ...commandLogQuery(serverId), staleTime: Infinity })
 
   return (
-    <LogList className="h-[550px] space-y-3" items={log.data ?? []} empty="Nothing has been sent from the web UI since WebAdmin started">
+    <LogList className="h-[min(600px,70svh)] space-y-3" items={log.data ?? []} empty="Nothing has been sent from the web UI since WebAdmin started">
       {(entry) => (
         <li key={entry.id} className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -29,7 +32,7 @@ export function ActivityLog({ serverId }: { serverId: string }) {
             <span className="font-medium">{entry.user}</span>
             <Badge variant={entry.success ? 'secondary' : 'destructive'}>{entry.success ? kindLabels[entry.kind] : `${kindLabels[entry.kind]} failed`}</Badge>
           </div>
-          <pre className="whitespace-pre-wrap">{entry.command}</pre>
+          <pre className="whitespace-pre-wrap">{commandNames[entry.command] ?? entry.command}</pre>
           {entry.response && (
             <pre className={cn('border-l-2 pl-2 whitespace-pre-wrap text-muted-foreground', !entry.success && 'border-destructive text-destructive')}>
               {entry.response}

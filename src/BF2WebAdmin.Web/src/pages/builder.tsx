@@ -1,26 +1,24 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import { ArrowLeft, Crosshair, Loader2, MessageSquare, Move3d, RotateCw, Trash2, Undo2 } from 'lucide-react'
+import { Crosshair, Loader2, MessageSquare, Move3d, RotateCw, Trash2, Undo2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, ApiError, errorMessage, fetchClient } from '@/api/client'
 import { useHubEvent } from '@/api/hub'
 import { ConfirmButton } from '@/components/confirm-button'
 import { ChatPanel } from '@/components/server/chat-panel'
+import { useServerPage } from '@/components/server/server-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useServerActions } from '@/hooks/use-server-actions'
-import { useServerLive } from '@/hooks/use-server-live'
 import { normalizeDegrees, type Vec } from '@/builder/coords'
 import { BUILDER_CAMERA_KEYS, FLY_WHILE_LOOKING } from '@/builder/keys'
 import { BuilderScene, type GizmoTool, type PlaceSpec, type SceneItem, teamColor } from '@/builder/scene'
 import { type CatalogEntry, loadCatalog, templateThumbnail } from '@/builder/templates'
-import { decodeServerId, encodeServerId } from '@/lib/server-id'
 import { cn } from '@/lib/utils'
-import { builderRoute } from '@/router'
 import type { components } from '@/api/schema'
 
 type BuilderState = components['schemas']['BuilderStateDto']
@@ -56,8 +54,7 @@ function sameVec(a: Vec, b: Vec) {
  * the players where they are. Changes are drafts until Apply. Layouts save what is built for the map.
  */
 export function BuilderPage() {
-  const serverId = decodeServerId(builderRoute.useParams().serverId)
-  const { snapshot, positions } = useServerLive(serverId)
+  const { serverId, snapshot, positions } = useServerPage()
   const queryClient = useQueryClient()
   const state = useQuery({ ...builderQuery(serverId), staleTime: Infinity })
   const [scene, setScene] = useState<BuilderScene | null>(null)
@@ -469,22 +466,15 @@ export function BuilderPage() {
 
   // ---------------------------------------------------------------------------------------------------------------
 
-  if (snapshot.isError) return <p className="text-destructive">{errorMessage(snapshot.error)}</p>
-
   const selectedItem = sceneItemOf(selected)
   const selectedDraft = selected ? drafts.get(selected) : undefined
   const serverName = snapshot.data?.server.name ?? serverId
 
   return (
-    <div className="flex h-[calc(100svh-6rem)] min-h-[520px] flex-col gap-3">
+    <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1">
       <title>{`BF2 Web Admin - ${serverName} - Map builder`}</title>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="icon" nativeButton={false} render={<Link to="/server/$serverId" params={{ serverId: encodeServerId(serverId) }} />}>
-          <ArrowLeft />
-        </Button>
-        <h1 className="truncate text-xl font-semibold">{serverName}</h1>
-        {map && <Badge variant="secondary">{map}</Badge>}
         {builder && !builder.connected && <Badge variant="destructive">Not connected</Badge>}
         {builder?.layoutName && <Badge variant="outline">Layout: {builder.layoutName}</Badge>}
         <Badge variant="secondary">{items.length} built</Badge>
@@ -495,7 +485,7 @@ export function BuilderPage() {
         )}
         <ResyncStatus state={builder} />
         <Button
-          className="ml-auto"
+          className="ml-auto hidden lg:inline-flex"
           variant={chatOpen ? 'default' : 'outline'}
           size="sm"
           title="Show the server's chat beside the 3D view, to read and write while building"
@@ -507,11 +497,12 @@ export function BuilderPage() {
         </Button>
       </div>
 
-      <div className="flex min-h-0 flex-1 gap-3">
-        <div className="relative min-w-0 flex-1 overflow-hidden rounded-lg border bg-black">
+      {/* Desktop: the 3D view, the chat and the panels side by side. Below lg one column: the view, then the panels */}
+      <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1 lg:flex-row">
+        <div className="relative h-[min(55svh,30rem)] min-h-[280px] min-w-0 overflow-hidden rounded-lg border bg-black lg:h-auto lg:min-h-0 lg:flex-1">
           <div ref={containerRef} className="absolute inset-0" />
           {!scene && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading the 3D view…</div>}
-          <div className="pointer-events-none absolute top-2 left-2 max-w-[calc(100%-14rem)] rounded bg-black/60 px-2 py-1 text-xs text-white/80">
+          <div className="pointer-events-none absolute top-2 left-2 hidden max-w-[calc(100%-14rem)] rounded bg-black/60 px-2 py-1 text-xs text-white/80 lg:block">
             Hold right: look, WASD fly, Q/E down/up · Space/Ctrl up/down · arrows fly · Shift faster · Drag from the list onto the map, or click it to put
             it ahead · Click: select · W move, E rotate (Ctrl snaps) · End to ground · F focus · Del remove
           </div>
@@ -534,7 +525,7 @@ export function BuilderPage() {
         </div>
 
         {chatOpen && (
-          <Card className="flex w-80 shrink-0 flex-col gap-2 overflow-hidden p-3">
+          <Card className="hidden w-80 shrink-0 flex-col gap-2 overflow-hidden p-3 lg:flex">
             <div className="text-sm font-medium">Chat</div>
             <ChatPanel
               chatLog={chatLog}
@@ -547,8 +538,8 @@ export function BuilderPage() {
           </Card>
         )}
 
-        <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-hidden">
-          <Card className="min-h-0 flex-1 gap-2 p-3">
+        <aside className="flex min-w-0 flex-col gap-3 lg:w-80 lg:shrink-0 lg:overflow-hidden">
+          <Card className="h-[28rem] gap-2 p-3 lg:h-auto lg:min-h-0 lg:flex-1">
             <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="flex min-h-0 flex-1 flex-col">
               <TabsList variant="line" className="w-full justify-start">
                 <TabsTrigger value="objects">Objects</TabsTrigger>
@@ -614,24 +605,32 @@ export function BuilderPage() {
             <div className="flex gap-2">
               <Button className="flex-1" disabled={changes.length === 0 || applying || !builder?.connected || (needsResync && !builder?.canResync)} onClick={() => void apply()}>
                 {applying && <Loader2 className="animate-spin" />}
-                Apply
+                {changes.length === 0 ? 'Apply' : `Apply ${changes.length} change${changes.length === 1 ? '' : 's'}`}
               </Button>
               <Button variant="outline" disabled={changes.length === 0 || applying} onClick={() => { setDrafts(new Map()); setSelected(null) }}>
                 <Undo2 />
                 Discard
               </Button>
             </div>
+          </Card>
+
+          {items.length > 0 && (
             <ConfirmButton
-              title="Clear everything built?"
-              description={builder?.canResync ? 'Every built object, spawn point and helipad is removed from the game.' : 'This server can only clear by restarting the round. Scores are put back afterwards.'}
-              confirmLabel="Clear"
+              title={`Clear all ${items.length} built item${items.length === 1 ? '' : 's'}?`}
+              description={
+                builder?.canResync
+                  ? `Every built object, spawn point and helipad on ${map} (${items.length}) is removed from the game. A saved layout can bring them back.`
+                  : `This server can only clear by restarting the round: the ${items.length} built items are removed and the scores are put back afterwards.`
+              }
+              confirmLabel={`Clear ${items.length}`}
               onConfirm={() => void clearAll()}
-              className="w-full"
+              variant="ghost"
+              className="self-start text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
               <Trash2 />
-              Clear all built
+              Clear all built ({items.length})
             </ConfirmButton>
-          </Card>
+          )}
         </aside>
       </div>
     </div>
@@ -692,6 +691,8 @@ function Palette({
       .sort((a, b) => (bySize ? b.size - a.size : a.name.localeCompare(b.name)))
   }, [levelCatalog, filter, bySize, category])
 
+  const categoryItems = [{ value: '', label: `All (${levelCatalog?.length ?? 0})` }, ...categories.map((c) => ({ value: c, label: c }))]
+
   if (catalog === null) return <p className="text-xs text-muted-foreground">Loading the objects…</p>
   if (catalog.length === 0)
     return <p className="text-xs text-muted-foreground">No object catalog: build it with tools/builder-assets. Objects can still be placed by template name in game with .o.</p>
@@ -717,14 +718,18 @@ function Palette({
         The {levelCatalog.length} objects this map's level uses. Drag one onto the map, or click it to put it ahead of you.
       </p>
       <div className="flex items-center gap-2 text-xs">
-        <select className="h-7 min-w-0 flex-1 rounded border bg-background px-1" value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">All ({levelCatalog.length})</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <Select items={categoryItems} value={category} onValueChange={(value) => setCategory(value ?? '')}>
+          <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Category">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {categoryItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button size="xs" variant={bySize ? 'default' : 'outline'} onClick={() => setBySize(true)}>
           Size
         </Button>

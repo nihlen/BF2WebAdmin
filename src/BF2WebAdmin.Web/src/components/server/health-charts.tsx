@@ -3,9 +3,11 @@ import type { ServerHealthStatus } from '@/api/client'
 import { nearestIndex } from '@/lib/nearest-index'
 import { cn } from '@/lib/utils'
 
-// The plot's margins inside each chart, the same for all so that their times line up
+// The plot's margins inside each chart, the same for all so that their times line up. The top and right ones leave
+// room for half of the top value label and of a time label at the right edge, which are centred on their place.
 const left = 44
-const right = 8
+const right = 18
+const top = 8
 const plotHeight = 96
 const axisHeight = 18
 
@@ -129,14 +131,14 @@ export function TimeChart({ title, format, times, series, range, hover, onHover,
       </div>
       <div ref={ref} className="w-full">
         {times.length === 0 && empty ? (
-          <div className="flex items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground" style={{ height: plotHeight + axisHeight }}>
+          <div className="flex items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground" style={{ height: top + plotHeight + axisHeight }}>
             {empty}
           </div>
         ) : (
           width > 0 && (
             <svg
               width={width}
-              height={plotHeight + axisHeight}
+              height={top + plotHeight + axisHeight}
               className="block touch-none select-none"
               onPointerMove={onPointer}
               onPointerDown={onPointer}
@@ -144,66 +146,68 @@ export function TimeChart({ title, format, times, series, range, hover, onHover,
               role="img"
               aria-label={`${title} over time`}
             >
-              {bands.map((b) => {
-                const x1 = Math.max(x(b.from), left)
-                const x2 = Math.min(x(b.to), left + plotWidth)
-                if (x2 <= x1) return null
-                return (
-                  <g key={b.key}>
-                    <rect x={x1} y={0} width={Math.max(x2 - x1, 1)} height={plotHeight} className={b.alternate ? 'fill-violet-500/10' : 'fill-sky-500/10'} />
-                    {x2 - x1 > 18 && (
-                      <text x={x1 + 2} y={9} className="fill-muted-foreground text-[9px]">
-                        {b.label}
-                      </text>
-                    )}
-                  </g>
-                )
-              })}
+              <g transform={`translate(0,${top})`}>
+                {bands.map((b) => {
+                  const x1 = Math.max(x(b.from), left)
+                  const x2 = Math.min(x(b.to), left + plotWidth)
+                  if (x2 <= x1) return null
+                  return (
+                    <g key={b.key}>
+                      <rect x={x1} y={0} width={Math.max(x2 - x1, 1)} height={plotHeight} className={b.alternate ? 'fill-violet-500/10' : 'fill-sky-500/10'} />
+                      {x2 - x1 > 18 && (
+                        <text x={x1 + 2} y={9} className="fill-muted-foreground text-[9px]">
+                          {b.label}
+                        </text>
+                      )}
+                    </g>
+                  )
+                })}
 
-              {valueTicks(max).map((v) => (
-                <g key={v}>
-                  <line x1={left} x2={left + plotWidth} y1={y(v)} y2={y(v)} className="stroke-border" strokeWidth={1} />
-                  <text x={left - 4} y={y(v)} dy="0.32em" textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
-                    {format(v)}
-                  </text>
-                </g>
-              ))}
-
-              {limits
-                .filter((l) => l.value <= max)
-                .map((l) => (
-                  <g key={l.label}>
-                    <line x1={left} x2={left + plotWidth} y1={y(l.value)} y2={y(l.value)} className="stroke-red-500/60" strokeDasharray="4 3" strokeWidth={1} />
-                    <text x={left + plotWidth - 2} y={y(l.value) - 3} textAnchor="end" className="fill-red-500/80 text-[9px]">
-                      {l.label}
+                {valueTicks(max).map((v) => (
+                  <g key={v}>
+                    <line x1={left} x2={left + plotWidth} y1={y(v)} y2={y(v)} className="stroke-border" strokeWidth={1} />
+                    <text x={left - 4} y={y(v)} dy="0.32em" textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
+                      {format(v)}
                     </text>
                   </g>
                 ))}
 
-              {timeTicks(range).map((t) => (
-                <text key={t} x={x(t)} y={plotHeight + 13} textAnchor="middle" className="fill-muted-foreground text-[10px] tabular-nums">
-                  {clockShort(t)}
-                </text>
-              ))}
+                {limits
+                  .filter((l) => l.value <= max)
+                  .map((l) => (
+                    <g key={l.label}>
+                      <line x1={left} x2={left + plotWidth} y1={y(l.value)} y2={y(l.value)} className="stroke-red-500/60" strokeDasharray="4 3" strokeWidth={1} />
+                      <text x={left + plotWidth - 2} y={y(l.value) - 3} textAnchor="end" className="fill-red-500/80 text-[9px]">
+                        {l.label}
+                      </text>
+                    </g>
+                  ))}
 
-              <clipPath id={clipId}>
-                <rect x={left} y={0} width={plotWidth} height={plotHeight} />
-              </clipPath>
-              {series.map((s) => (
-                <g key={s.name} clipPath={`url(#${clipId})`}>
-                  <path d={linePath(times, s.values, x, y)} fill="none" className={s.stroke} strokeWidth={1.5} strokeLinejoin="round" />
-                  {/* Values above the cap: a mark at the top, the legend has the value */}
-                  {s.values.map((v, i) =>
-                    v !== null && v > max ? (
-                      <path key={i} d={`M${x(times[i]) - 3},6 L${x(times[i]) + 3},6 L${x(times[i])},1 Z`} fill="none" className={s.stroke} strokeWidth={1.5} />
-                    ) : null,
-                  )}
-                </g>
-              ))}
+                {timeTicks(range).map((t) => (
+                  <text key={t} x={x(t)} y={plotHeight + 13} textAnchor="middle" className="fill-muted-foreground text-[10px] tabular-nums">
+                    {clockShort(t)}
+                  </text>
+                ))}
 
-              {shown >= 0 && hover !== null && (
-                <line x1={x(times[shown])} x2={x(times[shown])} y1={0} y2={plotHeight} className="stroke-foreground/50" strokeWidth={1} />
-              )}
+                <clipPath id={clipId}>
+                  <rect x={left} y={0} width={plotWidth} height={plotHeight} />
+                </clipPath>
+                {series.map((s) => (
+                  <g key={s.name} clipPath={`url(#${clipId})`}>
+                    <path d={linePath(times, s.values, x, y)} fill="none" className={s.stroke} strokeWidth={1.5} strokeLinejoin="round" />
+                    {/* Values above the cap: a mark at the top, the legend has the value */}
+                    {s.values.map((v, i) =>
+                      v !== null && v > max ? (
+                        <path key={i} d={`M${x(times[i]) - 3},6 L${x(times[i]) + 3},6 L${x(times[i])},1 Z`} fill="none" className={s.stroke} strokeWidth={1.5} />
+                      ) : null,
+                    )}
+                  </g>
+                ))}
+
+                {shown >= 0 && hover !== null && (
+                  <line x1={x(times[shown])} x2={x(times[shown])} y1={0} y2={plotHeight} className="stroke-foreground/50" strokeWidth={1} />
+                )}
+              </g>
             </svg>
           )
         )}

@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { NativeSelect } from '@/components/native-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export type InputRequest = {
   title: string
@@ -53,13 +53,18 @@ function InputForm({ request, onClose }: { request: InputRequest; onClose: () =>
       {request.choice && (
         <Field>
           <FieldLabel htmlFor="input-dialog-choice">{request.choice.label}</FieldLabel>
-          <NativeSelect id="input-dialog-choice" value={choice} onChange={(e) => setChoice(e.target.value)}>
-            {request.choice.options.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </NativeSelect>
+          <Select items={request.choice.options} value={choice} onValueChange={(next) => setChoice(next ?? '')}>
+            <SelectTrigger id="input-dialog-choice" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {request.choice.options.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
       )}
       <DialogFooter>

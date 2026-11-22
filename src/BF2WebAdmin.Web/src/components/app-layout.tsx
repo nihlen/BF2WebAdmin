@@ -1,7 +1,7 @@
 import { HubConnectionState } from '@microsoft/signalr'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, Outlet, useNavigate } from '@tanstack/react-router'
-import { LayoutDashboard, LogOut, Plus } from 'lucide-react'
+import { LayoutDashboard, LogOut, Plus, Settings2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { api } from '@/api/client'
 import { startHub, stopHub, useHubState } from '@/api/hub'
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/sidebar'
 import { groupServers, useServerListUpdates, useServers } from '@/hooks/use-servers'
 import { encodeServerId } from '@/lib/server-id'
+import { cn } from '@/lib/utils'
 
 const hubRetryMs = 5000
 
@@ -43,9 +44,10 @@ export function AppLayout() {
           <HubStatus />
           <LogoutButton />
         </header>
-        <main className="mx-auto w-full max-w-screen-2xl p-6">
+        {/* SidebarInset is the page's main landmark already */}
+        <div className="mx-auto w-full max-w-screen-2xl p-4 sm:p-6">
           <Outlet />
-        </main>
+        </div>
       </SidebarInset>
     </SidebarProvider>
   )
@@ -126,9 +128,7 @@ function AppSidebar() {
 
         {groupServers(servers.data ?? []).map(([group, groupServers]) => (
           <SidebarGroup key={group}>
-            <SidebarGroupLabel render={<Link to="/servergroup/$serverGroup" params={{ serverGroup: group }} />}>
-              {group}
-            </SidebarGroupLabel>
+            <SidebarGroupLabel>Group {group}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {groupServers.map((server) => (
@@ -147,6 +147,18 @@ function AppSidebar() {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
+                {/* The group's modules and admin levels: a named place, not only the group's label */}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    size="sm"
+                    className={cn(activeLink, 'text-muted-foreground')}
+                    render={<Link to="/servergroup/$serverGroup" params={{ serverGroup: group }} />}
+                    tooltip={`Settings of group ${group}`}
+                  >
+                    <Settings2 />
+                    Group settings
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

@@ -1,126 +1,48 @@
-import { HubConnectionState } from '@microsoft/signalr'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Ban as BanIcon, Bolt, Box, Hammer, History, Loader2, Map as MapIcon, MessageSquare, Pause, Play, Power, RotateCcw, Settings, SquareTerminal } from 'lucide-react'
+import { Map as MapIcon, MessageSquare, PlugZap, Settings, SquareTerminal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api, errorMessage, type Player, type ServerSnapshot } from '@/api/client'
-import { useHubState } from '@/api/hub'
 import { useConfirm } from '@/components/confirm-dialog'
 import { InputDialog, type InputRequest } from '@/components/input-dialog'
 import { ServerMap } from '@/components/server-map'
-import { ServerStatusDot } from '@/components/server-status'
 import { ActivityLog } from '@/components/server/activity-log'
 import { BanList } from '@/components/server/ban-list'
 import { ChatPanel } from '@/components/server/chat-panel'
 import { CommandPanel } from '@/components/server/command-panel'
+import { ConnectionTestResults } from '@/components/server/connection-test'
 import { HealthPanel } from '@/components/server/health-panel'
 import { LogList, Time } from '@/components/server/log-list'
 import { MapList } from '@/components/server/map-list'
 import { PlayerSheet } from '@/components/server/player-sheet'
+import { useServerPage } from '@/components/server/server-context'
 import { TeamTable } from '@/components/server/team-table'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { playerAuthQuery, useServerActions, type ServerActions } from '@/hooks/use-server-actions'
-import { useServerLive } from '@/hooks/use-server-live'
-import { usePendingActions } from '@/lib/pending-actions'
-import { decodeServerId, encodeServerId } from '@/lib/server-id'
-import { serverRoute } from '@/router'
+import { encodeServerId } from '@/lib/server-id'
 
-export function ServerPage() {
-  const serverId = decodeServerId(serverRoute.useParams().serverId)
-  const { snapshot, positions } = useServerLive(serverId)
+/** The Live tab: the teams, the chat, maps and commands, and the minimap. An offline server has none of them. */
+export function ServerLivePage() {
+  const { serverId, snapshot, positions } = useServerPage()
   const actions = useServerActions(serverId, snapshot.data)
   const { confirm, dialog: confirmDialog } = useConfirm()
   const [inputRequest, setInputRequest] = useState<InputRequest | null>(null)
   const [detailsPlayer, setDetailsPlayer] = useState<Player | null>(null)
-  const hubState = useHubState()
 
   const serverGroup = snapshot.data?.server.serverGroup ?? ''
   const auth = useQuery({ ...playerAuthQuery(serverGroup), enabled: !!serverGroup })
   const authLevels = useMemo(() => new Map((auth.data ?? []).map((a) => [a.playerHash, a.authLevel])), [auth.data])
 
-  if (snapshot.isError) return <p className="text-destructive">{errorMessage(snapshot.error)}</p>
   if (!snapshot.data) return <Skeleton className="h-[600px]" />
 
-  const { server, teams, players, eventLog } = snapshot.data
-  const connected = server.socketState === 'Connected'
+  const { server, teams, players } = snapshot.data
+  if (server.socketState !== 'Connected') return <OfflineCard serverId={serverId} />
 
   return (
     <div className="space-y-6">
-      <title>{`BF2 Web Admin - ${server.name}`}</title>
-
-      {!connected && (
-        <Alert variant="destructive">
-          <AlertTitle>The server is offline</AlertTitle>
-          <AlertDescription>Its admin channel is not connected. Commands cannot reach it until it connects again.</AlertDescription>
-        </Alert>
-      )}
-      {hubState !== HubConnectionState.Connected && (
-        <Alert>
-          <Loader2 className="animate-spin" />
-          <AlertTitle>Live updates are offline, reconnecting…</AlertTitle>
-          <AlertDescription>The players, chat and map below may be out of date until the connection is back.</AlertDescription>
-        </Alert>
-      )}
-
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="truncate text-3xl font-semibold">{server.name}</h1>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="lg"
-            nativeButton={false}
-            render={<Link to="/server/$serverId/viewer" params={{ serverId: encodeServerId(serverId) }} />}
-          >
-            <Box data-icon="inline-start" />
-            <span className="hidden sm:inline">3D viewer</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            nativeButton={false}
-            render={<Link to="/server/$serverId/builder" params={{ serverId: encodeServerId(serverId) }} />}
-          >
-            <Hammer data-icon="inline-start" />
-            <span className="hidden sm:inline">Map builder</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="icon-lg"
-            aria-label="Server settings"
-            title="Server settings"
-            nativeButton={false}
-            render={<Link to="/server/$serverId/edit" params={{ serverId: encodeServerId(serverId) }} />}
-          >
-            <Settings />
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Badge variant="secondary">
-          <ServerStatusDot socketState={server.socketState} />
-          {server.socketState}
-        </Badge>
-        <Badge variant={server.gameState === 'Paused' ? 'destructive' : 'secondary'}>{server.gameState}</Badge>
-        <Badge variant="secondary">
-          {server.ipAddress}:{server.gamePort} ({server.queryPort})
-        </Badge>
-        {server.map && <Badge variant="secondary">{server.map}</Badge>}
-        <Badge variant="secondary">
-          {server.players} / {server.maxPlayers} players
-        </Badge>
-        <Badge variant="secondary" render={<Link to="/servergroup/$serverGroup" params={{ serverGroup: server.serverGroup }} />}>
-          {server.serverGroup}
-        </Badge>
-      </div>
-
-      <ServerButtons serverId={serverId} snapshot={snapshot.data} actions={actions} confirm={confirm} disabled={!connected} />
-
       <div className="grid gap-6 lg:grid-cols-2">
         {teams.map((team) => (
           <TeamTable
@@ -138,11 +60,9 @@ export function ServerPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <ServerTabs serverId={serverId} snapshot={snapshot.data} eventLog={eventLog} actions={actions} confirm={confirm} />
+        <LiveTabs serverId={serverId} snapshot={snapshot.data} actions={actions} confirm={confirm} />
         <ServerMap map={server.map} players={players} positions={positions} />
       </div>
-
-      <HealthPanel serverId={serverId} connected={connected} />
 
       <PlayerSheet
         serverId={serverId}
@@ -162,85 +82,54 @@ export function ServerPage() {
   )
 }
 
-/** Restart map, pause and restart server. Each shows its progress until the game confirms it. */
-function ServerButtons({
-  serverId,
-  snapshot,
-  actions,
-  confirm,
-  disabled,
-}: {
-  serverId: string
-  snapshot: ServerSnapshot
-  actions: ServerActions
-  confirm: ReturnType<typeof useConfirm>['confirm']
-  disabled: boolean
-}) {
-  const pending = usePendingActions(serverId)
-  const players = snapshot.players.length
-  const paused = snapshot.server.gameState === 'Paused'
-  const playersText = players === 0 ? 'No players are online.' : `${players} ${players === 1 ? 'player is' : 'players are'} online.`
-
-  const busy = (key: string) => pending.has(key)
-  const icon = (key: string, Icon: React.ComponentType<{ className?: string }>, className: string) =>
-    busy(key) ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Icon data-icon="inline-start" className={className} />
+/**
+ * An offline server has no players, chat or maps to show and takes no commands: one card says so and offers the
+ * settings and a connection test with the stored settings.
+ */
+function OfflineCard({ serverId }: { serverId: string }) {
+  const settings = api.useQuery('get', '/api/servers/{serverId}/settings', { params: { path: { serverId } } })
+  const test = api.useMutation('post', '/api/servers/test')
 
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button
-        variant="outline"
-        disabled={disabled || busy('restart-map')}
-        onClick={() =>
-          confirm({
-            title: 'Restart the round?',
-            description: `The scores are reset and everyone respawns. ${playersText}`,
-            confirmLabel: 'Restart round',
-            onConfirm: () => void actions.restartMap(),
-          })
-        }
-      >
-        {icon('restart-map', RotateCcw, 'text-emerald-500')}
-        Restart map
-      </Button>
-      <Button variant="outline" disabled={disabled || busy('pause')} onClick={() => void actions.togglePause()}>
-        {paused ? icon('pause', Play, 'text-emerald-500') : icon('pause', Pause, 'text-amber-500')}
-        {paused ? 'Resume' : 'Pause'}
-      </Button>
-      <Button
-        variant="outline"
-        disabled={disabled || busy('restart-server')}
-        onClick={() =>
-          confirm({
-            title: 'Restart the game server?',
-            description: (
-              <>
-                The server quits cleanly (console <code>quit</code>) and its container starts it again, which takes about a minute. {playersText}{' '}
-                Everyone is disconnected. The container needs a restart policy (<code>always</code> or <code>unless-stopped</code>).
-              </>
-            ),
-            confirmLabel: 'Restart server',
-            destructive: true,
-            onConfirm: () => void actions.restartServer(),
-          })
-        }
-      >
-        {icon('restart-server', Power, 'text-destructive')}
-        Restart server
-      </Button>
-    </div>
+    <Card className="max-w-3xl">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <PlugZap className="size-5 text-destructive" />
+          The admin channel is not connected
+        </CardTitle>
+        <CardDescription>
+          WebAdmin is waiting for this game server to connect. Until it does, there are no players, chat or maps here, and commands cannot reach
+          it. Check that the game server is running, that its server extension has this server's admin key and connects to this WebAdmin's admin
+          channel port.
+        </CardDescription>
+      </CardHeader>
+      {(test.isPending || test.data) && (
+        <CardContent>
+          <ConnectionTestResults pending={test.isPending} results={test.data} discordConfigured={!!settings.data?.discordBotToken} />
+        </CardContent>
+      )}
+      <CardFooter className="flex-wrap gap-2">
+        <Button disabled={!settings.data || test.isPending} onClick={() => settings.data && test.mutate({ body: settings.data })}>
+          Test connection
+        </Button>
+        <Button variant="outline" nativeButton={false} render={<Link to="/server/$serverId/edit" params={{ serverId: encodeServerId(serverId) }} />}>
+          <Settings data-icon="inline-start" />
+          Settings
+        </Button>
+        {settings.isError && <p className="w-full text-sm text-destructive">{errorMessage(settings.error)}</p>}
+      </CardFooter>
+    </Card>
   )
 }
 
-function ServerTabs({
+function LiveTabs({
   serverId,
   snapshot,
-  eventLog,
   actions,
   confirm,
 }: {
   serverId: string
   snapshot: ServerSnapshot
-  eventLog: ServerSnapshot['eventLog']
   actions: ServerActions
   confirm: ReturnType<typeof useConfirm>['confirm']
 }) {
@@ -263,18 +152,6 @@ function ServerTabs({
             <SquareTerminal />
             Commands
           </TabsTrigger>
-          <TabsTrigger value="bans">
-            <BanIcon />
-            Bans
-          </TabsTrigger>
-          <TabsTrigger value="activity">
-            <History />
-            Activity
-          </TabsTrigger>
-          <TabsTrigger value="events">
-            <Bolt />
-            Events
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="chat">
@@ -294,25 +171,57 @@ function ServerTabs({
         <TabsContent value="commands">
           <CommandPanel serverId={serverId} players={snapshot.players} actions={actions} />
         </TabsContent>
-
-        <TabsContent value="bans">
-          <BanList serverId={serverId} actions={actions} confirm={confirm} />
-        </TabsContent>
-
-        <TabsContent value="activity">
-          <ActivityLog serverId={serverId} />
-        </TabsContent>
-
-        <TabsContent value="events">
-          <LogList className="h-[550px]" items={eventLog} empty="No events yet">
-            {(entry) => (
-              <li key={entry.id}>
-                <Time value={entry.timestamp} /> {entry.message}
-              </li>
-            )}
-          </LogList>
-        </TabsContent>
       </Tabs>
     </Card>
+  )
+}
+
+/** The Health tab: the server process and the players' connections, at full width. */
+export function ServerHealthPage() {
+  const { serverId, snapshot } = useServerPage()
+  return <HealthPanel serverId={serverId} connected={snapshot.data?.server.socketState === 'Connected'} />
+}
+
+/** The Bans tab: the engine's ban list, with an unban per row. */
+export function ServerBansPage() {
+  const { serverId, snapshot } = useServerPage()
+  const actions = useServerActions(serverId, snapshot.data)
+  const { confirm, dialog } = useConfirm()
+
+  return (
+    <Card className="gap-0 py-0">
+      <BanList serverId={serverId} actions={actions} confirm={confirm} />
+      {dialog}
+    </Card>
+  )
+}
+
+/** The Activity tab: what web users sent to the server, and the game's events. */
+export function ServerActivityPage() {
+  const { serverId, snapshot } = useServerPage()
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <Card className="gap-0 pb-0">
+        <CardHeader className="border-b">
+          <CardTitle>Sent from the web</CardTitle>
+          <CardDescription>Chat, commands and actions of every web user, with the server's answers.</CardDescription>
+        </CardHeader>
+        <ActivityLog serverId={serverId} />
+      </Card>
+      <Card className="gap-0 pb-0">
+        <CardHeader className="border-b">
+          <CardTitle>Game events</CardTitle>
+          <CardDescription>Joins, deaths, kills, map changes and other game events, newest at the bottom.</CardDescription>
+        </CardHeader>
+        <LogList className="h-[min(600px,70svh)]" items={snapshot.data?.eventLog ?? []} empty="No events yet">
+          {(entry) => (
+            <li key={entry.id}>
+              <Time value={entry.timestamp} /> {entry.message}
+            </li>
+          )}
+        </LogList>
+      </Card>
+    </div>
   )
 }

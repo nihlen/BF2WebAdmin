@@ -14,9 +14,10 @@ import { AppLayout } from '@/components/app-layout'
 import { Button } from '@/components/ui/button'
 import { DashboardPage } from '@/pages/dashboard'
 import { LoginPage } from '@/pages/login'
-import { ServerPage } from '@/pages/server'
-import { ServerAddPage, ServerEditPage } from '@/pages/server-settings'
+import { ServerActivityPage, ServerBansPage, ServerHealthPage, ServerLivePage } from '@/pages/server'
 import { ServerGroupPage } from '@/pages/server-group'
+import { ServerLayout } from '@/pages/server-layout'
+import { ServerAddPage, ServerEditPage } from '@/pages/server-settings'
 
 export const meQuery = api.queryOptions('get', '/api/auth/me')
 
@@ -82,30 +83,58 @@ const serverAddRoute = createRoute({
   component: ServerAddPage,
 })
 
+// Every page of a server shares one header and tab bar (ServerLayout), which keeps the server's live data subscribed
 export const serverRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/server/$serverId',
-  component: ServerPage,
+  component: ServerLayout,
 })
 
+export const serverLiveRoute = createRoute({
+  getParentRoute: () => serverRoute,
+  path: '/',
+  component: ServerLivePage,
+})
+
+export const serverHealthRoute = createRoute({
+  getParentRoute: () => serverRoute,
+  path: '/health',
+  component: ServerHealthPage,
+})
+
+export const serverBansRoute = createRoute({
+  getParentRoute: () => serverRoute,
+  path: '/bans',
+  component: ServerBansPage,
+})
+
+export const serverActivityRoute = createRoute({
+  getParentRoute: () => serverRoute,
+  path: '/activity',
+  component: ServerActivityPage,
+})
+
+// The settings: "edit" as before, so links to it keep working
 export const serverEditRoute = createRoute({
-  getParentRoute: () => appRoute,
-  path: '/server/$serverId/edit',
+  getParentRoute: () => serverRoute,
+  path: '/edit',
   component: ServerEditPage,
 })
 
-// The 3D viewer brings three.js and its models: loaded when opened
+// The 3D viewer brings three.js and its models: loaded when opened. It fills the window below the header on desktop
 export const viewerRoute = createRoute({
-  getParentRoute: () => appRoute,
-  path: '/server/$serverId/viewer',
+  getParentRoute: () => serverRoute,
+  path: '/viewer',
   component: lazyRouteComponent(() => import('@/pages/viewer'), 'ViewerPage'),
+  staticData: { fullHeight: true },
 })
 
 // The map builder: three.js too, loaded when opened
 export const builderRoute = createRoute({
-  getParentRoute: () => appRoute,
-  path: '/server/$serverId/builder',
+  getParentRoute: () => serverRoute,
+  path: '/builder',
   component: lazyRouteComponent(() => import('@/pages/builder'), 'BuilderPage'),
+  staticData: { fullHeight: true },
 })
 
 export const serverGroupRoute = createRoute({
@@ -116,7 +145,12 @@ export const serverGroupRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
-  appRoute.addChildren([dashboardRoute, serverAddRoute, serverRoute, serverEditRoute, serverGroupRoute, viewerRoute, builderRoute]),
+  appRoute.addChildren([
+    dashboardRoute,
+    serverAddRoute,
+    serverRoute.addChildren([serverLiveRoute, serverHealthRoute, serverBansRoute, serverActivityRoute, serverEditRoute, viewerRoute, builderRoute]),
+    serverGroupRoute,
+  ]),
 ])
 
 export function createAppRouter(queryClient: QueryClient) {
@@ -134,5 +168,9 @@ export function createAppRouter(queryClient: QueryClient) {
 declare module '@tanstack/react-router' {
   interface Register {
     router: ReturnType<typeof createAppRouter>
+  }
+  interface StaticDataRouteOption {
+    /** The page fills the window below the server header on desktop (a 3D view), instead of scrolling */
+    fullHeight?: boolean
   }
 }

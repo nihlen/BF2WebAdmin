@@ -60,7 +60,13 @@ const fillAddForm = async (page, log) =>
       const field = page.locator(selector).first()
       if (await field.count()) await field.fill(value, { timeout: 3000 })
     }
-    await fill('#serverGroup, input[name="serverGroup"]', '2v2')
+    // The group is a select of the existing groups since r01 (an input when there are none)
+    const group = page.locator('#serverGroup').first()
+    if ((await group.evaluate((el) => el.tagName).catch(() => '')) === 'INPUT') await group.fill('2v2', { timeout: 3000 })
+    else {
+      await group.click({ timeout: 3000 })
+      await page.getByRole('option', { name: '2v2', exact: true }).click({ timeout: 3000 })
+    }
     await fill('#ipAddress, input[name="ipAddress"]', '198.51.100.30')
     await fill('#gamePort, input[name="gamePort"]', '16570')
     await fill('#queryPort, input[name="queryPort"]', '29900')
@@ -103,8 +109,10 @@ const shots = [
   { name: 'server', path: heli1, viewports: ['desktop', 'phone'] },
   { name: 'server-tab-maps', path: heli1, viewports: ['desktop'], steps: [clickTab('maps')] },
   { name: 'server-tab-commands', path: heli1, viewports: ['desktop'], steps: [clickTab('commands')] },
-  { name: 'server-tab-bans', path: heli1, viewports: ['desktop'], steps: [clickTab('bans')] },
-  { name: 'server-tab-activity', path: heli1, viewports: ['desktop'], steps: [clickTab('activity')] },
+  // Bans, activity and health are pages of their own under the server's tab bar since r01
+  { name: 'server-tab-bans', path: `${heli1}/bans`, viewports: ['desktop', 'phone'] },
+  { name: 'server-tab-activity', path: `${heli1}/activity`, viewports: ['desktop'] },
+  { name: 'server-health', path: `${heli1}/health`, viewports: ['desktop', 'phone'] },
   {
     name: 'server-player',
     path: heli1,

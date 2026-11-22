@@ -6,7 +6,7 @@ export function ServerStatusDot({ socketState, className }: { socketState: Socke
   const connected = socketState === 'Connected'
   return (
     <span
-      title={connected ? 'Connected' : 'Disconnected'}
+      title={connected ? 'Online' : 'Offline'}
       className={cn('inline-block size-2 shrink-0 rounded-full', connected ? 'bg-emerald-500' : 'bg-red-500', className)}
     />
   )

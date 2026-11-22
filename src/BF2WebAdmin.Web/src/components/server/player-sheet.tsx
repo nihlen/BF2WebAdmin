@@ -2,11 +2,11 @@ import { Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, type Player, type Team } from '@/api/client'
 import type { InputRequest } from '@/components/input-dialog'
-import { NativeSelect } from '@/components/native-select'
+import { LevelSelect } from '@/components/auth-level-select'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import type { ServerActions } from '@/hooks/use-server-actions'
-import { authLevels, defaultAuthLevel } from '@/lib/auth-levels'
+import { defaultAuthLevel } from '@/lib/auth-levels'
 import { banLength } from '@/lib/bans'
 import { teamTextColor } from '@/lib/teams'
 import { cn } from '@/lib/utils'
@@ -124,18 +124,12 @@ function PlayerDetails({
 
         <section className="space-y-2">
           <h3 className="font-medium">Auth level in {serverGroup}</h3>
-          <NativeSelect
-            aria-label="Auth level"
+          <LevelSelect
+            label="Auth level"
             disabled={!player.hash}
-            value={String(level ?? defaultAuthLevel)}
-            onChange={(e) => void actions.setAuthLevel(serverGroup, player.hash, Number(e.target.value), player.name)}
-          >
-            {authLevels.map((l) => (
-              <option key={l.value} value={l.value}>
-                {l.name} ({l.value}): {l.description}
-              </option>
-            ))}
-          </NativeSelect>
+            value={level ?? defaultAuthLevel}
+            onChange={(next) => void actions.setAuthLevel(serverGroup, player.hash, next, player.name)}
+          />
         </section>
 
         {!left && (

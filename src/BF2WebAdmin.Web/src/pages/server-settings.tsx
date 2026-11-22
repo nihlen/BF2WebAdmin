@@ -1,10 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useBlocker, useNavigate } from '@tanstack/react-router'
-import { CircleCheck, CircleX, Eye, EyeOff } from 'lucide-react'
+import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
+import { ChevronDown, Eye, EyeOff, KeyRound, Settings2, Sparkles } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, errorMessage, type ServerSettings } from '@/api/client'
 import { ConfirmButton } from '@/components/confirm-button'
+import { CopyButton } from '@/components/copy-button'
+import { ConnectionTestResults } from '@/components/server/connection-test'
+import { useServerPage } from '@/components/server/server-context'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,17 +19,20 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { decodeServerId, encodeServerId } from '@/lib/server-id'
-import { serverEditRoute } from '@/router'
+import { useServers } from '@/hooks/use-servers'
+import { encodeServerId } from '@/lib/server-id'
+import { cn } from '@/lib/utils'
 
+// No group is filled in: the "default" group's modules cannot be changed, so an owner who kept it would be stuck
 const newServer: ServerSettings = {
   serverId: '',
-  serverGroup: 'default',
+  serverGroup: '',
   ipAddress: '',
   gamePort: 16567,
   queryPort: 29900,
@@ -39,29 +45,47 @@ const newServer: ServerSettings = {
 }
 
 const adminKeyPattern = /^\s*([0-9a-fA-F]{2}){16,64}\s*$/
+const ipPattern = /^\s*(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}\s*$/
+const defaultGroup = 'default'
+const newGroupValue = '\u0000new'
+
+/** 32 random bytes as 64 hex digits, the longest key the admin channel takes. */
+function generateKey() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
 
 export function ServerAddPage() {
   return (
-    <div className="space-y-8">
-      <h1 className="text-3xl font-semibold">Add server</h1>
+    <div className="space-y-6">
+      <title>BF2 Web Admin - Add server</title>
+      <div className="space-y-1">
+        <h1 className="text-3xl font-semibold">Add a server</h1>
+        <p className="text-muted-foreground">
+          Register a game server that runs OpenBF2 with the server extension. Once it is saved here, the game server connects to this WebAdmin by
+          itself.
+        </p>
+      </div>
       <ServerSettingsForm initial={newServer} />
     </div>
   )
 }
 
+/** The Settings tab of a server. */
 export function ServerEditPage() {
-  const serverId = decodeServerId(serverEditRoute.useParams().serverId)
+  const { serverId } = useServerPage()
   const settings = api.useQuery('get', '/api/servers/{serverId}/settings', { params: { path: { serverId } } })
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-3xl font-semibold">Edit server</h1>
+    <div className="space-y-6">
       {settings.isPending && <Skeleton className="h-96 max-w-2xl" />}
       {settings.isError && <p className="text-destructive">{errorMessage(settings.error)}</p>}
       {settings.data && <ServerSettingsForm key={serverId} initial={settings.data} serverId={serverId} />}
     </div>
   )
 }
+
+type FieldName = 'serverGroup' | 'ipAddress' | 'gamePort' | 'queryPort' | 'adminKey'
 
 /** The settings of a new server (no serverId) or an existing one, whose address and game port are fixed. */
 function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; serverId?: string }) {
@@ -70,14 +94,28 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
   const [form, setForm] = useState(initial)
   const set = <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => setForm((f) => ({ ...f, [key]: value }))
   const dirty = (Object.keys(initial) as (keyof ServerSettings)[]).some((key) => (form[key] ?? '') !== (initial[key] ?? ''))
+  // Errors show once a field has been left, or after a save was tried: not while the page opens
+  const [touched, setTouched] = useState<ReadonlySet<FieldName>>(new Set())
+  const [submitted, setSubmitted] = useState(false)
+  const touch = (name: FieldName) => () => setTouched((t) => new Set(t).add(name))
   // Set before the navigation after a save or a removal, which must not ask
   const leaving = useRef(false)
   const blocker = useBlocker({ shouldBlockFn: () => dirty && !leaving.current, enableBeforeUnload: () => dirty && !leaving.current, withResolver: true })
 
-  const adminKeyInvalid = !!form.adminKey?.trim() && !adminKeyPattern.test(form.adminKey)
+  const errors: Partial<Record<FieldName, string>> = {}
+  if (!form.serverGroup.trim()) errors.serverGroup = 'Choose a group, or name a new one'
+  if (!serverId && !ipPattern.test(form.ipAddress)) errors.ipAddress = 'An IPv4 address, such as 203.0.113.10'
+  const badPort = (port: number) => !Number.isInteger(port) || port < 1 || port > 65535
+  if (badPort(form.gamePort)) errors.gamePort = 'A port from 1 to 65535'
+  if (badPort(form.queryPort)) errors.queryPort = 'A port from 1 to 65535'
+  if (form.adminKey?.trim() && !adminKeyPattern.test(form.adminKey)) errors.adminKey = '32 to 128 hex digits (0-9, a-f), an even number'
+  const shown = (name: FieldName) => (submitted || touched.has(name) ? errors[name] : undefined)
+  const invalid = Object.keys(errors).length > 0
+
   const toDto = (): ServerSettings => ({
     ...form,
     serverId: serverId ?? `${form.ipAddress.trim()}:${form.gamePort}`,
+    serverGroup: form.serverGroup.trim(),
     ipAddress: form.ipAddress.trim(),
     adminKey: form.adminKey?.trim() || null,
   })
@@ -99,97 +137,175 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
     },
   })
   const test = api.useMutation('post', '/api/servers/test')
+  const saving = create.isPending || update.isPending
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (adminKeyInvalid) return
+    setSubmitted(true)
+    if (invalid) return
     const body = toDto()
     if (serverId) update.mutate({ params: { path: { serverId } }, body })
     else create.mutate({ body })
   }
 
-  const text = (key: keyof ServerSettings, label: string, props?: React.ComponentProps<typeof Input>) => (
-    <Field>
-      <FieldLabel htmlFor={key}>{label}</FieldLabel>
-      <Input id={key} value={String(form[key] ?? '')} onChange={(e) => set(key, e.target.value as never)} {...props} />
-    </Field>
-  )
-
-  const number = (key: 'gamePort' | 'queryPort', label: string, props?: React.ComponentProps<typeof Input>) =>
-    text(key, label, { type: 'number', min: 1, max: 65535, required: true, onChange: (e) => set(key, Number(e.target.value)), ...props })
-
-  const secret = (key: 'discordBotToken', label: string, props?: React.ComponentProps<typeof Input>) => (
-    <Field>
-      <FieldLabel htmlFor={key}>{label}</FieldLabel>
-      <SecretInput id={key} value={form[key] ?? ''} onChange={(e) => set(key, e.target.value)} {...props} />
-    </Field>
-  )
+  // Why Save cannot be pressed, said next to it
+  const saveBlocked = saving ? null : serverId && !dirty ? 'No changes to save' : submitted && invalid ? 'Fix the fields marked in red' : null
 
   return (
-    <form onSubmit={submit} className="max-w-2xl">
-      <Card>
-        <CardContent>
-          <FieldGroup>
-            {text('serverGroup', 'Server group', { required: true })}
-            {text('ipAddress', 'IP address', { required: true, readOnly: !!serverId })}
-            <div className="grid gap-4 sm:grid-cols-2">
-              {number('gamePort', 'Game port', { readOnly: !!serverId })}
-              {number('queryPort', 'Query port')}
-            </div>
-            {secret('discordBotToken', 'Discord bot token')}
-            {text('discordAdminChannel', 'Discord admin channel')}
-            {text('discordNotificationChannel', 'Discord notification channel')}
-            {text('discordMatchResultChannel', 'Discord match channel')}
-            <Field data-invalid={adminKeyInvalid || undefined}>
-              <FieldLabel htmlFor="adminKey">Admin channel key (adminKey, 32-128 hex digits)</FieldLabel>
-              <SecretInput
+    <form onSubmit={submit} noValidate className="grid items-start gap-6 lg:grid-cols-[minmax(0,42rem)_minmax(0,1fr)]">
+      <div className="min-w-0 space-y-6">
+        {serverId && (
+          <div className="space-y-1">
+            <h2 className="text-xl font-semibold">Settings</h2>
+            <p className="text-sm text-muted-foreground">How WebAdmin reaches this server, its group and its Discord bot.</p>
+          </div>
+        )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Game server</CardTitle>
+            <CardDescription>Where the game server runs. {serverId && 'The address and game port identify the server and cannot change.'}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FieldGroup>
+              <Field data-invalid={!!shown('serverGroup') || undefined}>
+                <FieldLabel htmlFor="serverGroup">Server group</FieldLabel>
+                <GroupPicker value={form.serverGroup} onChange={(group) => set('serverGroup', group)} onBlur={touch('serverGroup')} invalid={!!shown('serverGroup')} />
+                <FieldDescription>
+                  Servers in a group share their modules and admins.
+                  {form.serverGroup.trim() === defaultGroup && ' The default group runs the base modules only and they cannot be changed: give the server a group of its own to choose its modules.'}
+                  {serverId && form.serverGroup.trim() && (
+                    <>
+                      {' '}
+                      <Link to="/servergroup/$serverGroup" params={{ serverGroup: initial.serverGroup }} className="inline-flex items-center gap-1 text-foreground underline-offset-4 hover:underline">
+                        <Settings2 className="size-3.5" />
+                        Group settings of {initial.serverGroup}
+                      </Link>
+                    </>
+                  )}
+                </FieldDescription>
+                {shown('serverGroup') && <FieldError>{shown('serverGroup')}</FieldError>}
+              </Field>
+              <Field data-invalid={!!shown('ipAddress') || undefined}>
+                <FieldLabel htmlFor="ipAddress">IP address</FieldLabel>
+                <Input
+                  id="ipAddress"
+                  value={form.ipAddress}
+                  readOnly={!!serverId}
+                  required
+                  inputMode="decimal"
+                  placeholder="203.0.113.10"
+                  aria-invalid={!!shown('ipAddress')}
+                  onChange={(e) => set('ipAddress', e.target.value)}
+                  onBlur={touch('ipAddress')}
+                />
+                <FieldDescription>The game server's public address, as players connect to it.</FieldDescription>
+                {shown('ipAddress') && <FieldError>{shown('ipAddress')}</FieldError>}
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <PortField name="gamePort" label="Game port" hint="UDP, 16567 by default" value={form.gamePort} readOnly={!!serverId} error={shown('gamePort')} onChange={(v) => set('gamePort', v)} onBlur={touch('gamePort')} />
+                <PortField name="queryPort" label="Query port" hint="UDP, GameSpy, 29900 by default" value={form.queryPort} error={shown('queryPort')} onChange={(v) => set('queryPort', v)} onBlur={touch('queryPort')} />
+              </div>
+            </FieldGroup>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Admin channel</CardTitle>
+            <CardDescription>
+              The game server's server extension connects to this WebAdmin and proves who it is with this key. The game server needs the same key in
+              its <code>serverext.cfg</code> (<code>adminKey</code>); without a key it cannot connect.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Field data-invalid={!!shown('adminKey') || undefined}>
+              <FieldLabel htmlFor="adminKey">Admin key</FieldLabel>
+              <SecretField
                 id="adminKey"
+                stored={!!initial.adminKey}
                 value={form.adminKey ?? ''}
-                aria-invalid={adminKeyInvalid}
-                onChange={(e) => set('adminKey', e.target.value)}
+                initialValue={initial.adminKey ?? ''}
+                invalid={!!shown('adminKey')}
+                onChange={(value) => set('adminKey', value)}
+                onBlur={touch('adminKey')}
+                generate
+                setLabel="Key set"
               />
-              {adminKeyInvalid && <FieldError>32-128 hex digits</FieldError>}
+              <FieldDescription>32 to 128 hex digits. Generate makes a new random key of 64 digits; copy it into the game server's configuration.</FieldDescription>
+              {shown('adminKey') && <FieldError>{shown('adminKey')}</FieldError>}
             </Field>
+          </CardContent>
+        </Card>
+
+        <DiscordSection form={form} initial={initial} set={set} />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Test server</CardTitle>
+            <CardDescription>For a server where players join without a CD key, such as a local server for testing and map building.</CardDescription>
+          </CardHeader>
+          <CardContent>
             <Field orientation="horizontal">
               <Checkbox id="isTestServer" checked={form.isTestServer} onCheckedChange={(checked) => set('isTestServer', checked)} />
-              <FieldLabel htmlFor="isTestServer">Test server (players without a CD-key hash are keyed by name)</FieldLabel>
+              <FieldContent>
+                <FieldLabel htmlFor="isTestServer">This is a test server</FieldLabel>
+                <FieldDescription>Players without a CD-key hash are keyed by their name, so admin levels and statistics still work.</FieldDescription>
+              </FieldContent>
             </Field>
-          </FieldGroup>
-        </CardContent>
-        <CardFooter className="flex-wrap gap-2">
-          <Button type="submit" disabled={create.isPending || update.isPending || !dirty}>
-            Save
+          </CardContent>
+        </Card>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <Button type="submit" disabled={saving || (!!serverId && !dirty)}>
+            {serverId ? 'Save changes' : 'Add server'}
           </Button>
           <Button type="button" variant="outline" disabled={test.isPending} onClick={() => test.mutate({ body: toDto() })}>
             Test connection
           </Button>
-          {serverId && (
-            <ConfirmButton
-              className="ml-auto"
-              title="Remove server"
-              description="Do you want to remove this server?"
-              confirmLabel="Remove"
-              onConfirm={() => remove.mutate({ params: { path: { serverId } } })}
-            >
-              Remove server
-            </ConfirmButton>
-          )}
-          {test.isPending && <p className="w-full text-sm text-muted-foreground">Testing the connection…</p>}
-          {test.data && !test.isPending && (
-            <ul className="w-full space-y-1 text-sm">
-              {test.data.map((result) => (
-                <li key={result.type} className="flex items-start gap-2">
-                  {result.success ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-emerald-500" /> : <CircleX className="mt-0.5 size-4 shrink-0 text-destructive" />}
-                  <span>
-                    <span className="font-medium">{result.type}</span>: {result.success ? 'OK' : 'failed'}
-                    {result.message && <span className="text-muted-foreground"> ({result.message})</span>}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardFooter>
-      </Card>
+          {saving && <span className="text-sm text-muted-foreground">Saving…</span>}
+          {saveBlocked && <span className="text-sm text-muted-foreground">{saveBlocked}</span>}
+        </div>
+
+        {serverId && (
+          <Card className="border-destructive/40 ring-destructive/30">
+            <CardHeader>
+              <CardTitle className="text-destructive">Danger zone</CardTitle>
+              <CardDescription>
+                Removing the server deletes its settings from WebAdmin. Its matches and bans stay in the database; the game server cannot connect any
+                more.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ConfirmButton
+                title="Remove this server?"
+                description={`${serverId} is removed from WebAdmin and disconnected. You can add it again later with its admin key.`}
+                confirmLabel="Remove server"
+                onConfirm={() => remove.mutate({ params: { path: { serverId } } })}
+              >
+                Remove server
+              </ConfirmButton>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      <aside className="min-w-0 space-y-6 lg:sticky lg:top-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Connection test</CardTitle>
+            <CardDescription>Checks the query port and whether the game server's admin channel is connected, with the settings as they are in the form.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {test.isPending || test.data ? (
+              <ConnectionTestResults pending={test.isPending} results={test.data} discordConfigured={!!form.discordBotToken} />
+            ) : (
+              <p className="text-sm text-muted-foreground">Not tested yet. Press Test connection.</p>
+            )}
+          </CardContent>
+        </Card>
+        <ConnectSteps form={form} serverId={serverId} keyStored={!!initial.adminKey && form.adminKey === initial.adminKey} />
+      </aside>
 
       <AlertDialog open={blocker.status === 'blocked'} onOpenChange={(open) => !open && blocker.reset?.()}>
         <AlertDialogContent>
@@ -209,23 +325,318 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
   )
 }
 
-/** A password field with a button that shows the text. */
-function SecretInput(props: Omit<React.ComponentProps<typeof Input>, 'type'>) {
-  const [shown, setShown] = useState(false)
+function PortField({
+  name,
+  label,
+  hint,
+  value,
+  readOnly,
+  error,
+  onChange,
+  onBlur,
+}: {
+  name: string
+  label: string
+  hint: string
+  value: number
+  readOnly?: boolean
+  error: string | undefined
+  onChange: (value: number) => void
+  onBlur: () => void
+}) {
   return (
-    <div className="relative">
-      <Input {...props} type={shown ? 'text' : 'password'} autoComplete="off" className="pr-9" />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        className="absolute top-1/2 right-1.5 -translate-y-1/2"
-        aria-label={shown ? 'Hide' : 'Show'}
-        title={shown ? 'Hide' : 'Show'}
-        onClick={() => setShown((s) => !s)}
-      >
-        {shown ? <EyeOff /> : <Eye />}
-      </Button>
+    <Field data-invalid={!!error || undefined}>
+      <FieldLabel htmlFor={name}>{label}</FieldLabel>
+      <Input
+        id={name}
+        type="number"
+        min={1}
+        max={65535}
+        required
+        readOnly={readOnly}
+        value={Number.isNaN(value) ? '' : String(value)}
+        aria-invalid={!!error}
+        onChange={(e) => onChange(e.target.value === '' ? Number.NaN : Number(e.target.value))}
+        onBlur={onBlur}
+      />
+      <FieldDescription>{hint}</FieldDescription>
+      {error && <FieldError>{error}</FieldError>}
+    </Field>
+  )
+}
+
+/**
+ * The server group: one of the groups the servers have, or a new one by name. With no servers yet, only the name.
+ */
+function GroupPicker({ value, onChange, onBlur, invalid }: { value: string; onChange: (group: string) => void; onBlur: () => void; invalid: boolean }) {
+  const servers = useServers()
+  const groups = [...new Set((servers.data ?? []).map((s) => s.serverGroup))].sort()
+  // Until the user picks, the list decides (it may still be loading): a name that is not one of the groups is typed
+  const [picked, setTyping] = useState<boolean | null>(null)
+  const typing = picked ?? (groups.length === 0 || (value !== '' && !groups.includes(value)))
+
+  if (typing)
+    return (
+      <div className="flex gap-2">
+        <Input
+          id="serverGroup"
+          value={value}
+          placeholder="A name, such as 2v2"
+          autoFocus={typing && groups.length > 0}
+          aria-invalid={invalid}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+        />
+        {groups.length > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setTyping(false)
+              onChange('')
+            }}
+          >
+            Pick a group
+          </Button>
+        )}
+      </div>
+    )
+
+  const items = [...groups.map((g) => ({ value: g, label: g })), { value: newGroupValue, label: 'New group…' }]
+  return (
+    <Select
+      items={items}
+      value={value || null}
+      onValueChange={(next) => {
+        if (next === newGroupValue) {
+          setTyping(true)
+          onChange('')
+        } else onChange(next ?? '')
+      }}
+      onOpenChange={(open) => !open && onBlur()}
+    >
+      <SelectTrigger id="serverGroup" className="w-full" aria-invalid={invalid}>
+        <SelectValue placeholder="Choose a group" />
+      </SelectTrigger>
+      <SelectContent>
+        {groups.map((g) => (
+          <SelectItem key={g} value={g}>
+            {g}
+          </SelectItem>
+        ))}
+        <SelectSeparator />
+        <SelectItem value={newGroupValue}>New group…</SelectItem>
+      </SelectContent>
+    </Select>
+  )
+}
+
+/**
+ * A secret (the admin key, the bot token). A stored one is not shown as a field: "Key set" with Replace, so the page
+ * opens without a value to judge. Replace shows the field empty; Cancel keeps the stored one.
+ */
+function SecretField({
+  id,
+  stored,
+  value,
+  initialValue,
+  invalid,
+  onChange,
+  onBlur,
+  generate,
+  setLabel,
+}: {
+  id: string
+  stored: boolean
+  value: string
+  initialValue: string
+  invalid?: boolean
+  onChange: (value: string) => void
+  onBlur?: () => void
+  generate?: boolean
+  setLabel: string
+}) {
+  const [replacing, setReplacing] = useState(!stored)
+  const [shown, setShown] = useState(false)
+
+  if (!replacing)
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex h-8 items-center gap-2 rounded-lg border border-dashed px-2.5 text-sm text-muted-foreground">
+          <KeyRound className="size-4 text-emerald-500" />
+          {setLabel}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            setReplacing(true)
+            onChange('')
+          }}
+        >
+          Replace
+        </Button>
+      </div>
+    )
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <div className="relative min-w-0 flex-[1_1_16rem]">
+        <Input
+          id={id}
+          value={value}
+          type={shown ? 'text' : 'password'}
+          autoComplete="off"
+          spellCheck={false}
+          className={cn('pr-16', shown && 'font-mono text-xs')}
+          aria-invalid={invalid}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+        />
+        <div className="absolute top-1/2 right-1.5 flex -translate-y-1/2 gap-0.5">
+          {value && <CopyButton value={value} label="Copy" />}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={shown ? 'Hide' : 'Show'}
+            title={shown ? 'Hide' : 'Show'}
+            onClick={() => setShown((s) => !s)}
+          >
+            {shown ? <EyeOff /> : <Eye />}
+          </Button>
+        </div>
+      </div>
+      {generate && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            onChange(generateKey())
+            setShown(true)
+          }}
+        >
+          <Sparkles data-icon="inline-start" />
+          Generate key
+        </Button>
+      )}
+      {stored && (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            setReplacing(false)
+            onChange(initialValue)
+          }}
+        >
+          Cancel
+        </Button>
+      )}
     </div>
+  )
+}
+
+const discordChannels = [
+  { key: 'discordAdminChannel', label: 'Admin channel', hint: 'Where admins read the game chat and run commands with !' },
+  { key: 'discordNotificationChannel', label: 'Notification channel', hint: 'Joins, server restarts and other notices' },
+  { key: 'discordMatchResultChannel', label: 'Match result channel', hint: 'The result of every finished 2v2 match' },
+] as const
+
+/** The Discord bot: optional, so closed until opened (open from the start when something is set). */
+function DiscordSection({
+  form,
+  initial,
+  set,
+}: {
+  form: ServerSettings
+  initial: ServerSettings
+  set: <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => void
+}) {
+  const configured = !!(initial.discordBotToken || initial.discordAdminChannel || initial.discordNotificationChannel || initial.discordMatchResultChannel)
+  const [open, setOpen] = useState(configured)
+
+  return (
+    <Card>
+      <CardHeader>
+        <button type="button" className="flex w-full items-start justify-between gap-4 text-left" aria-expanded={open} aria-controls="discord-settings" onClick={() => setOpen((o) => !o)}>
+          <span className="space-y-1.5">
+            <CardTitle>
+              Discord <span className="font-normal text-muted-foreground">(optional)</span>
+            </CardTitle>
+            <CardDescription>
+              {configured ? 'A bot posts the game to Discord channels and takes admin commands there.' : 'Not set up. A bot can post the game to Discord channels and take admin commands there.'}
+            </CardDescription>
+          </span>
+          <ChevronDown className={cn('mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
+        </button>
+      </CardHeader>
+      {open && (
+        <CardContent id="discord-settings">
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="discordBotToken">Bot token</FieldLabel>
+              <SecretField
+                id="discordBotToken"
+                stored={!!initial.discordBotToken}
+                value={form.discordBotToken}
+                initialValue={initial.discordBotToken}
+                onChange={(value) => set('discordBotToken', value)}
+                setLabel="Token set"
+              />
+              <FieldDescription>From the Discord developer portal: your application → Bot → Reset Token. The bot must be in your Discord server.</FieldDescription>
+            </Field>
+            <p className="text-sm text-muted-foreground">
+              Channel ids: in Discord, turn on Developer Mode (User Settings → Advanced), then right-click a channel and choose Copy Channel ID. Leave
+              a channel empty to skip it.
+            </p>
+            {discordChannels.map((c) => (
+              <Field key={c.key}>
+                <FieldLabel htmlFor={c.key}>{c.label}</FieldLabel>
+                <Input id={c.key} value={form[c.key]} inputMode="numeric" placeholder="Channel id, such as 1098765432109876543" onChange={(e) => set(c.key, e.target.value)} />
+                <FieldDescription>{c.hint}</FieldDescription>
+              </Field>
+            ))}
+          </FieldGroup>
+        </CardContent>
+      )}
+    </Card>
+  )
+}
+
+/**
+ * What the game server needs to connect: its serverext.cfg lines. WebAdmin's public admin host and certificate pin are
+ * not in the web API (backend-suggestions.md), so those two stay placeholders with a note where to find them.
+ */
+function ConnectSteps({ form, serverId, keyStored }: { form: ServerSettings; serverId?: string; keyStored: boolean }) {
+  const id = serverId ?? (form.ipAddress.trim() ? `${form.ipAddress.trim()}:${form.gamePort}` : '<ip>:<game port>')
+  const key = keyStored ? '<the stored key>' : form.adminKey?.trim() || '<the admin key>'
+  const config = [`adminConnect <WebAdmin's host>:4310`, `adminServerId ${id}`, `adminKey ${key}`, `adminCertSha256 <WebAdmin's certificate pin>`].join('\n')
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Connect the game server</CardTitle>
+        <CardDescription>The game server dials WebAdmin; nothing connects to the game server.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <ol className="list-decimal space-y-2 pl-5">
+          <li>{serverId ? 'Keep the admin key here and on the game server the same.' : 'Fill in the form, generate an admin key and add the server.'}</li>
+          <li>
+            Put these lines in the game server's <code>serverext.cfg</code>, beside the OpenBF2 <code>bf2</code> binary:
+          </li>
+        </ol>
+        <div className="relative">
+          <pre tabIndex={0} aria-label="serverext.cfg lines" className="overflow-x-auto rounded-lg bg-muted p-3 pr-10 font-mono text-xs leading-relaxed">{config}</pre>
+          <CopyButton value={config} label="Copy the lines" className="absolute top-2 right-2" />
+        </div>
+        <p className="text-muted-foreground">
+          4310 is WebAdmin's default admin channel port (<code>ServerSettings:AdminChannel:Port</code>). WebAdmin writes its certificate pin to its log
+          at startup, and <code>BF2WebAdmin.Server --admin-pin</code> prints it.
+        </p>
+        <ol start={3} className="list-decimal space-y-2 pl-5">
+          <li>Start the game server. It connects within seconds; Test connection then shows the admin channel as connected.</li>
+        </ol>
+      </CardContent>
+    </Card>
   )
 }

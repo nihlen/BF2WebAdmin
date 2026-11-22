@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { ServerActions } from '@/hooks/use-server-actions'
 import { authLevelName } from '@/lib/auth-levels'
+import { moduleName } from '@/lib/modules'
 import { usePendingActions } from '@/lib/pending-actions'
 
 // Commands with buttons elsewhere on the page, or that only make sense in game
@@ -14,7 +15,9 @@ const hidden = new Set(['restartserver', 'crash', 'switchid', 'killid', 'auth'])
 
 /**
  * Every chat command of the server's loaded modules, grouped by module, with a field per parameter. Runs as the web
- * user (God level); the notification shows what the command said in game.
+ * user (God level); the notification shows what the command said in game. The rows share one grid of columns (name,
+ * arguments, level, run) so that they line up across the modules; a narrow panel puts the arguments on a line of
+ * their own under the name.
  */
 export function CommandPanel({ serverId, players, actions }: { serverId: string; players: Player[]; actions: ServerActions }) {
   const commands = api.useQuery('get', '/api/servers/{serverId}/commands', { params: { path: { serverId } } })
@@ -42,13 +45,13 @@ export function CommandPanel({ serverId, players, actions }: { serverId: string;
           <option key={p.index} value={p.name} />
         ))}
       </datalist>
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+      <div className="@container flex-1 space-y-4 overflow-y-auto p-4">
         {byModule.size === 0 && <p className="text-sm text-muted-foreground">No command matches</p>}
         {[...byModule.entries()]
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([module, list]) => (
             <section key={module} className="space-y-2">
-              <h3 className="text-sm font-medium text-muted-foreground">{module.replace(/Module$/, '')}</h3>
+              <h3 className="text-sm font-medium text-muted-foreground">{moduleName(module)}</h3>
               <ul className="space-y-2">
                 {list.map((command) => (
                   <CommandRow key={`${command.aliases.join('|')} ${command.parameters.join(' ')}`} serverId={serverId} command={command} actions={actions} />
@@ -72,30 +75,42 @@ function CommandRow({ serverId, command, actions }: { serverId: string; command:
   return (
     <li>
       <form
-        className="flex flex-wrap items-center gap-2"
+        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 gap-y-1.5 @md:grid-cols-[8rem_minmax(0,1fr)_6rem_auto]"
         onSubmit={(e) => {
           e.preventDefault()
           if (complete) void actions.custom(text)
         }}
       >
-        <span className="min-w-28 font-mono text-sm" title={command.aliases.map((a) => `.${a}`).join(', ')}>
+        <span className="col-start-1 row-start-1 truncate font-mono text-sm" title={command.aliases.map((a) => `.${a}`).join(', ')}>
           .{alias}
         </span>
-        {command.parameters.map((parameter, i) => (
-          <Input
-            key={parameter}
-            className="h-7 w-32 flex-1"
-            placeholder={parameter}
-            aria-label={`${alias} ${parameter}`}
-            list={/name/i.test(parameter) ? 'command-panel-players' : undefined}
-            value={values[i]}
-            onChange={(e) => setValues((v) => v.map((x, j) => (j === i ? e.target.value : x)))}
-          />
-        ))}
-        <Badge variant="outline" title="Auth level a player needs for this command">
+        {command.parameters.length > 0 && (
+          <div className="col-span-3 row-start-2 flex flex-wrap gap-2 @md:col-span-1 @md:col-start-2 @md:row-start-1">
+            {command.parameters.map((parameter, i) => (
+              <Input
+                key={parameter}
+                className="h-7 w-auto min-w-24 flex-1"
+                placeholder={parameter}
+                aria-label={`${alias} ${parameter}`}
+                list={/name/i.test(parameter) ? 'command-panel-players' : undefined}
+                value={values[i]}
+                onChange={(e) => setValues((v) => v.map((x, j) => (j === i ? e.target.value : x)))}
+              />
+            ))}
+          </div>
+        )}
+        <Badge variant="outline" className="col-start-2 row-start-1 @md:col-start-3" title="Auth level a player needs for this command">
           {authLevelName(command.authLevel)}
         </Badge>
-        <Button type="submit" size="icon-sm" variant="outline" disabled={!complete || running} aria-label={`Run .${alias}`} title={`Run ${text}`}>
+        <Button
+          type="submit"
+          size="icon-sm"
+          variant="outline"
+          className="col-start-3 row-start-1 @md:col-start-4"
+          disabled={!complete || running}
+          aria-label={`Run .${alias}`}
+          title={`Run ${text}`}
+        >
           <Play />
         </Button>
       </form>

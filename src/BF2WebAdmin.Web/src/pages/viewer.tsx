@@ -673,21 +673,29 @@ function TimelineTrack({ scene, playback }: { scene: ViewerScene | null; playbac
   )
 }
 
+// What the timeline shows before there is anything to play: at the live end, at normal speed
+const idlePlayback: PlaybackState = { tick: 0, start: 0, end: 0, playing: false, live: true, speed: 1, missile: null }
+
+/**
+ * Play, step, Live, the speed and the track. Without frames or a missile there is nothing to play or scrub: the controls
+ * stay where they are, disabled, and the readout says what they wait for, so the page does not change shape when frames
+ * come.
+ */
 function Timeline({ scene, playback, frameRate, onLive }: { scene: ViewerScene | null; playback: PlaybackState | null; frameRate: number; onLive: () => void }) {
-  // Without frames or a missile there is nothing to play or scrub, and the view's own message says why
-  if (!playback || (playback.end <= playback.start && !playback.missile)) return null
+  const playable = playback && (playback.end > playback.start || playback.missile) ? playback : null
+  const idle = !playable
   const speedItems = speeds.map((s) => ({ value: s, label: `${s}x` }))
-  const { tick, start, end, playing, live, speed, missile } = playback
+  const { tick, start, end, playing, live, speed, missile } = playable ?? idlePlayback
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button variant="outline" size="icon" title="Play / pause (space)" onClick={() => scene?.togglePlay()}>
+      <Button variant="outline" size="icon" title="Play / pause (space)" aria-label={playing ? 'Pause' : 'Play'} disabled={idle} onClick={() => scene?.togglePlay()}>
         {playing ? <Pause /> : <Play />}
       </Button>
-      <Button variant="outline" size="icon" title="One tick back (,)" onClick={() => scene?.step(-1)}>
+      <Button variant="outline" size="icon" title="One tick back (,)" aria-label="One tick back" disabled={idle} onClick={() => scene?.step(-1)}>
         <ChevronLeft />
       </Button>
-      <Button variant="outline" size="icon" title="One tick forward (.)" onClick={() => scene?.step(1)}>
+      <Button variant="outline" size="icon" title="One tick forward (.)" aria-label="One tick forward" disabled={idle} onClick={() => scene?.step(1)}>
         <ChevronRight />
       </Button>
       {missile && (
@@ -697,9 +705,10 @@ function Timeline({ scene, playback, frameRate, onLive }: { scene: ViewerScene |
         </Button>
       )}
       <Button
-        variant={live ? 'default' : 'outline'}
+        variant={live && !idle ? 'default' : 'outline'}
         size="sm"
         title="Back to live (L)"
+        disabled={idle}
         onClick={() => {
           onLive()
           scene?.goLive()
@@ -710,7 +719,7 @@ function Timeline({ scene, playback, frameRate, onLive }: { scene: ViewerScene |
       </Button>
       {/* Beside Live, outside the 3D view: whether frames arrive is part of what Live means */}
       <FrameRate rate={frameRate} />
-      <Select items={speedItems} value={speed} onValueChange={(value) => value !== null && scene?.setSpeed(value)}>
+      <Select items={speedItems} value={speed} disabled={idle} onValueChange={(value) => value !== null && scene?.setSpeed(value)}>
         <SelectTrigger className="w-20" aria-label="Playback speed" title="Playback speed">
           <SelectValue />
         </SelectTrigger>
@@ -724,19 +733,26 @@ function Timeline({ scene, playback, frameRate, onLive }: { scene: ViewerScene |
       </Select>
       {/* On a phone the track gets a line of its own under the buttons */}
       <div className="order-last flex basis-full sm:order-none sm:basis-0 sm:flex-1">
-        <TimelineTrack scene={scene} playback={playback} />
+        <TimelineTrack scene={scene} playback={playable ?? idlePlayback} />
       </div>
-      <div className="ml-auto shrink-0 text-right font-mono text-xs text-muted-foreground sm:ml-0 sm:w-44">
-        {missile
-          ? `${formatTicks(tick - missile.first)} · tick ${Math.round(tick - missile.first)}/${missile.last - missile.first}`
-          : `${formatTicks(tick - start)} / ${formatTicks(end - start)}`}
-        <div>
-          tick {Math.floor(tick)}
-          {missile && missile.impact >= 0 && (
-            <span style={{ color: missile.impactKind === 'vehicle' ? HIT_COLOR : undefined }}> · hit +{missile.impact - missile.first}</span>
-          )}
+      {idle ? (
+        <p className="ml-auto shrink-0 text-right text-xs text-muted-foreground sm:ml-0 sm:w-44">
+          <span className="block font-medium text-foreground">Waiting for live frames</span>
+          or pick a TV missile to replay
+        </p>
+      ) : (
+        <div className="ml-auto shrink-0 text-right font-mono text-xs text-muted-foreground sm:ml-0 sm:w-44">
+          {missile
+            ? `${formatTicks(tick - missile.first)} · tick ${Math.round(tick - missile.first)}/${missile.last - missile.first}`
+            : `${formatTicks(tick - start)} / ${formatTicks(end - start)}`}
+          <div>
+            tick {Math.floor(tick)}
+            {missile && missile.impact >= 0 && (
+              <span style={{ color: missile.impactKind === 'vehicle' ? HIT_COLOR : undefined }}> · hit +{missile.impact - missile.first}</span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

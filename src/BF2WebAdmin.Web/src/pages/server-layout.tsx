@@ -1,7 +1,7 @@
 import { HubConnectionState } from '@microsoft/signalr'
 import { useQuery } from '@tanstack/react-query'
 import { Link, Outlet, useMatches, useMatchRoute } from '@tanstack/react-router'
-import { ChevronDown, Copy, Ellipsis, EllipsisVertical, Loader2, Map as MapIcon, Pause, Play, Power, RotateCcw, Settings2 } from 'lucide-react'
+import { ChevronDown, Copy, Ellipsis, EllipsisVertical, Loader2, Map as MapIcon, Pause, Play, Power, RotateCcw, Server as ServerIcon, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { errorMessage, type Server, type ServerSnapshot } from '@/api/client'
@@ -146,11 +146,11 @@ function ServerHeader({ server, compact }: { server: Server; compact: boolean })
 }
 
 /**
- * The round and server actions, while the server is connected (the snapshot is given then). On desktop: a Round
- * split button (Restart round, with Pause or Resume and Change map… in its menu) and apart from it a "⋯" with Restart
- * server, so the action that disconnects everyone is never next to Pause. On a phone: one menu button with all of
- * them, and the address and group the header leaves out there (those also while offline). Every action shows its
- * progress until the game confirms it.
+ * The round and server actions, while the server is connected (the snapshot is given then). On desktop each round
+ * action is a button of its own (Restart round, Pause or Resume, Change map…), so none is hidden, and apart from them a
+ * Server menu holds Restart server, which disconnects everyone. On a phone: one menu button with all of them, and the
+ * address and group the header leaves out there (those also while offline). Every action shows its progress until the
+ * game confirms it.
  */
 function ServerMenus({ server, snapshot, compact }: { server: Server; snapshot: ServerSnapshot | undefined; compact: boolean }) {
   const { serverId } = useServerPage()
@@ -166,6 +166,8 @@ function ServerMenus({ server, snapshot, compact }: { server: Server; snapshot: 
   // A key ending in a colon stands for all of its kind, such as map: for a change to any map
   const busy = (...keys: string[]) => [...pending].some((key) => keys.some((k) => (k.endsWith(':') ? key.startsWith(k) : key === k)))
   const spinner = <Loader2 className="animate-spin" />
+  // Beside the tabs in the 3D pages' header row the buttons are icons (named by their titles) until the window is wide
+  const label = cn(compact && 'xl:sr-only 2xl:not-sr-only')
 
   const restartRound = () =>
     confirm({
@@ -216,24 +218,30 @@ function ServerMenus({ server, snapshot, compact }: { server: Server; snapshot: 
     <>
       {snapshot && (
         <div className={cn('hidden shrink-0 items-center gap-1.5 md:flex', compact && 'xl:order-last xl:mb-1.5')}>
-          <div className="flex">
-            <Button variant="outline" className="rounded-r-none" disabled={busy('restart-map')} onClick={restartRound}>
-              {busy('restart-map') ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <RotateCcw data-icon="inline-start" className="text-emerald-500" />}
-              Restart round
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="outline" size="icon" className="rounded-l-none border-l-0" aria-label="More round actions" title="Pause, change map" />}>
-                {busy('pause', 'next-map', 'map:') ? spinner : <ChevronDown />}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-auto min-w-44">
-                {pauseItem}
-                {mapItem}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          <Button variant="outline" disabled={busy('restart-map')} onClick={restartRound} title="Restart round">
+            {busy('restart-map') ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <RotateCcw data-icon="inline-start" className="text-emerald-500" />}
+            <span className={label}>Restart round</span>
+          </Button>
+          <Button variant="outline" disabled={busy('pause')} onClick={() => void actions.togglePause()} title={paused ? 'Resume' : 'Pause'}>
+            {busy('pause') ? (
+              <Loader2 data-icon="inline-start" className="animate-spin" />
+            ) : paused ? (
+              <Play data-icon="inline-start" className="text-emerald-500" />
+            ) : (
+              <Pause data-icon="inline-start" className="text-amber-500" />
+            )}
+            <span className={label}>{paused ? 'Resume' : 'Pause'}</span>
+          </Button>
+          <Button variant="outline" onClick={() => setMapsOpen(true)} title="Change map">
+            {busy('next-map', 'map:') ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <MapIcon data-icon="inline-start" />}
+            <span className={label}>Change map…</span>
+          </Button>
+          {/* Apart from the round actions and named, so the action that disconnects everyone is never a stray click */}
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label="Server actions" title="Server actions" />}>
-              {busy('restart-server') ? spinner : <Ellipsis />}
+            <DropdownMenuTrigger render={<Button variant="ghost" aria-label="Server actions" title="Server actions" />}>
+              {busy('restart-server') ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <ServerIcon data-icon="inline-start" />}
+              <span className={label}>Server</span>
+              <ChevronDown data-icon="inline-end" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-auto min-w-44">
               {restartServerItem}
@@ -343,8 +351,8 @@ const phoneTabClass =
 
 /**
  * Below md the server's pages are a bar fixed to the bottom of the screen, where a thumb reaches: Live, Health, 3D,
- * Builder, and More with Bans, Activity and Settings (More shows the open page's name when it is one of those). It
- * keeps clear of the phone's home indicator (the safe area).
+ * Builder, and More with Bans, Activity and Settings. More keeps its name and only lights up when the open page is one
+ * of those, so the bar never changes under the thumb. It keeps clear of the phone's home indicator (the safe area).
  */
 function PhoneTabBar({ serverId }: { serverId: string }) {
   const matchRoute = useMatchRoute()
@@ -369,8 +377,8 @@ function PhoneTabBar({ serverId }: { serverId: string }) {
             data-status={current ? 'active' : undefined}
             aria-label={current ? `${current.label}, more pages` : 'More pages'}
           >
-            {current ? <current.icon aria-hidden /> : <Ellipsis aria-hidden />}
-            {current?.short ?? 'More'}
+            <Ellipsis aria-hidden />
+            More
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-auto min-w-44">
             {more.map((tab) => (

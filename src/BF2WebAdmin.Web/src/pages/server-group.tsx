@@ -1,26 +1,27 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import { RefreshCw, Search, Trash2 } from 'lucide-react'
+import { Link, useLocation } from '@tanstack/react-router'
+import { Search, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { api, errorMessage, type PlayerAuth } from '@/api/client'
 import { LevelSelect } from '@/components/auth-level-select'
 import { useConfirm } from '@/components/confirm-dialog'
 import { CopyButton } from '@/components/copy-button'
+import { ModulesForm } from '@/components/group/modules-form'
 import { ServerStatusDot } from '@/components/server-status'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { playerAuthQuery } from '@/hooks/use-server-actions'
 import { useServers } from '@/hooks/use-servers'
 import { authLevelName, defaultAuthLevel } from '@/lib/auth-levels'
-import { groupModules, moduleDescription, moduleName } from '@/lib/modules'
 import { encodeServerId } from '@/lib/server-id'
+import { cn } from '@/lib/utils'
 import { serverGroupRoute } from '@/router'
 
 const defaultGroup = 'default'
@@ -32,6 +33,9 @@ export function ServerGroupPage() {
   const allModules = api.useQuery('get', '/api/modules')
   const servers = useServers()
   const groupServers = (servers.data ?? []).filter((s) => s.serverGroup === serverGroup)
+  // A setup step links to #admin-levels: on a phone that opens its tab
+  const hash = useLocation({ select: (location) => location.hash })
+  const [tab, setTab] = useState(hash === 'admin-levels' ? 'admin-levels' : 'modules')
 
   const loaded = groupModules.data && defaultModules.data && allModules.data
 
@@ -64,9 +68,17 @@ export function ServerGroupPage() {
         )}
       </div>
 
+      {/* On a phone the two sections are tabs, so the admin levels are not a long scroll past every module away. Both
+          stay mounted (the other one hidden), so unsaved module changes survive a look at the admin levels */}
+      <Tabs value={tab} onValueChange={setTab} className="gap-6 md:hidden">
+        <TabsList className="w-full">
+          <TabsTrigger value="modules">Modules</TabsTrigger>
+          <TabsTrigger value="admin-levels">Admin levels</TabsTrigger>
+        </TabsList>
+      </Tabs>
       <div className="grid gap-8 xl:grid-cols-[minmax(0,32rem)_minmax(0,1fr)]">
-        <section id="modules" className="scroll-mt-16 space-y-4">
-          <h2 className="text-xl font-medium">Modules</h2>
+        <section id="modules" className={cn('scroll-mt-16 space-y-4', tab !== 'modules' && 'max-md:hidden')}>
+          <h2 className="text-xl font-medium max-md:sr-only">Modules</h2>
           {!loaded && <Skeleton className="h-96" />}
           {loaded && (
             <ModulesForm
@@ -75,157 +87,16 @@ export function ServerGroupPage() {
               active={groupModules.data}
               defaults={defaultModules.data}
               all={allModules.data}
-              serverCount={groupServers.length}
+              servers={servers.data ?? []}
             />
           )}
         </section>
 
-        <section id="admin-levels" className="scroll-mt-16 space-y-4">
-          <h2 className="text-xl font-medium">Admin levels</h2>
+        <section id="admin-levels" className={cn('scroll-mt-16 space-y-4', tab !== 'admin-levels' && 'max-md:hidden')}>
+          <h2 className="text-xl font-medium max-md:sr-only">Admin levels</h2>
           <PlayerAuthList serverGroup={serverGroup} />
         </section>
       </div>
-    </div>
-  )
-}
-
-function ModulesForm({
-  serverGroup,
-  active,
-  defaults,
-  all,
-  serverCount,
-}: {
-  serverGroup: string
-  active: string[]
-  defaults: string[]
-  all: string[]
-  serverCount: number
-}) {
-  const queryClient = useQueryClient()
-  const [selected, setSelected] = useState(() => new Set(active))
-  const readOnly = serverGroup === defaultGroup
-  const params = { path: { serverGroup } }
-  // The modules turned on or off since the last save
-  const changes = all.filter((m) => selected.has(m) !== active.includes(m)).length
-  const dirty = changes > 0
-
-  const save = api.useMutation('put', '/api/server-groups/{serverGroup}/modules', {
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['get', '/api/server-groups/{serverGroup}/modules'] }),
-  })
-  const reload = api.useMutation('post', '/api/server-groups/{serverGroup}/modules/reload')
-  const busy = save.isPending || reload.isPending
-  const servers = `${serverCount} ${serverCount === 1 ? 'server' : 'servers'}`
-
-  const saveAndReload = async () => {
-    const id = toast.loading('Saving the modules…')
-    try {
-      if (dirty) await save.mutateAsync({ params, body: [...selected] })
-      toast.loading(`Reloading the modules on ${servers}…`, { id })
-      await reload.mutateAsync({ params })
-      toast.success(dirty ? `Saved, and reloaded on ${servers}` : `Reloaded on ${servers}`, { id })
-    } catch {
-      // The mutation cache shows the error
-      toast.dismiss(id)
-    }
-  }
-
-  const toggle = (name: string, checked: boolean) =>
-    setSelected((s) => {
-      const next = new Set(s)
-      if (checked) next.add(name)
-      else next.delete(name)
-      return next
-    })
-
-  return (
-    <div className="space-y-4">
-      {readOnly ? (
-        <p className="text-muted-foreground">
-          The default group runs the base modules and cannot be changed. To choose modules, give the server a group of its own in its settings.
-        </p>
-      ) : (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Button variant="outline" onClick={() => void saveAndReload()} disabled={dirty || busy || serverCount === 0}>
-            <RefreshCw data-icon="inline-start" />
-            Reload modules
-          </Button>
-          <p className="min-w-0 flex-[1_1_16rem] text-sm text-muted-foreground">
-            A reload restarts the modules on the {servers} in this group. Their state, such as a running match, is lost.
-          </p>
-        </div>
-      )}
-
-      <Card className="py-0">
-        <CardContent className="divide-y px-0">
-          {groupModules(all).map((group) => (
-            <section key={group.name} className="space-y-3 px-4 py-4" aria-labelledby={`modules-${group.name}`}>
-              <div>
-                <h3 id={`modules-${group.name}`} className="text-sm font-medium">
-                  {group.name}
-                </h3>
-                <p className="text-xs text-muted-foreground">{group.description}</p>
-              </div>
-              {group.modules.map((name) => {
-                const always = defaults.includes(name)
-                const description = moduleDescription(name)
-                return (
-                  <Field key={name} orientation="horizontal">
-                    <Checkbox
-                      id={`module-${name}`}
-                      checked={selected.has(name) || always}
-                      disabled={readOnly || always}
-                      onCheckedChange={(checked) => toggle(name, checked)}
-                    />
-                    <FieldContent>
-                      <FieldLabel htmlFor={`module-${name}`} title={name}>
-                        {moduleName(name)}
-                        {always && <span className="font-normal text-muted-foreground">(always on)</span>}
-                        {selected.has(name) !== active.includes(name) && !always && (
-                          <Badge variant="outline" className="font-normal">
-                            {selected.has(name) ? 'turned on' : 'turned off'}
-                          </Badge>
-                        )}
-                      </FieldLabel>
-                      {description && <FieldDescription>{description}</FieldDescription>}
-                    </FieldContent>
-                  </Field>
-                )
-              })}
-            </section>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* While there are changes, the bar stays at the bottom of the window, so Save is in reach from anywhere in the list */}
-      {dirty && (
-        <div
-          role="region"
-          aria-label="Unsaved module changes"
-          className="sticky bottom-4 z-10 flex flex-wrap items-center gap-2 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur supports-backdrop-filter:bg-background/80"
-        >
-          {/* On a phone the count takes a line and the buttons the next, so all three fit */}
-          <span className="w-full text-sm font-medium sm:mr-auto sm:w-auto">
-            {changes} unsaved {changes === 1 ? 'change' : 'changes'}
-          </span>
-          <div className="ml-auto flex gap-2">
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => setSelected(new Set(active))}>
-              Discard
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => save.mutate({ params, body: [...selected] }, { onSuccess: () => toast.success('Saved', { description: 'The modules load at the next reload.' }) })}
-            >
-              Save
-            </Button>
-            <Button size="sm" disabled={busy || serverCount === 0} onClick={() => void saveAndReload()} title={serverCount === 0 ? 'No server is in this group yet' : undefined}>
-              Save and reload
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

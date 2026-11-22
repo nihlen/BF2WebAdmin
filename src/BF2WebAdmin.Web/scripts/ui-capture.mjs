@@ -162,24 +162,67 @@ const shots = [
         }),
     ],
   },
-  { name: 'server', path: heli1, viewports: ['desktop', 'phone'] },
-  // Since r03 the maps are "Change map…" in the header's Round menu, a dialog
+  // Since r04: the Discord module turned on in a group whose server has no bot token warns, with a link to its settings
   {
-    name: 'server-tab-maps',
+    name: 'server-group-discord',
+    path: '/servergroup/fun',
+    viewports: ['desktop', 'phone'],
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'turn on Discord', async () => {
+          await page.getByRole('checkbox', { name: /^Discord/ }).click({ timeout: 4000 })
+          await page.getByText(/has no bot token/).waitFor({ timeout: 4000 })
+        }),
+    ],
+  },
+  // Since r04: the modules filter finds a module by a command it adds
+  {
+    name: 'server-group-filter',
+    path: '/servergroup/2v2',
+    viewports: ['desktop'],
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'filter by a command', async () => {
+          await page.getByRole('searchbox', { name: /filter the modules/i }).fill('.mg', { timeout: 4000 })
+          await page.waitForTimeout(400)
+        }),
+    ],
+  },
+  // Since r04: on a phone, Modules and Admin levels are two tabs
+  {
+    name: 'server-group-admins',
+    path: '/servergroup/2v2',
+    viewports: ['phone'],
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'admin levels tab', async () => {
+          await page.getByRole('tab', { name: 'Admin levels' }).click({ timeout: 4000 })
+          await page.waitForTimeout(400)
+        }),
+    ],
+  },
+  { name: 'server', path: heli1, viewports: ['desktop', 'phone'] },
+  // Since r03 the maps are a dialog; since r04 "Change map…" is a button of its own in the header
+  { name: 'server-tab-maps', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Change map/, 'change map')] },
+  // Since r03 the commands are a palette, opened by Commands beside the chat box (or Ctrl+K)
+  { name: 'server-tab-commands', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Commands$/, 'open commands')] },
+  // Since r04: the selected command's arguments beside the list, a player argument with the online players to pick
+  {
+    name: 'server-command-args',
     path: heli1,
     viewports: ['desktop'],
     overlay: true,
     steps: [
-      clickButton('More round actions', 'round menu'),
+      clickButton(/^Commands$/, 'open commands'),
       async (page, log) =>
-        tryStep(log, 'change map', async () => {
-          await page.getByRole('menuitem', { name: /Change map/ }).click({ timeout: 4000 })
-          await page.waitForTimeout(600)
+        tryStep(log, 'pick .flip and a player', async () => {
+          await page.getByRole('combobox', { name: /Search commands/ }).fill('flip', { timeout: 4000 })
+          await page.getByRole('combobox', { name: /Search commands/ }).press('Enter')
+          await page.getByRole('group', { name: /Online players/ }).getByRole('button', { name: 'Kestrel' }).click({ timeout: 4000 })
+          await page.waitForTimeout(300)
         }),
     ],
   },
-  // Since r03 the commands are a palette, opened by Commands beside the chat box (or Ctrl+K)
-  { name: 'server-tab-commands', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Commands$/, 'open commands')] },
   // Chat that comes while it is not in view. Since r03 chat is always on Live on desktop, so the shot scrolls the log up
   // and the new lines show as a "2 new messages" jump; on a phone, the Players segment is open and the Chat segment
   // counts them. The fixtures' chat fits the desktop log, so the fake hub first sends earlier lines until it scrolls,
@@ -228,9 +271,9 @@ const shots = [
   },
   // Since r03 the phone's tab bar is at the bottom: Live, Health, 3D, Builder and More with the rest
   { name: 'server-tabs-more', path: heli1, viewports: ['phone'], overlay: true, steps: [clickButton(/More pages/, 'open More')] },
-  // Since r03 the round actions are a Round split button with a menu, and Restart server is apart in a "⋯" menu; on a
-  // phone all of them are one menu button beside the name
-  { name: 'server-round-menu', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton('More round actions', 'round menu')] },
+  // The header's actions menu. Since r04 the round actions are buttons of their own on desktop and the menu is Server,
+  // with Restart server; on a phone all of them are one menu button beside the name
+  { name: 'server-round-menu', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton('Server actions', 'server menu')] },
   { name: 'server-actions', path: heli1, viewports: ['phone'], overlay: true, steps: [clickButton('Round and server actions', 'actions menu')] },
   // Bans, activity and health are pages of their own under the server's tab bar since r01
   { name: 'server-tab-bans', path: `${heli1}/bans`, viewports: ['desktop', 'phone'] },
@@ -247,7 +290,34 @@ const shots = [
         }),
     ],
   },
-  { name: 'server-tab-activity', path: `${heli1}/activity`, viewports: ['desktop'] },
+  // Since r04 the web's commands and the game's events are one timeline with filter chips
+  { name: 'server-tab-activity', path: `${heli1}/activity`, viewports: ['desktop', 'phone'] },
+  {
+    name: 'server-tab-activity-filtered',
+    path: `${heli1}/activity`,
+    viewports: ['desktop'],
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'show web actions only', async () => {
+          await page.getByRole('button', { name: /^Web actions/ }).click({ timeout: 4000 })
+          await page.waitForTimeout(400)
+        }),
+    ],
+  },
+  // Since r04: Warn, Kick and Ban on a scoreboard row while the pointer is over it (desktop)
+  {
+    name: 'server-row-actions',
+    path: heli1,
+    viewports: ['desktop'],
+    overlay: true,
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'hover mr.Hellcat', async () => {
+          await page.getByRole('row').filter({ hasText: 'mr.Hellcat' }).first().hover({ timeout: 4000 })
+          await page.waitForTimeout(300)
+        }),
+    ],
+  },
   { name: 'server-health', path: `${heli1}/health`, viewports: ['desktop', 'phone'] },
   {
     name: 'server-player',

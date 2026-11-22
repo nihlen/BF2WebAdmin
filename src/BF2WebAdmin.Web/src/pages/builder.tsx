@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Crosshair, Ellipsis, Loader2, MessageSquare, Move3d, PanelBottomOpen, RotateCw, Trash2, Undo2, X } from 'lucide-react'
+import { CircleHelp, Crosshair, Ellipsis, Loader2, MessageSquare, Move3d, PanelBottomOpen, RotateCw, Trash2, Undo2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { toast } from 'sonner'
 import { api, ApiError, errorMessage, fetchClient } from '@/api/client'
@@ -493,9 +493,10 @@ export function BuilderPage() {
   const selectedItem = sceneItemOf(selected)
   const selectedDraft = selected ? drafts.get(selected) : undefined
   const serverName = snapshot.data?.server.name ?? serverId
-  const dismissIntro = () => {
-    setIntroDismissed(true)
-    writeFlag(introKey, true)
+  // Closing the steps hides them for good in this browser; the "?" beside Chat brings them back
+  const toggleIntro = () => {
+    setIntroDismissed(!introDismissed)
+    writeFlag(introKey, !introDismissed)
   }
 
   const panels = (
@@ -550,6 +551,16 @@ export function BuilderPage() {
         <ResyncStatus state={builder} />
         <Button
           className="ml-auto"
+          variant={introDismissed ? 'ghost' : 'secondary'}
+          size="icon-sm"
+          aria-label="How building works"
+          aria-expanded={!introDismissed}
+          title="How building works"
+          onClick={toggleIntro}
+        >
+          <CircleHelp />
+        </Button>
+        <Button
           variant={chatOpen ? 'default' : 'outline'}
           size="sm"
           aria-expanded={chatOpen}
@@ -562,14 +573,13 @@ export function BuilderPage() {
         </Button>
       </div>
 
-      {!introDismissed && <BuilderIntro onDismiss={dismissIntro} />}
-
       {/* Desktop: the 3D view, the chat and the panels side by side. Below lg one column: the view, the chat, then the
           selection and Apply, with the panels in a bottom sheet */}
       <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1 lg:flex-row">
         <div className="relative h-[min(68svh,40rem)] min-h-[320px] min-w-0 overflow-hidden rounded-lg border bg-black lg:h-auto lg:min-h-0 lg:flex-1">
           <div ref={containerRef} className="absolute inset-0" />
           {!scene && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading the 3D view…</div>}
+          {!introDismissed && <BuilderIntro onDismiss={toggleIntro} />}
           <div className="pointer-events-none absolute top-2 left-2 hidden max-w-[calc(100%-14rem)] rounded bg-black/60 px-2 py-1 text-xs text-white/80 lg:block">
             Hold right: look, WASD fly, Q/E down/up · Space/Ctrl up/down · arrows fly · Shift faster · Drag from the list onto the map, or click it to put
             it mid-view · Click: select · W move, E rotate (Ctrl snaps) · End to ground · F focus · Del remove
@@ -593,7 +603,12 @@ export function BuilderPage() {
         </div>
 
         {chatOpen && (
-          <Card ref={chatRef} className="h-96 shrink-0 scroll-mt-4 gap-2 overflow-hidden p-3 lg:h-auto lg:w-80">
+          // Below md the server's tab bar is fixed to the screen's bottom: scrolled into view, the chat's message box ends
+          // above it (the bar's 3.5rem, the safe area and a gap)
+          <Card
+            ref={chatRef}
+            className="h-96 shrink-0 scroll-mt-4 scroll-mb-[calc(4.25rem+env(safe-area-inset-bottom))] gap-2 overflow-hidden p-3 md:scroll-mb-4 lg:h-auto lg:w-80"
+          >
             <div className="text-sm font-medium">Chat</div>
             <ChatPanel
               chatLog={chatLog}
@@ -723,14 +738,19 @@ function useWide() {
 }
 
 /**
- * The first visit's three sentences: what a draft is, what Apply does and what a layout is for. Hidden for good in this
- * browser with its close button.
+ * The first visit's three steps: what a draft is, what Apply does and what a layout is for. A card in the 3D view's
+ * bottom corner, over the map rather than above it, so the view keeps its height. Closing it hides it for good in this
+ * browser; the "?" in the toolbar shows it again. Kept above the screenshot tool's WebGL cover (data-ui-capture-keep).
  */
 function BuilderIntro({ onDismiss }: { onDismiss: () => void }) {
   return (
-    <Card size="sm" className="relative gap-2 p-3 pr-10 text-sm">
-      <p className="font-medium">How building works</p>
-      <ol className="grid gap-x-6 gap-y-1 text-muted-foreground md:grid-cols-3">
+    <section
+      data-ui-capture-keep
+      aria-label="How building works"
+      className="absolute inset-x-2 bottom-2 rounded-lg border bg-background/95 p-3 pr-10 text-sm shadow-lg backdrop-blur sm:right-auto sm:max-w-sm"
+    >
+      <p className="mb-1.5 font-medium">How building works</p>
+      <ol className="space-y-1 text-muted-foreground">
         <li>
           <span className="font-medium text-foreground">1. Place.</span> Drag an object onto the map, or click it to put it mid-view. It is a draft
           that only you see.
@@ -742,10 +762,10 @@ function BuilderIntro({ onDismiss }: { onDismiss: () => void }) {
           <span className="font-medium text-foreground">3. Save.</span> Save what is built as a layout under Layouts, to load it again on this map.
         </li>
       </ol>
-      <Button variant="ghost" size="icon-sm" className="absolute top-2 right-2" aria-label="Hide the introduction" title="Got it, hide this" onClick={onDismiss}>
+      <Button variant="ghost" size="icon-sm" className="absolute top-2 right-2" aria-label="Hide how building works" title="Got it, hide this (? shows it again)" onClick={onDismiss}>
         <X />
       </Button>
-    </Card>
+    </section>
   )
 }
 

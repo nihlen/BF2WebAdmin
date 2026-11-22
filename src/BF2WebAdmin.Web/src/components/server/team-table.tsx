@@ -91,30 +91,33 @@ export function TeamTable({
             .map((player) => {
               const level = player.hash ? levels.get(player.hash) : undefined
               return (
-                <TableRow key={player.index}>
+                <TableRow key={player.index} className="group/row">
                   <TableCell className="w-full max-w-0 pl-3">
-                    <button
-                      type="button"
-                      className="flex max-w-full items-center gap-2 text-left hover:underline"
-                      onClick={() => onDetails(player)}
-                      title="Player details"
-                    >
-                      {player.country && <span className={`fi fi-${player.country.toLowerCase()} shrink-0`} title={player.country} />}
-                      <span className="truncate">{player.name}</span>
-                      {/* Dead is a moment of the round, not a reason to grey out the name the admin is looking for */}
-                      {!player.isAlive && (
-                        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground" title="Dead, waiting to respawn">
-                          <Skull className="size-3.5" />
-                          dead
-                        </span>
-                      )}
-                      {level !== undefined && level > defaultAuthLevel && (
-                        <Badge variant="outline" className="shrink-0" title={`Auth level ${level}`}>
-                          <ShieldCheck data-icon="inline-start" />
-                          {authLevelName(level)}
-                        </Badge>
-                      )}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex min-w-0 items-center gap-2 text-left hover:underline"
+                        onClick={() => onDetails(player)}
+                        title="Player details"
+                      >
+                        {player.country && <span className={`fi fi-${player.country.toLowerCase()} shrink-0`} title={player.country} />}
+                        <span className="truncate">{player.name}</span>
+                        {/* Dead is a moment of the round, not a reason to grey out the name the admin is looking for */}
+                        {!player.isAlive && (
+                          <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground" title="Dead, waiting to respawn">
+                            <Skull className="size-3.5" />
+                            dead
+                          </span>
+                        )}
+                        {level !== undefined && level > defaultAuthLevel && (
+                          <Badge variant="outline" className="shrink-0" title={`Auth level ${level}`}>
+                            <ShieldCheck data-icon="inline-start" />
+                            {authLevelName(level)}
+                          </Badge>
+                        )}
+                      </button>
+                      <QuickActions player={player} onModerate={onModerate} />
+                    </div>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{player.score.total}</TableCell>
                   <TableCell className="hidden text-right tabular-nums sm:table-cell">{player.score.kills}</TableCell>
@@ -174,6 +177,26 @@ function Ping({ ping, connection }: { ping: number; connection: PlayerConnection
   )
 }
 
+/**
+ * Warn, Kick and Ban on a scoreboard row, from md up while the pointer is over the row or the keyboard is in it: the
+ * moderation dialog opens with the player and the action chosen. A phone has them first in the row's menu.
+ */
+function QuickActions({ player, onModerate }: { player: Player; onModerate: (kind: ModerationKind, player: Player) => void }) {
+  return (
+    <div className="ml-auto hidden shrink-0 gap-1 md:group-focus-within/row:flex md:group-hover/row:flex">
+      <Button variant="outline" size="xs" aria-label={`Warn ${player.name}`} onClick={() => onModerate('warn', player)}>
+        Warn
+      </Button>
+      <Button variant="outline" size="xs" aria-label={`Kick ${player.name}`} onClick={() => onModerate('kick', player)}>
+        Kick
+      </Button>
+      <Button variant="destructive" size="xs" aria-label={`Ban ${player.name}`} onClick={() => onModerate('ban', player)}>
+        Ban
+      </Button>
+    </div>
+  )
+}
+
 function PlayerMenu({
   player,
   level,
@@ -198,13 +221,14 @@ function PlayerMenu({
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => onDetails(player)}>Details</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => void actions.switchTeam(player)}>Switch team</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => void actions.killPlayer(player)}>Kill player</DropdownMenuItem>
         <DropdownMenuItem onClick={() => onModerate('warn', player)}>Warn player</DropdownMenuItem>
         <DropdownMenuItem onClick={() => onModerate('kick', player)}>Kick player</DropdownMenuItem>
         <DropdownMenuItem variant="destructive" onClick={() => onModerate('ban', player)}>
           Ban player
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => void actions.switchTeam(player)}>Switch team</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void actions.killPlayer(player)}>Kill player</DropdownMenuItem>
         <DropdownMenuSeparator />
         <AuthLevelMenu player={player} level={level} serverGroup={serverGroup} actions={actions} />
       </DropdownMenuContent>

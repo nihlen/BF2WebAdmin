@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import type { HealthRound, PlayerConnection, ServerConnections, ServerHealthStatus, ServerHealthWindow } from '@/api/client'
+import type { HealthRound, Player, PlayerConnection, ServerConnections, ServerHealthStatus, ServerHealthWindow } from '@/api/client'
+import { PlayerLink } from '@/components/server/player-link'
 import { type Band, type Series, StatusStrip, TimeChart, type TimeRange } from '@/components/server/health-charts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -53,12 +54,12 @@ const statusLevel = (status: string): Level => (status === 'Bad' ? 'bad' : statu
 const limitLevel = (value: number, limit: { warn: number; bad: number }): Level =>
   value > limit.bad ? 'bad' : value > limit.warn ? 'warn' : 'good'
 
-const levelStyles: Record<Level, { text: string; dot: string; box: string; accent: string }> = {
-  good: { text: 'text-emerald-700 dark:text-emerald-400', dot: 'bg-emerald-500', box: 'border-emerald-500/30 bg-emerald-500/5', accent: 'border-l-emerald-500' },
-  warn: { text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500', box: 'border-amber-500/40 bg-amber-500/5', accent: 'border-l-amber-500' },
-  bad: { text: 'text-red-700 dark:text-red-400', dot: 'bg-red-500', box: 'border-red-500/40 bg-red-500/5', accent: 'border-l-red-500' },
-  info: { text: 'text-sky-700 dark:text-sky-400', dot: 'bg-sky-500', box: 'border-sky-500/30 bg-sky-500/5', accent: 'border-l-sky-500' },
-  none: { text: 'text-foreground', dot: 'bg-muted-foreground/40', box: 'bg-card', accent: 'border-l-border' },
+const levelStyles: Record<Level, { text: string; dot: string; accent: string }> = {
+  good: { text: 'text-emerald-700 dark:text-emerald-400', dot: 'bg-emerald-500', accent: 'border-l-emerald-500' },
+  warn: { text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500', accent: 'border-l-amber-500' },
+  bad: { text: 'text-red-700 dark:text-red-400', dot: 'bg-red-500', accent: 'border-l-red-500' },
+  info: { text: 'text-sky-700 dark:text-sky-400', dot: 'bg-sky-500', accent: 'border-l-sky-500' },
+  none: { text: 'text-foreground', dot: 'bg-muted-foreground/40', accent: 'border-l-border' },
 }
 
 /**
@@ -117,7 +118,18 @@ export function HealthChip({ serverId, connected }: { serverId: string; connecte
  * window, its main figures as tiles (the rest on demand), the players' connections, and the last hour or six hours as
  * charts. WebAdmin rates the windows; this only shows the rating. A server whose module sends none has no data.
  */
-export function HealthPanel({ serverId, connected }: { serverId: string; connected: boolean }) {
+export function HealthPanel({
+  serverId,
+  connected,
+  players: online,
+  onPlayer,
+}: {
+  serverId: string
+  connected: boolean
+  /** The players on the server, whose names in the connections open their sheet */
+  players: Player[]
+  onPlayer: (player: Player) => void
+}) {
   const [minutes, setMinutes] = useState(healthMinutes)
   const keep = sameServer(serverId)
   // Kept current by useServerLive's hub events, whichever part of the history it is
@@ -156,7 +168,7 @@ export function HealthPanel({ serverId, connected }: { serverId: string; connect
         </>
       )}
 
-      {players && <Connections players={players} />}
+      {players && <Connections players={players} online={online} onPlayer={onPlayer} />}
 
       {latest && (
         <Card>
@@ -307,36 +319,49 @@ function lastHourVerdict(history: ServerHealthWindow[], connections: ServerConne
     : { level, title: 'No problems.', detail: `All ${plural(windows.length, 'window')} ran smoothly, and no player's connection went over the limits.` }
 }
 
+const levelLabels: Partial<Record<Level, string>> = { good: 'Healthy', warn: 'Warning', bad: 'Degraded', info: 'Loading level' }
+
 /**
  * The verdict, split in now (the latest window and its connections) and the last hour, so that a problem a while ago
- * does not read as one now, nor the other way round. The box takes the colour of now.
+ * does not read as one now, nor the other way round. Now has one colour, its status's, on the card's edge and its
+ * label; the sentences are plain. The worse of the server and the players leads. The last hour is a quieter line under
+ * it, with a marker of its own colour.
  */
 function Verdict({ server, players, lastHour }: { server: VerdictLine; players: VerdictLine | null; lastHour: VerdictLine | null }) {
   const now = players ? worse(server.level, players.level) : server.level
-  const style = levelStyles[now]
+  const playersLead = !!players && levelRank[players.level] > levelRank[server.level]
+  const headline = playersLead ? players.title : server.title
+  const secondary = playersLead ? (server.level === 'good' ? 'The server itself runs smoothly.' : server.title) : players?.title
+  const label = levelLabels[now]
+
   return (
-    <div className={cn('grid gap-4 rounded-xl border p-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]', style.box)}>
-      <div className="flex min-w-0 items-start gap-3">
-        <span className={cn('mt-6 size-3 shrink-0 rounded-full', style.dot)} aria-hidden />
-        <div className="min-w-0 space-y-1">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Now</p>
-          <p className={cn('text-xl leading-tight font-semibold', levelStyles[server.level].text)}>{server.title}</p>
-          {server.detail && <p className="text-sm">{server.detail}</p>}
-          {players && <p className={cn('text-sm font-medium', levelStyles[players.level].text)}>{players.title}</p>}
-          {server.time && <p className="text-xs text-muted-foreground">{server.time}</p>}
-        </div>
+    <section aria-label="Health verdict" className={cn('rounded-xl border-l-4 bg-card p-4 ring-1 ring-foreground/10', levelStyles[now].accent)}>
+      <div className="min-w-0 space-y-1">
+        <p className="flex items-center gap-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Now
+          {label && (
+            <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 tracking-normal normal-case', levelStyles[now].text)}>
+              <span className={cn('size-2 rounded-full', levelStyles[now].dot)} aria-hidden />
+              {label}
+            </span>
+          )}
+        </p>
+        <p className="text-xl leading-tight font-semibold">{headline}</p>
+        {server.detail && <p className="text-sm text-muted-foreground">{server.detail}</p>}
+        {secondary && <p className="text-sm">{secondary}</p>}
+        {server.time && <p className="text-xs text-muted-foreground">{server.time}</p>}
       </div>
       {lastHour && (
-        <div className="flex min-w-0 items-start gap-3 border-t border-foreground/10 pt-4 md:border-t-0 md:border-l md:pt-0 md:pl-4">
-          <span className={cn('mt-6 size-2.5 shrink-0 rounded-full', levelStyles[lastHour.level].dot)} aria-hidden />
-          <div className="min-w-0 space-y-1">
-            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Last hour</p>
-            <p className={cn('font-medium', levelStyles[lastHour.level].text)}>{lastHour.title}</p>
-            {lastHour.detail && <p className="text-xs text-muted-foreground">{lastHour.detail}</p>}
-          </div>
-        </div>
+        <p className="mt-3 flex items-start gap-2 border-t pt-3 text-sm text-muted-foreground">
+          <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', levelStyles[lastHour.level].dot)} aria-hidden />
+          <span className="min-w-0">
+            <span className="font-medium text-foreground">Last hour:</span> {lastHour.title}
+            {lastHour.detail && <span className="text-xs"> {lastHour.detail}</span>}
+            {levelLabels[lastHour.level] && <span className="sr-only"> ({levelLabels[lastHour.level]})</span>}
+          </span>
+        </p>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -473,7 +498,17 @@ function PartialBadge() {
  * and what was lost of them. Bots have no connection and no row. A phone gets a card per player with the main figures
  * instead of the wide table.
  */
-function Connections({ players }: { players: PlayerConnection[] }) {
+function Connections({ players, online, onPlayer }: { players: PlayerConnection[]; online: Player[]; onPlayer: (player: Player) => void }) {
+  // A connection is of the player in that slot with that name; one who left has no sheet to open
+  const name = (c: PlayerConnection, className?: string) => {
+    const player = online.find((p) => p.index === c.playerId && p.name === c.name)
+    return player ? (
+      <PlayerLink player={player} onOpen={onPlayer} className={cn('min-w-0 truncate', className)} />
+    ) : (
+      <span className={cn('truncate', c.name === null && 'text-muted-foreground', className)}>{playerName(c)}</span>
+    )
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -487,7 +522,7 @@ function Connections({ players }: { players: PlayerConnection[] }) {
             {players.map((c) => (
               <li key={c.playerId} className="space-y-2 rounded-lg border p-3">
                 <div className="flex items-center gap-2">
-                  <span className={cn('min-w-0 flex-1 truncate font-medium', c.name === null && 'text-muted-foreground')}>{playerName(c)}</span>
+                  <span className="flex min-w-0 flex-1">{name(c, 'font-medium')}</span>
                   {c.partial && <PartialBadge />}
                   <ConnectionStatus connection={c} />
                 </div>
@@ -540,7 +575,7 @@ function Connections({ players }: { players: PlayerConnection[] }) {
                   <TableRow key={c.playerId}>
                     <TableCell className="max-w-64">
                       <div className="flex items-center gap-2">
-                        <span className={cn('truncate', c.name === null && 'text-muted-foreground')}>{playerName(c)}</span>
+                        {name(c)}
                         {c.partial && <PartialBadge />}
                       </div>
                     </TableCell>

@@ -5,7 +5,7 @@ import { api, errorMessage, type Server } from '@/api/client'
 import { CopyButton } from '@/components/copy-button'
 import { ConnectionTestResults } from '@/components/server/connection-test'
 import { SetupStepsSection } from '@/components/setup-checklist'
-import { useSetupSteps } from '@/hooks/use-setup-steps'
+import { setupProgress, useSetupSteps } from '@/hooks/use-setup-steps'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -122,10 +122,16 @@ function Waiting({ address }: { address: string }) {
   )
 }
 
-/** The connected state: where to go now, and the setup step that comes next. */
+/**
+ * The connected state: where to go now, and where the setup stands. A server added to a group that has its modules and
+ * admins already has those steps done, so the done ones are named with the reason; "every step is done" only shows
+ * when the optional ones are done too, and an open optional step stays listed as optional.
+ */
 function Connected({ server }: { server: Server }) {
   const steps = useSetupSteps(server)
-  const next = steps?.find((s) => !s.done && !s.optional) ?? steps?.find((s) => !s.done)
+  const next = steps && setupProgress(steps).next
+  const optional = steps?.filter((s) => s.optional && !s.done) ?? []
+  const fromGroup = steps?.filter((s) => s.done && (s.id === 'modules' || s.id === 'admins')) ?? []
 
   return (
     <div role="status" className="space-y-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm">
@@ -133,17 +139,36 @@ function Connected({ server }: { server: Server }) {
         <CircleCheck className="size-5 shrink-0 text-emerald-500" />
         <span className="min-w-0 break-words">{server.name} is connected</span>
       </p>
+      {steps && (
+        <ul className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground" aria-label="Setup steps done">
+          {steps
+            .filter((s) => s.done)
+            .map((s) => (
+              <li key={s.id} className="inline-flex items-center gap-1">
+                <CircleCheck className="size-4 text-emerald-500" aria-hidden />
+                {s.label}
+              </li>
+            ))}
+        </ul>
+      )}
       {next ? (
         <p className="text-muted-foreground">
-          <span className="font-medium text-foreground">
-            Next: {next.label}
-            {next.optional && ' (optional)'}.
-          </span>{' '}
-          {next.hint} {next.link}
+          <span className="font-medium text-foreground">Next: {next.label}.</span> {next.hint} {next.link}
         </p>
       ) : (
-        steps && <p className="text-muted-foreground">Every setup step is done.</p>
+        steps && (
+          <p className="text-muted-foreground">
+            {optional.length > 0 ? 'The required setup steps are done.' : 'Every setup step is done.'}
+            {fromGroup.length > 0 && ` Group ${server.serverGroup} already had its ${fromGroup.map((s) => (s.id === 'modules' ? 'modules' : 'admins')).join(' and ')}.`}
+          </p>
+        )
       )}
+      {optional.map((step) => (
+        <p key={step.id} className="text-muted-foreground">
+          <span className="font-medium text-foreground">{step.label}</span> <span className="rounded-full border px-1.5 text-[0.7rem]">Optional</span> {step.hint}{' '}
+          {step.link}
+        </p>
+      ))}
       <Button nativeButton={false} render={<Link to="/server/$serverId" params={{ serverId: encodeServerId(server.id) }} />}>
         Go to server
         <ArrowRight data-icon="inline-end" />

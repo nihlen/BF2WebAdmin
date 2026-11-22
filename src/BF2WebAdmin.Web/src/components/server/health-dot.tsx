@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
+import { CircleAlert, TriangleAlert } from 'lucide-react'
 import type { Server } from '@/api/client'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { healthQuery } from '@/hooks/use-server-live'
-import { overallHealth, statusColors } from '@/lib/health'
+import { overallHealth } from '@/lib/health'
 import { cn } from '@/lib/utils'
 
 /**
@@ -15,16 +17,24 @@ function useLatestHealth(server: Pick<Server, 'id' | 'socketState'>) {
 }
 
 /**
- * The server's health as a dot only, where a word does not fit (the sidebar). It shows only when something is off: a
- * row of green dots would say nothing that the status dot does not.
+ * The server's health as a small warning sign, where a word does not fit (the sidebar), with the reason in a tooltip
+ * and for screen readers. It shows only when something is off: a row of green marks would say nothing that the status
+ * dot does not, and a sign rather than a second dot keeps it apart from that dot.
  */
 export function HealthDot({ server }: { server: Pick<Server, 'id' | 'socketState'> }) {
   const health = useLatestHealth(server)
-  if (!health || health.status === 'Good') return null
+  if (!health || (health.status !== 'Warn' && health.status !== 'Bad')) return null
+  const Icon = health.status === 'Bad' ? CircleAlert : TriangleAlert
   return (
-    <span className="flex shrink-0 items-center" title={health.title}>
-      <span className={cn('size-2 rounded-full ring-2 ring-sidebar', statusColors[health.status])} aria-hidden />
-      <span className="sr-only">{health.title}</span>
-    </span>
+    <Tooltip>
+      <TooltipTrigger render={<span className="flex shrink-0 items-center" />}>
+        <Icon className={cn('size-3.5!', health.status === 'Bad' ? 'text-red-500' : 'text-amber-500')} aria-hidden />
+        <span className="sr-only">{health.title}</span>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-64 flex-col items-start gap-0.5">
+        <span className="font-medium">{health.label}</span>
+        <span>{health.summary}</span>
+      </TooltipContent>
+    </Tooltip>
   )
 }

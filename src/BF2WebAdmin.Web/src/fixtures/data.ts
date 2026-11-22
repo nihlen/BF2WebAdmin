@@ -639,7 +639,8 @@ export function fixtureResponse(request: FixtureRequest): FixtureResponse {
   // The added server's settings and its health (none yet), which its setup steps and the sidebar's health dot ask for once
   // the fake hub has announced it
   if (serverId === ids.added && scenario === 'default') {
-    if (rest === '/settings') return ok(settings(addedServer))
+    // As the add form saved it, which leaves Discord out: the 2v2 group's other servers have a bot, this one not yet
+    if (rest === '/settings') return ok({ ...settings(addedServer), discordBotToken: '', discordAdminChannel: '', discordNotificationChannel: '' })
     if (rest === '/health') return ok(healthFor(serverId, minutes))
   }
   const server = list.find((s) => s.id === serverId)

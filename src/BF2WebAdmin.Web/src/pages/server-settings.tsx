@@ -177,7 +177,7 @@ function ServerSettingsForm({ initial, serverId, onCreated }: { initial: ServerS
   const create = api.useMutation('post', '/api/servers', {
     onSuccess: async (_, { body }) => {
       leaving.current = true
-      toast.success('Server added')
+      // No toast: the connect step that follows says the server is saved, and a toast would cover its lines on a phone.
       // The list then has the new server, offline, and the hub's server updates turn it connected
       await queryClient.invalidateQueries({ queryKey: ['get', '/api/servers'] })
       onCreated?.(body)
@@ -677,15 +677,20 @@ function OptionalSection({
 }) {
   const discord = !!(initial.discordBotToken || initial.discordAdminChannel || initial.discordNotificationChannel || initial.discordMatchResultChannel)
   const [open, setOpen] = useState(discord || initial.isTestServer)
-  const summary = [discord ? 'Discord bot set up' : 'Discord bot not set up', initial.isTestServer ? 'test server' : null].filter(Boolean).join(', ')
+  const summary = [
+    discord ? 'The Discord bot is set up.' : 'The server runs without them; no Discord bot is set up.',
+    initial.isTestServer && 'Marked as a test server.',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <Card>
       <CardHeader>
         <button type="button" className="flex w-full items-start justify-between gap-4 text-left" aria-expanded={open} aria-controls="optional-settings" onClick={() => setOpen((o) => !o)}>
           <span className="space-y-1.5">
-            <CardTitle>Optional</CardTitle>
-            <CardDescription>Discord bot and test server. {summary}.</CardDescription>
+            <CardTitle>Discord and test server (optional)</CardTitle>
+            <CardDescription>{summary}</CardDescription>
           </span>
           <ChevronDown className={cn('mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
         </button>

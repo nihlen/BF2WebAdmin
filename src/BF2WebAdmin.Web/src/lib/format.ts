@@ -23,6 +23,8 @@ const units: [Intl.RelativeTimeFormatUnit, number][] = [
 export function formatRelative(value: string) {
   const ms = Date.parse(value) - Date.now()
   if (Number.isNaN(ms)) return value
+  // Intl says "this minute", which reads oddly in a log
+  if (Math.abs(ms) < 60_000) return 'just now'
   const [unit, size] = units.find(([, size]) => Math.abs(ms) >= size) ?? ['minute', 60_000]
   return relativeFormat.format(Math.round(ms / size), unit)
 }
@@ -31,4 +33,15 @@ export function formatRelative(value: string) {
 export const formatFull = (value: string) => {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : dateTimeFormat.format(date)
+}
+
+const dayFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' })
+const yearFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+
+/** A short date and time ("19 Nov 20:31"), with the year when it is not this year, to stand beside a relative time. */
+export function formatDayTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const thisYear = date.getFullYear() === new Date().getFullYear()
+  return `${(thisYear ? dayFormat : yearFormat).format(date)} ${timeFormat.format(date)}`
 }

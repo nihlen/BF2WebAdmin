@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { ServerActions } from '@/hooks/use-server-actions'
 import { banLength } from '@/lib/bans'
-import { formatFull, formatRelative } from '@/lib/format'
+import { formatDayTime, formatFull, formatRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 /** A CD-key hash is 32 characters: its start and end tell bans apart, the title and the copy button have all of it. */
@@ -26,7 +26,7 @@ const matches = (ban: Ban, query: string) =>
 
 /**
  * How long the ban lasts as a badge: a permanent ban stands out in red with an infinity sign, a timed one says when it
- * ends relative to now with the time on hover, a round's ban is plain.
+ * ends relative to now and, beside it, the date and time it ends; a round's ban is plain.
  */
 function LengthBadge({ ban }: { ban: Ban }) {
   if (ban.kind === 'Permanent')
@@ -37,17 +37,23 @@ function LengthBadge({ ban }: { ban: Ban }) {
       </Badge>
     )
   return (
-    <Badge variant={ban.kind === 'Timed' ? 'secondary' : 'outline'} title={ban.expiresAt ? `Until ${formatFull(ban.expiresAt)}` : undefined}>
-      {banLength(ban)}
-    </Badge>
+    <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+      <Badge variant={ban.kind === 'Timed' ? 'secondary' : 'outline'}>{banLength(ban)}</Badge>
+      {ban.expiresAt && (
+        <time dateTime={ban.expiresAt} title={formatFull(ban.expiresAt)} className="text-xs whitespace-nowrap text-muted-foreground">
+          {formatDayTime(ban.expiresAt)}
+        </time>
+      )}
+    </span>
   )
 }
 
-/** When the ban was made, relative to now, with the time in full on hover. */
+/** When the ban was made: relative to now, then the date and time ("2 days ago · 19 Nov 20:31"). */
 function BannedAt({ value }: { value: string }) {
   return (
-    <time dateTime={value} title={formatFull(value)}>
+    <time dateTime={value} title={formatFull(value)} className="whitespace-nowrap">
       {formatRelative(value)}
+      <span className="text-muted-foreground"> · {formatDayTime(value)}</span>
     </time>
   )
 }
@@ -143,7 +149,7 @@ export function BanList({ serverId, actions, confirm }: { serverId: string; acti
               {ban.bannedBy && <span>by {ban.bannedBy}</span>}
               {ban.bannedBy && ban.bannedAt && <span aria-hidden>·</span>}
               {ban.bannedAt && <BannedAt value={ban.bannedAt} />}
-              <span aria-hidden>·</span>
+              {(ban.bannedBy || ban.bannedAt) && <span aria-hidden>·</span>}
               <span>{banType(ban)}</span>
               <span className="inline-flex items-center gap-0.5">
                 <span className="font-mono" title={ban.identifier}>

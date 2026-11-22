@@ -10,9 +10,6 @@ import { ChatPanel } from '@/components/server/chat-panel'
 import { CommandPalette } from '@/components/server/command-palette'
 import { ServerConnectCard } from '@/components/server/connect-guide'
 import { HealthPanel } from '@/components/server/health-panel'
-import { LogList, Time } from '@/components/server/log-list'
-import { ModerationDialog, type ModerationKind, type ModerationRequest } from '@/components/server/moderation-dialog'
-import { PlayerSheet } from '@/components/server/player-sheet'
 import { useServerPage } from '@/components/server/server-context'
 import { TeamTable } from '@/components/server/team-table'
 import { Badge } from '@/components/ui/badge'
@@ -20,7 +17,8 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { playerAuthQuery, useServerActions, type ServerActions } from '@/hooks/use-server-actions'
+import { usePlayerSheet } from '@/hooks/use-player-sheet'
+import { useServerActions, type ServerActions } from '@/hooks/use-server-actions'
 import { healthQuery } from '@/hooks/use-server-live'
 
 /**
@@ -31,16 +29,11 @@ import { healthQuery } from '@/hooks/use-server-live'
 export function ServerLivePage() {
   const { serverId, snapshot, positions } = useServerPage()
   const actions = useServerActions(serverId, snapshot.data)
+  const sheet = usePlayerSheet(actions)
   const mobile = useIsMobile()
   const [commandsOpen, setCommandsOpen] = useState(false)
   const connected = snapshot.data?.server.socketState === 'Connected'
-  const [moderation, setModeration] = useState<ModerationRequest | null>(null)
-  const [detailsPlayer, setDetailsPlayer] = useState<Player | null>(null)
-  const moderate = (kind: ModerationKind, player: Player) => setModeration({ kind, player })
 
-  const serverGroup = snapshot.data?.server.serverGroup ?? ''
-  const auth = useQuery({ ...playerAuthQuery(serverGroup), enabled: !!serverGroup })
-  const authLevels = useMemo(() => new Map((auth.data ?? []).map((a) => [a.playerHash, a.authLevel])), [auth.data])
   // The latest health window's connections, which useServerLive keeps current
   const health = useQuery({ ...healthQuery(serverId), staleTime: Infinity })
   const connections = useMemo(() => new Map((health.data?.connections?.players ?? []).map((c) => [c.playerId, c])), [health.data])
@@ -69,16 +62,16 @@ export function ServerLivePage() {
       team={team}
       players={players.filter((p) => p.team === team.id)}
       positions={positions}
-      authLevels={authLevels}
-      serverGroup={serverGroup}
+      authLevels={sheet.authLevels}
+      serverGroup={sheet.serverGroup}
       connections={connections}
       actions={actions}
-      onModerate={moderate}
-      onDetails={setDetailsPlayer}
+      onModerate={sheet.moderate}
+      onDetails={sheet.open}
     />
   ))
   const chat = (listClassName: string) => (
-    <ChatCard snapshot={snapshot.data} actions={actions} listClassName={listClassName} onPlayer={setDetailsPlayer} onCommands={() => setCommandsOpen(true)} />
+    <ChatCard snapshot={snapshot.data} actions={actions} listClassName={listClassName} onPlayer={sheet.open} onCommands={() => setCommandsOpen(true)} />
   )
   const map = <ServerMap map={server.map} players={players} positions={positions} />
 
@@ -96,19 +89,7 @@ export function ServerLivePage() {
         </>
       )}
 
-      <PlayerSheet
-        serverId={serverId}
-        player={detailsPlayer}
-        current={detailsPlayer ? players.find((p) => p.index === detailsPlayer.index && p.name === detailsPlayer.name) : undefined}
-        teams={teams}
-        ping={detailsPlayer ? positions.current.get(detailsPlayer.index)?.ping : undefined}
-        authLevels={authLevels}
-        serverGroup={serverGroup}
-        actions={actions}
-        onModerate={moderate}
-        onClose={() => setDetailsPlayer(null)}
-      />
-      <ModerationDialog request={moderation} actions={actions} onClose={() => setModeration(null)} />
+      {sheet.element}
       <CommandPalette open={commandsOpen} onOpenChange={setCommandsOpen} serverId={serverId} players={players} actions={actions} />
     </div>
   )
@@ -192,10 +173,16 @@ function PhoneLive({ snapshot, players, chat, map }: { snapshot: ServerSnapshot;
   )
 }
 
-/** The Health tab: the server process and the players' connections, at full width. */
+/** The Health tab: the server process and the players' connections, at full width. A player's name opens their sheet. */
 export function ServerHealthPage() {
   const { serverId, snapshot } = useServerPage()
-  return <HealthPanel serverId={serverId} connected={snapshot.data?.server.socketState === 'Connected'} />
+  const sheet = usePlayerSheet(useServerActions(serverId, snapshot.data))
+  return (
+    <>
+      <HealthPanel serverId={serverId} connected={snapshot.data?.server.socketState === 'Connected'} players={snapshot.data?.players ?? []} onPlayer={sheet.open} />
+      {sheet.element}
+    </>
+  )
 }
 
 /** The Bans tab: the engine's ban list, with an unban per row. */
@@ -212,32 +199,19 @@ export function ServerBansPage() {
   )
 }
 
-/** The Activity tab: what web users sent to the server, and the game's events. */
+/** The Activity tab: what web users sent to the server and the game's events, in one timeline. */
 export function ServerActivityPage() {
   const { serverId, snapshot } = useServerPage()
+  const sheet = usePlayerSheet(useServerActions(serverId, snapshot.data))
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Card className="gap-0 pb-0">
-        <CardHeader className="border-b">
-          <CardTitle>Sent from the web</CardTitle>
-          <CardDescription>Chat, commands and actions of every web user, with the server's answers.</CardDescription>
-        </CardHeader>
-        <ActivityLog serverId={serverId} />
-      </Card>
-      <Card className="gap-0 pb-0">
-        <CardHeader className="border-b">
-          <CardTitle>Game events</CardTitle>
-          <CardDescription>Joins, deaths, kills, map changes and other game events, newest at the bottom.</CardDescription>
-        </CardHeader>
-        <LogList className="h-[min(600px,70svh)]" items={snapshot.data?.eventLog ?? []} empty="No events yet">
-          {(entry) => (
-            <li key={entry.id}>
-              <Time value={entry.timestamp} /> {entry.message}
-            </li>
-          )}
-        </LogList>
-      </Card>
-    </div>
+    <Card className="max-w-4xl gap-0 pb-0">
+      <CardHeader className="pb-3">
+        <CardTitle>Activity</CardTitle>
+        <CardDescription>What web users sent to this server, with its answers, and what happened in the game. Newest first.</CardDescription>
+      </CardHeader>
+      <ActivityLog serverId={serverId} events={snapshot.data?.eventLog ?? []} players={snapshot.data?.players ?? []} onPlayer={sheet.open} />
+      {sheet.element}
+    </Card>
   )
 }

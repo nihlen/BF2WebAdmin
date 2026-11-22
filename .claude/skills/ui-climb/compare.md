@@ -23,8 +23,8 @@ and then use it during matches, on a desktop or a phone.
 - Striped panels labelled "3D view (WebGL, not scored)" cover the 3D views: ignore what is under them.
 
 The order X/Y is random. There is no "before" and "after": do not try to work out which build is newer, from files,
-dates, git or anything else. Read nothing outside `{x}` and `{y}` except, if you need it, the UI source in
-`src/BF2WebAdmin.Web/src`. Do not edit any file except `{output}`.
+dates, git or anything else. Read nothing outside `{x}` and `{y}` (not the UI source either: the checked-out source
+is one of the two builds). Do not edit any file except `{output}`.
 
 ## How to judge
 

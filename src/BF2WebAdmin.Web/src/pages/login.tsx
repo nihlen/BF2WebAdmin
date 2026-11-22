@@ -83,7 +83,6 @@ export function LoginPage() {
                     id="password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
-                    required
                     className="pr-9"
                     aria-invalid={wrongPassword}
                     value={password}

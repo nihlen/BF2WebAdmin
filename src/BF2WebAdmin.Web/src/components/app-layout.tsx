@@ -1,7 +1,7 @@
 import { HubConnectionState } from '@microsoft/signalr'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, Outlet, useMatches, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, ChevronRight, CircleUser, LayoutDashboard, LogOut, Plus, Settings2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, CircleUser, Info, LayoutDashboard, LogOut, Plus, Settings2 } from 'lucide-react'
 import { Fragment, useEffect } from 'react'
 import { api } from '@/api/client'
 import { startHub, stopHub, useHubState } from '@/api/hub'
@@ -29,7 +29,7 @@ import { groupServers, useServerListUpdates, useServers } from '@/hooks/use-serv
 import { decodeServerId, encodeServerId } from '@/lib/server-id'
 import { serverTabs } from '@/lib/server-tabs'
 import { cn } from '@/lib/utils'
-import { meQuery, serverAddRoute, serverGroupRoute, serverRoute } from '@/router'
+import { aboutRoute, meQuery, serverAddRoute, serverGroupRoute, serverRoute } from '@/router'
 
 const hubRetryMs = 5000
 
@@ -95,7 +95,7 @@ function HubStatus() {
   )
 }
 
-/** The signed-in user's name, with Sign out. */
+/** The signed-in user's name, with About WebAdmin and Sign out. */
 function AccountMenu() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -125,6 +125,10 @@ function AccountMenu() {
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
+        <DropdownMenuItem render={<Link to="/about" />}>
+          <Info />
+          About WebAdmin
+        </DropdownMenuItem>
         <DropdownMenuItem disabled={logout.isPending} onClick={() => logout.mutate({})}>
           <LogOut />
           Sign out
@@ -149,6 +153,7 @@ function PageTrail() {
   const crumbs: Crumb[] = [{ label: 'Servers', link: (props) => <Link to="/" {...props} /> }]
   let title = 'Servers'
   if (ids.has(serverAddRoute.id)) crumbs.push({ label: (title = 'Add server') })
+  if (ids.has(aboutRoute.id)) crumbs.push({ label: (title = 'About WebAdmin') })
   if (ids.has(serverGroupRoute.id) && params?.serverGroup) crumbs.push({ label: (title = `Group ${params.serverGroup}`) })
   if (ids.has(serverRoute.id) && params?.serverId) {
     const { serverId } = params

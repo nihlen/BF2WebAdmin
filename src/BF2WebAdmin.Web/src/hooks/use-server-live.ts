@@ -1,6 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { api, type CommandLogEntry, type Player, type ServerConnections, type ServerHealth, type ServerSnapshot, type Vector3 } from '@/api/client'
+import {
+  api,
+  type CommandLogEntry,
+  type EventLogKind,
+  type EventLogPlayer,
+  type Player,
+  type ServerConnections,
+  type ServerHealth,
+  type ServerSnapshot,
+  type Vector3,
+} from '@/api/client'
 import { onHubReconnected, useHubEvent, useServerSubscription } from '@/api/hub'
 import { reportGameUpdate } from '@/lib/pending-actions'
 
@@ -85,11 +95,17 @@ export function useServerLive(serverId: string) {
   const updatePlayer = (playerId: number, recipe: (player: Player) => Player) =>
     update((s) => ({ ...s, players: s.players.map((p) => (p.index === playerId ? recipe(p) : p)) }))
 
-  const log = (message: string, timestamp: string) =>
-    update((s) => ({ ...s, eventLog: [...s.eventLog, { id: crypto.randomUUID(), message, timestamp }].slice(-maxLogEntries) }))
+  // A line of the event log, of a kind and with the players it names, as the server's own lines in the snapshot have them
+  const log = (message: string, timestamp: string, kind: EventLogKind, players: EventLogPlayer[] = []) =>
+    update((s) => ({ ...s, eventLog: [...s.eventLog, { id: crypto.randomUUID(), message, timestamp, kind, players }].slice(-maxLogEntries) }))
 
-  const playerName = (playerId: number) =>
-    queryClient.getQueryData<ServerSnapshot>(query.queryKey)?.players.find((p) => p.index === playerId)?.name ?? `#${playerId}`
+  const findPlayer = (playerId: number) => queryClient.getQueryData<ServerSnapshot>(query.queryKey)?.players.find((p) => p.index === playerId)
+  const playerName = (playerId: number) => findPlayer(playerId)?.name ?? `#${playerId}`
+  // The player as the event names them now, before they leave and their index goes to someone else
+  const named = (playerId: number): EventLogPlayer[] => {
+    const player = findPlayer(playerId)
+    return player ? [{ index: player.index, name: player.name, hash: player.hash || null }] : []
+  }
 
   // The snapshot is the start point for the positions too
   useEffect(() => {
@@ -131,17 +147,17 @@ export function useServerLive(serverId: string) {
   useHubEvent('SocketStateEvent', (e) => {
     refetchOnSocketChange(e.state)
     update((s) => ({ ...s, server: { ...s.server, socketState: e.state } }))
-    log(`Socket ${e.state}`, e.timeStamp)
+    log(`Socket ${e.state}`, e.timeStamp, 'Connection')
   })
 
   useHubEvent('GameStateEvent', (e) => {
     update((s) => ({ ...s, server: { ...s.server, gameState: e.state } }))
-    log(`Game state ${e.state}`, e.timeStamp)
+    log(`Game state ${e.state}`, e.timeStamp, 'GameState')
   })
 
   useHubEvent('MapChangeEvent', (e) => {
     update((s) => ({ ...s, server: { ...s.server, map: e.map }, teams: e.teams }))
-    log(`Map ${e.map} (${e.size})`, e.timeStamp)
+    log(`Map ${e.map} (${e.size})`, e.timeStamp, 'Map')
     // Sent at every round start, so it also confirms a round restart
     reportGameUpdate(serverId, { roundStart: { map: e.map } })
   })
@@ -152,11 +168,11 @@ export function useServerLive(serverId: string) {
 
   useHubEvent('PlayerJoinEvent', (e) => {
     update((s) => ({ ...s, players: [...s.players.filter((p) => p.index !== e.player.index), e.player] }))
-    log(`${e.player.name} joined`, e.timeStamp)
+    log(`${e.player.name} joined`, e.timeStamp, 'Join', [{ index: e.player.index, name: e.player.name, hash: e.player.hash || null }])
   })
 
   useHubEvent('PlayerLeftEvent', (e) => {
-    log(`${playerName(e.playerId)} left`, e.timeStamp)
+    log(`${playerName(e.playerId)} left`, e.timeStamp, 'Leave', named(e.playerId))
     update((s) => ({ ...s, players: s.players.filter((p) => p.index !== e.playerId) }))
     positions.current.delete(e.playerId)
     // Confirms a kick or a ban
@@ -166,7 +182,7 @@ export function useServerLive(serverId: string) {
 
   useHubEvent('PlayerTeamEvent', (e) => {
     updatePlayer(e.playerId, (p) => ({ ...p, team: e.teamId }))
-    log(`${playerName(e.playerId)} changed to team ${e.teamId}`, e.timeStamp)
+    log(`${playerName(e.playerId)} changed to team ${e.teamId}`, e.timeStamp, 'Team', named(e.playerId))
     const players = queryClient.getQueryData<ServerSnapshot>(query.queryKey)?.players
     if (players) reportGameUpdate(serverId, { players })
   })
@@ -217,20 +233,21 @@ export function useServerLive(serverId: string) {
       receivedAt: performance.now(),
       ping: positions.current.get(e.playerId)?.ping ?? 0,
     })
-    log(`${playerName(e.playerId)} spawned`, e.timeStamp)
+    log(`${playerName(e.playerId)} spawned`, e.timeStamp, 'Spawn', named(e.playerId))
   })
 
   useHubEvent('PlayerDeathEvent', (e) => {
     updatePlayer(e.playerId, (p) => ({ ...p, isAlive: false }))
-    log(`${playerName(e.playerId)} died`, e.timeStamp)
+    log(`${playerName(e.playerId)} died`, e.timeStamp, 'Death', named(e.playerId))
   })
 
   useHubEvent('PlayerKillEvent', (e) => {
-    log(`${playerName(e.attackerId)} killed ${playerName(e.victimId)} (${e.weapon})`, e.timeStamp)
+    // The killer, then the victim, as the server names them
+    log(`${playerName(e.attackerId)} killed ${playerName(e.victimId)} (${e.weapon})`, e.timeStamp, 'Kill', [...named(e.attackerId), ...named(e.victimId)])
   })
 
   useHubEvent('PlayerVehicleEvent', (e) => {
-    log(`${playerName(e.playerId)} vehicle ${e.vehicle?.rootVehicleTemplate ?? 'none'}`, e.timeStamp)
+    log(`${playerName(e.playerId)} vehicle ${e.vehicle?.rootVehicleTemplate ?? 'none'}`, e.timeStamp, 'Vehicle', named(e.playerId))
   })
 
   useHubEvent('PlayerPositionEvent', (e) => {

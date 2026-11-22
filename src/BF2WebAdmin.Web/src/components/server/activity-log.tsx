@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { CircleAlert, Crosshair, Flag, MessageSquare, Radio, Terminal, UserRound } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { CommandLogEntry, EventLogEntry, Player } from '@/api/client'
+import type { CommandLogEntry, EventLogEntry, EventLogKind, Player, PlayerRef } from '@/api/client'
 import { PlayerText } from '@/components/server/player-link'
 import { RelativeTime } from '@/components/relative-time'
 import { Button } from '@/components/ui/button'
@@ -18,17 +18,27 @@ type Item =
   | { source: 'game'; id: string; time: string; category: Category; failed: false; entry: EventLogEntry }
 
 /**
- * The game events are lines of text, from the server (its admin channel's "Kill …", "RoundStart …", "Kick …") and from
- * this page's hub events ("X joined", "X killed Y (weapon)", "Map …"), so they are sorted by their words. What fits
- * none of these (spawns, vehicles, team changes, the admin channel's state) is Other.
+ * The game events by their kind, from the server (the snapshot's event log) and from this page's hub events, which
+ * useServerLive gives the same kinds. What fits none of the chips (spawns, vehicles, team changes, scores, control
+ * points, the admin channel's state) is Other.
  */
-const gameCategories: [Category, RegExp][] = [
-  ['kills', /\bkilled\b|\bdied\b|^kill\b|^revive\b|^vehicledestroyed\b/i],
-  ['joins', /\bjoined\b|\bleft$|^kick\b|^ban\b|^bot\b/i],
-  ['rounds', /^round|^map\b|^game (state|paused)|\blayout\b.*\bloaded\b/i],
-]
+const gameCategories: Partial<Record<EventLogKind, Category>> = {
+  Kill: 'kills',
+  Death: 'kills',
+  Revive: 'kills',
+  VehicleDestroyed: 'kills',
+  Join: 'joins',
+  Leave: 'joins',
+  Kick: 'joins',
+  Ban: 'joins',
+  Bot: 'joins',
+  RoundStart: 'rounds',
+  RoundEnd: 'rounds',
+  Map: 'rounds',
+  GameState: 'rounds',
+}
 
-const gameCategory = (message: string): Category => gameCategories.find(([, pattern]) => pattern.test(message))?.[0] ?? 'other'
+const gameCategory = (kind: EventLogKind): Category => gameCategories[kind] ?? 'other'
 
 const filters: { id: Filter; label: string; hint: string }[] = [
   { id: 'web', label: 'Web actions', hint: 'Commands, console commands and actions sent from the web' },
@@ -59,10 +69,21 @@ const pageSize = 100
 
 /**
  * What web users sent to this server (from every browser) and the game's events, in one timeline, newest first, with
- * chips that narrow it to kinds of entries. The names of players on the server open their sheet. WebAdmin keeps the
- * last entries of both in memory, so the timeline starts empty after WebAdmin restarts.
+ * chips that narrow it to kinds of entries. The players an event names open their sheet, even after they left; in a
+ * web user's command, the names of the players on the server do. WebAdmin keeps the last entries of both in memory,
+ * so the timeline starts empty after WebAdmin restarts.
  */
-export function ActivityLog({ serverId, events, players, onPlayer }: { serverId: string; events: EventLogEntry[]; players: Player[]; onPlayer: (player: Player) => void }) {
+export function ActivityLog({
+  serverId,
+  events,
+  players,
+  onPlayer,
+}: {
+  serverId: string
+  events: EventLogEntry[]
+  players: Player[]
+  onPlayer: (player: PlayerRef) => void
+}) {
   // Fetched and kept current by useServerLive
   const log = useQuery({ ...commandLogQuery(serverId), staleTime: Infinity })
   const [selected, setSelected] = useState<ReadonlySet<Filter>>(new Set())
@@ -78,7 +99,7 @@ export function ActivityLog({ serverId, events, players, onPlayer }: { serverId:
       failed: !entry.success,
       entry,
     }))
-    const game: Item[] = events.map((entry) => ({ source: 'game', id: entry.id, time: entry.timestamp, category: gameCategory(entry.message), failed: false, entry }))
+    const game: Item[] = events.map((entry) => ({ source: 'game', id: entry.id, time: entry.timestamp, category: gameCategory(entry.kind), failed: false, entry }))
     return [...web, ...game].sort((a, b) => Date.parse(b.time) - Date.parse(a.time))
   }, [log.data, events])
 
@@ -171,7 +192,7 @@ function FilterChip({
  * when: the clock time and how long ago ("20:16 · 14 minutes ago"; on a phone one under the other), the full date on
  * hover. A failure has a red bar and says so.
  */
-function Row({ item, players, onPlayer }: { item: Item; players: Player[]; onPlayer: (player: Player) => void }) {
+function Row({ item, players, onPlayer }: { item: Item; players: Player[]; onPlayer: (player: PlayerRef) => void }) {
   const { icon: Icon, className } = item.failed ? { icon: CircleAlert, className: 'text-destructive' } : icons[item.category]
   const link = 'font-semibold'
 
@@ -198,7 +219,7 @@ function Row({ item, players, onPlayer }: { item: Item; players: Player[]; onPla
           </>
         ) : (
           <p className="break-words">
-            <PlayerText text={item.entry.message} players={players} onOpen={onPlayer} linkClassName={link} />
+            <PlayerText text={item.entry.message} players={item.entry.players} onOpen={onPlayer} linkClassName={link} />
           </p>
         )}
       </div>

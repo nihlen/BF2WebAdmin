@@ -33,6 +33,17 @@ export type ServerHealthStatus = Schemas['ServerHealthStatus']
 export type ServerConnections = Schemas['ServerConnectionsDto']
 export type PlayerConnection = Schemas['PlayerConnectionDto']
 export type HealthRound = Schemas['HealthRoundDto']
+export type ModuleInfo = Schemas['ModuleInfo']
+export type AdminChannelInfo = Schemas['AdminChannelInfoDto']
+export type PlayerSearchResult = Schemas['PlayerSearchDto']
+export type EventLogKind = Schemas['EventLogKind']
+export type EventLogPlayer = Schemas['EventLogPlayerDto']
+
+/**
+ * A player as a chat line or a game event names them: the slot index (reused once they leave), the name and the
+ * CD-key hash, which stays theirs. A Player of the snapshot is one too.
+ */
+export type PlayerRef = { index: number | null; name: string; hash: string | null }
 
 /** A failed API request. React Query receives it as the error of the query or mutation. */
 export class ApiError extends Error {

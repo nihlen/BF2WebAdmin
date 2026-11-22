@@ -1,28 +1,16 @@
-import type { CommandInfo } from '@/api/client'
+import { api, type ModuleInfo, type Server } from '@/api/client'
 
-// The game modules by class name (src/BF2WebAdmin.Server/Modules), in words. GET /api/modules returns the class names
-// only (backend-suggestions.md asks for names and descriptions from the server); a module not listed here shows its
-// name without a description.
+/** The modules a group can enable, with their names, descriptions and commands in words (GET /api/modules). */
+export const modulesQuery = api.queryOptions('get', '/api/modules')
 
-const descriptions: Record<string, string> = {
-  BF2Module: 'The base of every server: join messages, info commands such as .ping and .time, and the admin, server control and fun commands.',
-  AdminModule: 'Kick, warn, ban, switch and kill players, and auth levels, in game.',
-  ServerControlModule: 'Restart the game server, gravity, script mods and the position timer.',
-  FunModule: 'Things admins do to players: dance, freeze, flip, repair, teleport.',
-  Heli2v2Module: '2v2 helicopter matches: rounds, scores and results in game and on Discord, saved for the statistics, with the practice commands.',
-  MapModule: 'The in-game map builder commands (.o, .undo, .clear, .save, .load), the same objects as the web map builder.',
-  LayoutVoteModule: 'Players vote to load a saved layout, clear the map, reset the round or restart the server.',
-  ChopperMayhemModule: 'The Chopper Mayhem game mode on Dalian Plant, with its layouts.',
-  DiscordModule: "The server's Discord bot: the game in the Discord channels and admin commands from there. Needs a bot token in the server's settings.",
-  JailModule: '.jail keeps a player at the jail for an hour.',
-  LogModule: 'Writes the game events to log files on the WebAdmin host.',
-  DictionaryModule: 'Looks words up in Urban Dictionary from the chat.',
-  WebModule: 'Connects the server to this web UI: chat, commands and live updates.',
-  TestModule: 'Commands for testing the modules. Not for a public server.',
-}
-
-/** "Heli2v2Module" → "Heli 2v2", "ChopperMayhemModule" → "Chopper Mayhem": without "Module", words split. */
-export function moduleName(className: string) {
+/**
+ * A module's name in words: the server's display name when GET /api/modules lists it, else the class name without
+ * "Module" and split into words, as the server makes it ("TvMissileModule" → "Tv Missile"). A command can name a module
+ * the list leaves out, one that comes with another (AdminModule with BF2Module).
+ */
+export function moduleName(className: string, modules?: ModuleInfo[]) {
+  const listed = modules?.find((m) => m.name === className)
+  if (listed) return listed.displayName
   return className
     .replace(/Module$/, '')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -30,62 +18,30 @@ export function moduleName(className: string) {
     .replace(/([a-z]{2,})(\d)/g, '$1 $2')
 }
 
-export const moduleDescription = (className: string): string | undefined => descriptions[className]
+/** "Admin, Fun and Server control": the modules that come with one, in a sentence. */
+export function namesText(names: string[]) {
+  if (names.length <= 1) return names.join('')
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
 
 // The module list in kinds, so an owner finds the game mode or the integration without reading every line. Each kind
-// has a line on what its modules have in common.
+// has a line on what its modules have in common. The server has no kinds; a module not named here goes to Other
 const groups = [
-  { name: 'Core', description: 'The base of a server and its link to WebAdmin.', modules: ['BF2Module', 'AdminModule', 'ServerControlModule', 'LogModule', 'WebModule'] },
-  { name: 'Match modes', description: 'Game modes, layouts and the map builder.', modules: ['Heli2v2Module', 'ChopperMayhemModule', 'LayoutVoteModule', 'MapModule'] },
-  { name: 'Fun', description: 'Commands for players and admins to play with.', modules: ['FunModule', 'JailModule', 'DictionaryModule'] },
+  { name: 'Core', description: 'The base of a server and its link to WebAdmin.', modules: ['BF2Module', 'LogModule', 'WebModule'] },
+  { name: 'Match modes', description: 'Game modes, layouts and the map builder.', modules: ['Heli2v2Module', 'ChopperMayhemModule', 'MapModule'] },
+  { name: 'Fun', description: 'Commands for players and admins to play with.', modules: ['JailModule', 'DictionaryModule'] },
   { name: 'Integrations', description: 'Services outside the game.', modules: ['DiscordModule'] },
   { name: 'Testing', description: 'Not for a public server.', modules: ['TestModule'] },
 ]
 
 /** The modules by kind, in the order above; a module the list does not know goes to Other, at the end. */
-export function groupModules(classNames: string[]) {
+export function groupModules(modules: ModuleInfo[]) {
   const known = new Set(groups.flatMap((g) => g.modules))
   const result = groups
-    .map((g) => ({ name: g.name, description: g.description, modules: classNames.filter((m) => g.modules.includes(m)) }))
+    .map((g) => ({ name: g.name, description: g.description, modules: modules.filter((m) => g.modules.includes(m.name)) }))
     .filter((g) => g.modules.length > 0)
-  const other = classNames.filter((m) => !known.has(m))
-  if (other.length > 0) result.push({ name: 'Other', description: 'Modules this page has no description for.', modules: other })
-  return result
-}
-
-// Modules that the server loads with another one (LoadedWith in src/BF2WebAdmin.Server/Modules): GET /api/modules
-// leaves them out, so the commands they handle belong, on the group page, to the module that brings them
-const loadedWith: Record<string, string> = {
-  AdminModule: 'BF2Module',
-  ServerControlModule: 'BF2Module',
-  FunModule: 'BF2Module',
-  PracticeModule: 'Heli2v2Module',
-  RecordingModule: 'Heli2v2Module',
-  ReplayModule: 'Heli2v2Module',
-  SeatModule: 'Heli2v2Module',
-  TvMissileModule: 'Heli2v2Module',
-  LayoutVoteModule: 'MapModule',
-}
-
-/**
- * The chat commands each listed module adds, from the command lists of one or more servers (a command names the
- * modules that handle it). A module that is not listed counts for the module it is loaded with. Each command is there
- * once, by its first alias: ".ping" and ".ping <Name>" are one chip.
- */
-export function commandsByModule(lists: CommandInfo[][], listed: string[]) {
-  const result = new Map<string, string[]>()
-  for (const commands of lists)
-    for (const command of commands) {
-      const alias = command.aliases[0]
-      if (!alias) continue
-      for (const module of command.modules) {
-        const owner = listed.includes(module) ? module : loadedWith[module]
-        if (!owner || !listed.includes(owner)) continue
-        const aliases = result.get(owner) ?? []
-        if (!aliases.includes(alias)) aliases.push(alias)
-        result.set(owner, aliases)
-      }
-    }
+  const other = modules.filter((m) => !known.has(m.name))
+  if (other.length > 0) result.push({ name: 'Other', description: 'Modules of a newer WebAdmin than this list of kinds.', modules: other })
   return result
 }
 
@@ -93,29 +49,34 @@ export function commandsByModule(lists: CommandInfo[][], listed: string[]) {
 export type ServerKind = '2v2' | 'public'
 
 // Hand-written from how the modules are used: a 2v2 helicopter server runs the matches and the map builder its layouts
-// are built with; a public server, the jail for players who keep breaking the rules and the layout votes for its
-// players; both, the Discord bot, so admins can read the game and act from Discord when nobody is in game. The
-// modules every server runs (BF2Module, LogModule, WebModule) need no mark
+// are built with; a public server, the jail for players who keep breaking the rules and the map builder for the layout
+// votes that come with it; both, the Discord bot, so admins can read the game and act from Discord when nobody is in
+// game. The modules every server runs (BF2Module, LogModule, WebModule) need no mark
 const recommended: Record<string, ServerKind[]> = {
   Heli2v2Module: ['2v2'],
-  MapModule: ['2v2'],
+  MapModule: ['2v2', 'public'],
   DiscordModule: ['2v2', 'public'],
   JailModule: ['public'],
-  LayoutVoteModule: ['public'],
 }
 
 // Modules that make a server a game mode of its own, which neither list above was written for
-const gameModes = ['Heli2v2Module', 'ChopperMayhemModule']
+const gameModeModules = ['Heli2v2Module', 'ChopperMayhemModule']
+
+// The game's own modes (ServerDto.gameMode, as the server last ran it): a server in one of them that runs no game-mode
+// module is a public server
+const standardModes = ['gpm_cq', 'gpm_ctf', 'gpm_coop']
 
 /**
  * What kind of server a group's are, as far as the UI can tell: 2v2 when the group runs the Heli2v2 module or a server
- * of it is on a 2v2 map (dalian_2_v_2); public when its servers are all large (32 players or more) and none runs a game
- * mode. Anything else (a Chopper Mayhem group, a group without servers) is undefined, and then no module is marked:
- * a mark the page cannot back up would be a guess.
+ * of it is on a 2v2 map (dalian_2_v_2: its mode is plain conquest, gpm_cq, so the mode alone does not tell); public when
+ * the group runs no game-mode module and every server whose mode is known (since it connected) runs a standard mode.
+ * Anything else (a Chopper Mayhem group, a group whose servers have not connected yet) is undefined, and then no module
+ * is marked: a mark the page cannot back up would be a guess.
  */
-export function groupKind(servers: { map: string | null; maxPlayers: number }[], modules: string[]): ServerKind | undefined {
+export function groupKind(servers: Pick<Server, 'map' | 'gameMode'>[], modules: string[]): ServerKind | undefined {
   if (modules.includes('Heli2v2Module') || servers.some((s) => s.map && /2_?v_?2/i.test(s.map))) return '2v2'
-  if (servers.length > 0 && servers.every((s) => s.maxPlayers >= 32) && !modules.some((m) => gameModes.includes(m))) return 'public'
+  const known = servers.filter((s) => s.gameMode)
+  if (known.length > 0 && known.every((s) => standardModes.includes(s.gameMode!.toLowerCase())) && !modules.some((m) => gameModeModules.includes(m))) return 'public'
   return undefined
 }
 

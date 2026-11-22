@@ -41,6 +41,7 @@ export function useServerActions(serverId: string, snapshot: ServerSnapshot | un
   const kickMutation = api.useMutation('post', '/api/servers/{serverId}/players/{index}/kick', silent)
   const banMutation = api.useMutation('post', '/api/servers/{serverId}/players/{index}/ban', silent)
   const unbanMutation = api.useMutation('delete', '/api/servers/{serverId}/bans/{identifier}', silent)
+  const addBanMutation = api.useMutation('post', '/api/servers/{serverId}/bans', silent)
   const chat = api.useMutation('post', '/api/servers/{serverId}/chat')
   const auth = api.useMutation('put', '/api/server-groups/{serverGroup}/auth', silent)
 
@@ -202,6 +203,20 @@ export function useServerActions(serverId: string, snapshot: ServerSnapshot | un
           timeoutMs: 30_000,
           timeout: `${player.name} is still on the server. Check the Bans tab`,
         },
+      }),
+
+    /** A ban of a CD-key hash or an address, of a player online or not (one online with it is banned and kicked). */
+    addBan: (identifier: string, name: string | null, reason: string, period: string) =>
+      trackAction({
+        serverId,
+        key: `add-ban:${identifier}`,
+        sending: `Banning ${name ?? identifier}…`,
+        run: async () => {
+          const response = await addBanMutation.mutateAsync({ params, body: { identifier, name, reason: reason || null, length: period } })
+          await queryClient.invalidateQueries({ queryKey: bansKey })
+          return response
+        },
+        sent: (response) => response.message,
       }),
 
     unban: (identifier: string, nick: string | null) =>

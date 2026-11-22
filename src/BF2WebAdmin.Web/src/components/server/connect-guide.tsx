@@ -17,13 +17,12 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { healthQuery } from '@/hooks/use-server-live'
 import { useServers } from '@/hooks/use-servers'
-import { formatTime } from '@/lib/format'
+import { adminChannelQuery, defaultAdminPort } from '@/lib/admin-channel'
+import { formatDayTime, formatTime } from '@/lib/format'
 import { encodeServerId } from '@/lib/server-id'
 import { cn } from '@/lib/utils'
 
-// WebAdmin's admin channel port and certificate pin are not in the web API (backend-suggestions.md): the port is the
-// default one, and the pin stays a placeholder, both marked as coming from WebAdmin's configuration
-const defaultAdminPort = 4310
+// The host the owner typed, while WebAdmin's configuration names none
 const hostKey = 'connect.webAdminHost'
 
 function readHost() {
@@ -37,11 +36,13 @@ function readHost() {
 type Line = { name: string; value: string; placeholder?: boolean; secret?: boolean }
 
 /**
- * The game server's serverext.cfg lines, filled with what the UI knows: WebAdmin's host (this page's host unless the
- * owner says otherwise, remembered in this browser), the server id and the admin key. The key is masked on the screen
- * and copied in full.
+ * The game server's serverext.cfg lines, complete: WebAdmin's host, admin channel port and certificate pin (from
+ * GET /api/admin-channel), the server id and the admin key. When WebAdmin's configuration names no public host, the
+ * host is this page's, in a field the owner can change (remembered in this browser), with a note on where to set it.
+ * The key is masked on the screen and copied in full.
  */
 export function ConnectLines({ serverId, adminKey }: { serverId: string; adminKey: string | null | undefined }) {
+  const channel = useQuery(adminChannelQuery)
   const [host, setHost] = useState(readHost)
   const changeHost = (value: string) => {
     setHost(value)
@@ -51,22 +52,31 @@ export function ConnectLines({ serverId, adminKey }: { serverId: string; adminKe
       // Remembered for this visit only
     }
   }
+  if (channel.isPending) return <Skeleton className="h-48" />
+  const publicHost = channel.data?.publicHost
+  const pin = channel.data?.certificatePin
+  const shownHost = publicHost ?? host.trim()
   const key = adminKey?.trim()
   const lines: Line[] = [
-    { name: 'adminConnect', value: `${host.trim() || "<WebAdmin's host>"}:${defaultAdminPort}` },
+    shownHost ? { name: 'adminConnect', value: `${shownHost}:${channel.data?.port ?? defaultAdminPort}` } : { name: 'adminConnect', value: "<WebAdmin's host>", placeholder: true },
     { name: 'adminServerId', value: serverId },
     key ? { name: 'adminKey', value: key, secret: true } : { name: 'adminKey', value: '<no key is stored: set one in Settings>', placeholder: true },
-    { name: 'adminCertSha256', value: "<WebAdmin's certificate pin>", placeholder: true },
+    pin ? { name: 'adminCertSha256', value: pin } : { name: 'adminCertSha256', value: "<WebAdmin's certificate pin>", placeholder: true },
   ]
   const text = lines.map((l) => `${l.name} ${l.value}`).join('\n')
 
   return (
     <div className="space-y-4 text-sm">
-      <Field>
-        <FieldLabel htmlFor="webadmin-host">WebAdmin's host</FieldLabel>
-        <Input id="webadmin-host" value={host} spellCheck={false} className="max-w-80 font-mono text-xs" onChange={(e) => changeHost(e.target.value)} />
-        <FieldDescription>As the game server reaches this WebAdmin: this page's host unless you change it. Remembered in this browser.</FieldDescription>
-      </Field>
+      {!publicHost && (
+        <Field>
+          <FieldLabel htmlFor="webadmin-host">WebAdmin's host</FieldLabel>
+          <Input id="webadmin-host" value={host} spellCheck={false} className="max-w-80 font-mono text-xs" onChange={(e) => changeHost(e.target.value)} />
+          <FieldDescription>
+            As the game server reaches this WebAdmin. Guessed from this page's address, as WebAdmin's configuration names none: its{' '}
+            <code>ServerSettings:AdminChannel:PublicHost</code> sets it for everyone. What you type here is remembered in this browser.
+          </FieldDescription>
+        </Field>
+      )}
       <div className="space-y-2">
         <p>
           Put these lines in the game server's <code>serverext.cfg</code>, beside the OpenBF2 <code>bf2</code> binary:
@@ -87,27 +97,13 @@ export function ConnectLines({ serverId, adminKey }: { serverId: string; adminKe
           <CopyButton value={text} label="Copy the lines" className="absolute top-2 right-2" />
         </div>
         {key && <p className="text-xs text-muted-foreground">The key is hidden here; Copy puts it in full.</p>}
+        {channel.isError && (
+          <p className="text-xs text-muted-foreground">
+            WebAdmin's admin channel settings could not be loaded ({errorMessage(channel.error)}). The port is {defaultAdminPort} unless its{' '}
+            <code>ServerSettings:AdminChannel:Port</code> says otherwise, and <code>BF2WebAdmin.Server --admin-pin</code> prints the pin.
+          </p>
+        )}
       </div>
-      <dl className="space-y-2 text-muted-foreground">
-        <ConfigNote term={`Port ${defaultAdminPort}`}>
-          WebAdmin's default admin channel port. If its <code>ServerSettings:AdminChannel:Port</code> is set, use that.
-        </ConfigNote>
-        <ConfigNote term="Certificate pin">
-          <code>BF2WebAdmin.Server --admin-pin</code> prints it, and WebAdmin writes it to its log at startup.
-        </ConfigNote>
-      </dl>
-    </div>
-  )
-}
-
-function ConfigNote({ term, children }: { term: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <dt className="font-medium text-foreground">
-        {term}
-        <span className="ml-1.5 inline-flex rounded-full border px-1.5 text-[0.7rem] font-medium whitespace-nowrap">from your WebAdmin's configuration</span>
-      </dt>
-      <dd>{children}</dd>
     </div>
   )
 }
@@ -293,22 +289,24 @@ function ConnectedStepBar({ server, onContinue, onFinish }: { server: Server; on
 
 /**
  * An offline server's Live tab: no players, chat or maps to show and no commands to take, so the page is about getting
- * it connected. It tells two cases apart by what WebAdmin kept of the server since it started (its last health window,
- * map, events, players or chat):
+ * it connected. It tells two cases apart by whether the admin channel was connected since WebAdmin started (the
+ * server's disconnectedAt, or what WebAdmin kept of it: its last health window, map, events, players or chat):
  *
- * - Never connected (none of it): the lines for the game server, the live wait, a connection test with the stored
- *   settings, and the rest of its setup.
- * - Connection lost: when it was last seen (its last health window's time, when the module sends them), what to check,
- *   the test, and the lines behind a disclosure, since they worked before.
+ * - Not connected since WebAdmin started: the lines for the game server, the live wait, a connection test with the
+ *   stored settings, and the rest of its setup.
+ * - Connection lost: when (the connection's end, or its last health window), what to check, the test, and the lines
+ *   behind a disclosure, since they worked before.
  *
- * WebAdmin keeps none of it over a restart, so a server that was connected before then reads as never connected.
+ * WebAdmin keeps none of it over a restart, so a server that was connected before then reads as not connected since.
  */
 export function ServerConnectCard({ server, snapshot }: { server: Server; snapshot: ServerSnapshot }) {
   const serverId = server.id
   const settings = api.useQuery('get', '/api/servers/{serverId}/settings', { params: { path: { serverId } } })
   const test = api.useMutation('post', '/api/servers/test')
   const lastSeen = useQuery({ ...healthQuery(serverId), staleTime: Infinity }).data?.latest?.time
-  const lost = !!lastSeen || !!server.map || snapshot.eventLog.length > 0 || snapshot.players.length > 0 || snapshot.chatLog.length > 0
+  const startedAt = useQuery(adminChannelQuery).data?.startedAt
+  const lostAt = server.disconnectedAt ?? lastSeen
+  const lost = !!lostAt || !!server.map || snapshot.eventLog.length > 0 || snapshot.players.length > 0 || snapshot.chatLog.length > 0
   const address = `${server.ipAddress}:${server.gamePort}`
 
   const testButtons = (
@@ -336,9 +334,10 @@ export function ServerConnectCard({ server, snapshot }: { server: Server; snapsh
             Connection lost
           </CardTitle>
           <CardDescription>
-            {lastSeen ? (
+            {lostAt ? (
               <>
-                Last seen at {formatTime(lastSeen)} (<RelativeTime value={lastSeen} />){server.map && <>, on {server.map}</>}.
+                {server.disconnectedAt ? 'The connection closed' : 'Last seen'} at {formatTime(lostAt)} (<RelativeTime value={lostAt} />)
+                {server.map && <>, on {server.map}</>}.
               </>
             ) : (
               <>It was connected since WebAdmin started{server.map && <>, last on {server.map}</>}; when it was last seen is not known.</>
@@ -378,8 +377,15 @@ export function ServerConnectCard({ server, snapshot }: { server: Server; snapsh
           Connect the game server
         </CardTitle>
         <CardDescription>
-          It has not connected since WebAdmin started, so there are no players, chat or maps here and commands cannot reach the server. The game
-          server connects to WebAdmin by itself once it has these lines.
+          It has not connected since WebAdmin started
+          {startedAt && (
+            <>
+              {' '}
+              on {formatDayTime(startedAt)} (<RelativeTime value={startedAt} />)
+            </>
+          )}
+          , so there are no players, chat or maps here and commands cannot reach the server. The game server connects to WebAdmin by itself once it
+          has these lines.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

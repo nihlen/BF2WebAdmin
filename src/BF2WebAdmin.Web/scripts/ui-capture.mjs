@@ -106,6 +106,9 @@ const addedServerConnects = async (page, log) =>
         gameState: 'PreGame',
         socketState: 'Connected',
         serverGroup: '2v2',
+        gameMode: 'gpm_cq',
+        connectedAt: new Date().toISOString(),
+        disconnectedAt: null,
         timeStamp: new Date().toISOString(),
       }),
     )
@@ -135,6 +138,14 @@ const addFlowStep = (button, label) => async (page, log) =>
   tryStep(log, label, async () => {
     await page.getByRole('button', { name: button }).last().click({ timeout: 4000 })
     await page.waitForTimeout(800)
+  })
+
+/** Types a part of a name into a player picker (the field with the id) and waits for its list of players found */
+const searchPlayers = (fieldId, text) => async (page, log) =>
+  tryStep(log, `search players for "${text}"`, async () => {
+    await page.locator(`#${fieldId}`).first().fill(text, { timeout: 4000 })
+    await page.getByRole('listbox', { name: 'Players found' }).first().waitFor({ timeout: 4000 })
+    await page.waitForTimeout(300)
   })
 
 /** The shots: name, path, scenario (ui-fixture cookie), viewports, and the steps to the state */
@@ -168,6 +179,8 @@ const shots = [
   { name: 'server-add-first', path: '/server/add', scenario: 'empty', viewports: ['desktop', 'phone'] },
   // Since r03: Add server saves and goes to step 2, the lines for the game server and a live wait for it to connect
   { name: 'server-add-connect', path: '/server/add', viewports: ['desktop', 'phone'], steps: [addServer] },
+  // A new install has no public host in WebAdmin's configuration: the lines guess it from the page's address and say so
+  { name: 'server-add-connect-guessed-host', path: '/server/add', scenario: 'empty', viewports: ['desktop'], steps: [addServer] },
   // ... which turns into the connected state when the hub reports the new server (the fake hub sends it)
   { name: 'server-add-connected', path: '/server/add', viewports: ['desktop', 'phone'], steps: [addServer, addedServerConnects] },
   // Since r06 the add flow goes on after connecting: the group's modules, a first admin, then done. In the 2v2 group,
@@ -229,6 +242,21 @@ const shots = [
           await page.getByRole('searchbox', { name: /filter the modules/i }).fill('.mg', { timeout: 4000 })
           await page.waitForTimeout(400)
         }),
+    ],
+  },
+  // The admin levels' add row finds a player by name (online first, then seen before), or takes a typed hash
+  {
+    name: 'server-group-admin-picker',
+    path: '/servergroup/2v2',
+    viewports: ['desktop', 'phone'],
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'admin levels tab', async () => {
+          const tab = page.getByRole('tab', { name: 'Admin levels' })
+          if (await tab.isVisible()) await tab.click({ timeout: 4000 })
+          await page.waitForTimeout(300)
+        }),
+      searchPlayers('auth-player', 'ro'),
     ],
   },
   // Since r04: on a phone, Modules and Admin levels are two tabs
@@ -344,6 +372,26 @@ const shots = [
         }),
     ],
   },
+  // Add ban: a player who need not be online, found by name, with a reason and a length
+  {
+    name: 'server-ban-add',
+    path: `${heli1}/bans`,
+    viewports: ['desktop', 'phone'],
+    overlay: true,
+    steps: [
+      clickButton(/^Add ban$/, 'add ban'),
+      searchPlayers('ban-player', 'ro'),
+      async (page, log) =>
+        tryStep(log, 'pick a player, a reason and a length', async () => {
+          await page.getByRole('option', { name: /RotorBlade/ }).first().dispatchEvent('mousedown', {}, { timeout: 4000 })
+          await page.getByRole('button', { name: 'Abusive chat' }).click({ timeout: 3000 })
+          await page.getByRole('button', { name: '1 week' }).click({ timeout: 3000 })
+          await page.waitForTimeout(300)
+        }),
+    ],
+  },
+  // ... and the player picker in it, open with the players found
+  { name: 'server-ban-add-search', path: `${heli1}/bans`, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Add ban$/, 'add ban'), searchPlayers('ban-player', 'ro')] },
   // Since r04 the web's commands and the game's events are one timeline with filter chips
   { name: 'server-tab-activity', path: `${heli1}/activity`, viewports: ['desktop', 'phone'] },
   {
@@ -387,6 +435,31 @@ const shots = [
         }),
     ],
   },
+  // A chat line names its sender by hash, so the name opens their sheet (auth level, bans) after they left: SpawnCamper,
+  // banned 4 days ago, says something (the step takes his hash from the ban list)
+  {
+    name: 'server-player-left',
+    path: heli1,
+    viewports: ['desktop'],
+    overlay: true,
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'a chat line from a player who is not on the server', async () => {
+          await page.evaluate(async () => {
+            const bans = await (await fetch('/api/servers/198.51.100.20:16570/bans')).json()
+            const ban = bans.find((b) => b.name === 'SpawnCamper')
+            // eslint-disable-next-line no-undef
+            window.__fixtureHub.emit('ChatEvent', {
+              message: { id: '00000000-0000-4000-c000-000000000001', type: 'Player', channel: 'Global', flags: '', playerId: 7, playerName: 'SpawnCamper', playerHash: ban.identifier, teamName: 'USA', text: 'why was I banned?' },
+              timeStamp: new Date().toISOString(),
+            })
+          })
+          await page.waitForTimeout(300)
+          await page.getByRole('button', { name: 'SpawnCamper', exact: true }).last().click({ timeout: 4000 })
+          await page.waitForTimeout(800)
+        }),
+    ],
+  },
   {
     name: 'server-confirm',
     path: heli1,
@@ -420,6 +493,8 @@ const shots = [
     ],
   },
   { name: 'account-menu', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Account/, 'account menu')] },
+  // About WebAdmin, from the account menu: the admin channel's host, port and pin, the version and start time
+  { name: 'about', path: '/about', viewports: ['desktop', 'phone'] },
   { name: 'server-busy', path: mayhem, viewports: ['desktop'] },
   { name: 'server-offline', path: offline, viewports: ['desktop', 'phone'] },
   // Since r07 an offline server that was connected before reads as lost: when it was last seen, what to check

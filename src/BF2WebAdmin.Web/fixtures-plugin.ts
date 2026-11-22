@@ -2,22 +2,37 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { Plugin } from 'vite'
 import { fixtureResponse, parseCommands, scenarioFromCookie } from './src/fixtures/data.ts'
+import { moduleInfos, parseServerSource, type SourceFile } from './src/fixtures/server-source.ts'
+
+/** The .cs files under a folder of the server project, or none when the server's source is not there. */
+function sourceFiles(folder: string): SourceFile[] {
+  if (!fs.existsSync(folder)) return []
+  return fs
+    .readdirSync(folder, { recursive: true, encoding: 'utf8' })
+    .filter((file) => file.endsWith('.cs'))
+    .sort()
+    .map((file) => ({ path: file, text: fs.readFileSync(path.join(folder, file), 'utf8') }))
+}
 
 /**
  * The fixture mode (UI_FIXTURES=1): the dev server answers the web API from src/fixtures/data.ts instead of proxying it
  * to BF2WebAdmin.Server, and the hub is src/fixtures/signalr.ts. No server is needed, and the data is the same on every
- * run, for screenshots that can be compared (scripts/ui-capture.mjs). The cookie ui-fixture picks a scenario.
+ * run, for screenshots that can be compared (scripts/ui-capture.mjs). The cookie ui-fixture picks a scenario. The
+ * commands and modules are the server's own: its commands.txt and the attributes in its source.
  */
 export function fixtures(): Plugin {
-  const commandsFile = path.resolve(import.meta.dirname, '../BF2WebAdmin.Server/commands.txt')
-  const commands = fs.existsSync(commandsFile) ? parseCommands(fs.readFileSync(commandsFile, 'utf8')) : []
+  const serverDir = path.resolve(import.meta.dirname, '../BF2WebAdmin.Server')
+  const commandsFile = path.join(serverDir, 'commands.txt')
+  const source = parseServerSource(sourceFiles(path.join(serverDir, 'Modules')), sourceFiles(path.join(serverDir, 'Commands')))
+  const commands = fs.existsSync(commandsFile) ? parseCommands(fs.readFileSync(commandsFile, 'utf8'), source) : []
+  const modules = moduleInfos(source, commands)
 
   return {
     name: 'ui-fixtures',
     apply: 'serve',
     enforce: 'pre',
-    resolveId(source) {
-      if (source === '@microsoft/signalr') return path.resolve(import.meta.dirname, 'src/fixtures/signalr.ts')
+    resolveId(id) {
+      if (id === '@microsoft/signalr') return path.resolve(import.meta.dirname, 'src/fixtures/signalr.ts')
       return null
     },
     configureServer(server) {
@@ -41,6 +56,8 @@ export function fixtures(): Plugin {
             body,
             scenario: scenarioFromCookie(req.headers.cookie),
             commands,
+            modules,
+            source,
           })
           res.statusCode = answer.status
           if (answer.body === undefined) return res.end()

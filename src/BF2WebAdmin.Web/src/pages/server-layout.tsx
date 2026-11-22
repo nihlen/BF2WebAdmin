@@ -32,7 +32,7 @@ import { healthQuery, useServerLive } from '@/hooks/use-server-live'
 import { useServers } from '@/hooks/use-servers'
 import { usePendingActions } from '@/lib/pending-actions'
 import { decodeServerId, encodeServerId } from '@/lib/server-id'
-import { serverStatus, toneDot, toneText } from '@/lib/server-state'
+import { connectionText, serverStatus, toneDot, toneText } from '@/lib/server-state'
 import { serverTabs } from '@/lib/server-tabs'
 import { cn } from '@/lib/utils'
 import { serverRoute } from '@/router'
@@ -128,7 +128,7 @@ function ServerHeader({ server }: { server: Server }) {
           {server.name}
         </h1>
         <span className="flex shrink-0 items-center gap-2 text-sm">
-          <span className={cn('inline-flex items-center gap-1.5 font-medium whitespace-nowrap', toneText[status.tone])} title={connected ? 'The admin channel is connected' : 'The admin channel is not connected'}>
+          <span className={cn('inline-flex items-center gap-1.5 font-medium whitespace-nowrap', toneText[status.tone])} title={connectionText(server)}>
             <span className={cn('size-2 rounded-full', toneDot[status.tone])} />
             {status.label}
           </span>

@@ -1,6 +1,7 @@
+import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, CornerDownLeft, Play, Search } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
-import { api, errorMessage, type CommandInfo, type Player } from '@/api/client'
+import { api, errorMessage, type CommandInfo, type ModuleInfo, type Player } from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -10,7 +11,7 @@ import { Chip } from '@/components/toggles'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { ServerActions } from '@/hooks/use-server-actions'
 import { authLevelName } from '@/lib/auth-levels'
-import { moduleName } from '@/lib/modules'
+import { moduleName, modulesQuery } from '@/lib/modules'
 import { cn } from '@/lib/utils'
 
 // Commands with buttons elsewhere on the page, or that only make sense in game
@@ -21,27 +22,33 @@ const commandKey = (c: CommandInfo) => `${c.aliases.join('|')} ${c.parameters.jo
 // An argument that names a player gets the online players to pick from
 const isPlayerArgument = (parameter: string) => /name/i.test(parameter)
 
-/** The commands that match the search, by module (by the module's name in words), in the order they are listed. */
-function groupCommands(commands: CommandInfo[], query: string) {
+/**
+ * The commands that match the search (an alias, a word of what it does, or its module), by module (by the module's
+ * name in words), in the order they are listed.
+ */
+function groupCommands(commands: CommandInfo[], query: string, modules: ModuleInfo[] | undefined) {
   const q = query.trim().toLowerCase().replace(/^\./, '')
   const matches = (c: CommandInfo) =>
     !c.aliases.some((a) => hidden.has(a)) &&
-    (!q || c.aliases.some((a) => a.includes(q)) || c.modules.some((m) => m.toLowerCase().includes(q) || moduleName(m).toLowerCase().includes(q)))
+    (!q ||
+      c.aliases.some((a) => a.includes(q)) ||
+      !!c.description?.toLowerCase().includes(q) ||
+      c.modules.some((m) => m.toLowerCase().includes(q) || moduleName(m, modules).toLowerCase().includes(q)))
 
   const byModule = new Map<string, CommandInfo[]>()
   for (const command of commands.filter(matches)) {
-    const module = moduleName(command.modules[0])
+    const module = moduleName(command.modules[0], modules)
     byModule.set(module, [...(byModule.get(module) ?? []), command])
   }
   return [...byModule.entries()].sort(([a], [b]) => a.localeCompare(b))
 }
 
 /**
- * Every chat command of the server's loaded modules, found by typing (Ctrl+K on the Live tab, or Commands by the chat
- * box). From md up the selected command's arguments are fields beside the list, with its Run button: Enter in the
- * search runs a command without arguments and goes to the first field of one with them, and Enter in a field runs it.
- * On a phone a command opens its fields on a screen of their own. Runs as the web user (God level), and the
- * notification shows what the command said in game.
+ * Every chat command of the server's loaded modules, with what it does, found by typing (Ctrl+K on the Live tab, or
+ * Commands by the chat box). From md up the selected command's arguments are fields beside the list, with its Run
+ * button: Enter in the search runs a command without arguments and goes to the first field of one with them, and Enter
+ * in a field runs it. On a phone a command opens its fields on a screen of their own. Runs as the web user (God level),
+ * and the notification shows what the command said in game.
  */
 export function CommandPalette({
   open,
@@ -57,6 +64,8 @@ export function CommandPalette({
   actions: ServerActions
 }) {
   const commands = api.useQuery('get', '/api/servers/{serverId}/commands', { params: { path: { serverId } } })
+  // For the modules' names in words; the list groups by class name until it has loaded
+  const modules = useQuery(modulesQuery).data
   const isMobile = useIsMobile()
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
@@ -65,7 +74,7 @@ export function CommandPalette({
   const detail = useRef<HTMLFormElement>(null)
   const listId = useId()
 
-  const groups = groupCommands(commands.data ?? [], query)
+  const groups = groupCommands(commands.data ?? [], query, modules)
   const flat = groups.flatMap(([, list]) => list)
   const current = Math.min(active, flat.length - 1)
   const selected = flat[current]
@@ -100,7 +109,7 @@ export function CommandPalette({
         <DialogTitle className="sr-only">Commands</DialogTitle>
         <DialogDescription className="sr-only">Find a chat command of this server's modules, fill in its arguments and run it as the web user.</DialogDescription>
         {chosen ? (
-          <CommandForm key={commandKey(chosen)} command={chosen} players={players} onBack={() => setChosen(null)} onRun={run} autoFocus />
+          <CommandForm key={commandKey(chosen)} command={chosen} modules={modules} players={players} onBack={() => setChosen(null)} onRun={run} autoFocus />
         ) : (
           <>
             <div className="relative border-b">
@@ -111,8 +120,8 @@ export function CommandPalette({
                 aria-expanded
                 aria-controls={listId}
                 aria-activedescendant={flat.length > 0 ? optionId(current) : undefined}
-                aria-label="Search commands or modules"
-                placeholder="Search commands or modules"
+                aria-label="Search commands, what they do or modules"
+                placeholder="Search commands, what they do or modules"
                 className="h-12 w-full bg-transparent pr-4 pl-10 text-base outline-none placeholder:text-muted-foreground sm:text-sm"
                 value={query}
                 onChange={(e) => {
@@ -151,21 +160,24 @@ export function CommandPalette({
                             id={optionId(i)}
                             role="option"
                             aria-selected={i === current}
-                            className={cn('flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-sm', i === current && 'bg-accent text-accent-foreground')}
+                            className={cn('flex cursor-pointer items-start gap-3 rounded-md px-2 py-1.5 text-sm', i === current && 'bg-accent text-accent-foreground')}
                             title={command.aliases.map((a) => `.${a}`).join(', ')}
                             onMouseMove={() => i !== current && setActive(i)}
                             // From md up a click only selects: the fields and Run are beside the list
                             onClick={() => (isMobile ? choose(command) : setActive(i))}
                             onDoubleClick={() => !isMobile && choose(command)}
                           >
-                            <span className="min-w-0 flex-1 truncate font-mono">
-                              .{command.aliases[0]}
-                              {command.parameters.map((p) => (
-                                <span key={p} className="text-muted-foreground">
-                                  {' '}
-                                  &lt;{p}&gt;
-                                </span>
-                              ))}
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-mono">
+                                .{command.aliases[0]}
+                                {command.parameters.map((p) => (
+                                  <span key={p} className="text-muted-foreground">
+                                    {' '}
+                                    &lt;{p}&gt;
+                                  </span>
+                                ))}
+                              </span>
+                              {command.description && <span className="block truncate text-xs text-muted-foreground">{command.description}</span>}
                             </span>
                             <Badge variant="outline" title="Auth level a player needs for this command">
                               {authLevelName(command.authLevel)}
@@ -179,7 +191,7 @@ export function CommandPalette({
               </div>
               {selected && (
                 <div className="hidden border-l bg-muted/20 md:block">
-                  <CommandForm key={commandKey(selected)} ref={detail} command={selected} players={players} onRun={run} />
+                  <CommandForm key={commandKey(selected)} ref={detail} command={selected} modules={modules} players={players} onRun={run} />
                 </div>
               )}
             </div>
@@ -198,12 +210,14 @@ export function CommandPalette({
 }
 
 /**
- * One command's arguments, a field each, and its Run button; Enter in a field runs it once every field is filled. An
- * argument that names a player offers the online players as one-tap choices (and as suggestions while typing).
+ * One command, what it does, its arguments as a field each, and its Run button; Enter in a field runs it once every
+ * field is filled. An argument that names a player offers the online players as one-tap choices (and as suggestions
+ * while typing).
  */
 function CommandForm({
   ref,
   command,
+  modules,
   players,
   onRun,
   onBack,
@@ -211,6 +225,7 @@ function CommandForm({
 }: {
   ref?: React.Ref<HTMLFormElement>
   command: CommandInfo
+  modules: ModuleInfo[] | undefined
   players: Player[]
   onRun: (text: string) => void
   /** The phone's way back to the list */
@@ -244,11 +259,12 @@ function CommandForm({
           <span className="min-w-0 flex-1 truncate font-mono font-medium">.{alias}</span>
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          <span>{moduleName(command.modules[0])} module</span>
+          <span>{moduleName(command.modules[0], modules)} module</span>
           <Badge variant="outline" title="Auth level a player needs for this command">
             {authLevelName(command.authLevel)} level
           </Badge>
         </div>
+        {command.description && <p className="text-sm">{command.description}</p>}
         {command.aliases.length > 1 && (
           <p className="text-xs text-muted-foreground">
             Also{' '}

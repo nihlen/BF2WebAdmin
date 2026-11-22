@@ -1,8 +1,18 @@
-import type { Player } from '@/api/client'
+import type { PlayerRef } from '@/api/client'
 import { cn } from '@/lib/utils'
 
 /** A player's name that opens their sheet. */
-export function PlayerLink({ player, onOpen, className, children }: { player: Player; onOpen: (player: Player) => void; className?: string; children?: React.ReactNode }) {
+export function PlayerLink<T extends PlayerRef>({
+  player,
+  onOpen,
+  className,
+  children,
+}: {
+  player: T
+  onOpen: (player: T) => void
+  className?: string
+  children?: React.ReactNode
+}) {
   return (
     <button
       type="button"
@@ -18,11 +28,21 @@ export function PlayerLink({ player, onOpen, className, children }: { player: Pl
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /**
- * A line of text (a game event, a command) with the names of the players on the server as links to their sheets. A
- * name is only taken whole, not inside a longer word; a player who has left is plain text, since the log does not say
- * which player of that name it was.
+ * A line of text (a game event, a command) with the names of the given players as links to their sheets: the players a
+ * game event names (by hash, so a player who has left still links), or for a line that names none the players on the
+ * server. A name is only taken whole, not inside a longer word.
  */
-export function PlayerText({ text, players, onOpen, linkClassName }: { text: string; players: Player[]; onOpen: (player: Player) => void; linkClassName?: string }) {
+export function PlayerText<T extends PlayerRef>({
+  text,
+  players,
+  onOpen,
+  linkClassName,
+}: {
+  text: string
+  players: T[]
+  onOpen: (player: T) => void
+  linkClassName?: string
+}) {
   const named = players.filter((p) => p.name.trim())
   if (named.length === 0) return text
   const byName = new Map(named.map((p) => [p.name, p]))

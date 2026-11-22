@@ -236,7 +236,13 @@ export function ServerBansPage() {
 
   return (
     <Card className="gap-0 py-0">
-      <BanList serverId={serverId} actions={actions} confirm={confirm} />
+      <BanList
+        serverId={serverId}
+        serverGroup={snapshot.data?.server.serverGroup ?? ''}
+        connected={snapshot.data?.server.socketState === 'Connected'}
+        actions={actions}
+        confirm={confirm}
+      />
       {dialog}
     </Card>
   )

@@ -7,6 +7,7 @@ import { AuthLevelLegend } from '@/components/auth-level-legend'
 import { LevelSelect } from '@/components/auth-level-select'
 import { useConfirm } from '@/components/confirm-dialog'
 import { CopyButton } from '@/components/copy-button'
+import { type PickedPlayer, PlayerPicker } from '@/components/player-picker'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -141,43 +142,59 @@ export function PlayerAuthList({ serverGroup }: { serverGroup: string }) {
         </Card>
       )}
 
-      <AddPlayerAuth onAdd={(playerHash, level) => setLevel({ playerHash, name: null }, level)} pending={set.isPending} />
+      <AddPlayerAuth serverGroup={serverGroup} onAdd={(playerHash, name, level) => setLevel({ playerHash, name }, level)} pending={set.isPending} />
       {dialog}
     </div>
   )
 }
 
-function AddPlayerAuth({ onAdd, pending }: { onAdd: (playerHash: string, level: number) => void; pending: boolean }) {
-  const [hash, setHash] = useState('')
+/**
+ * A player to give a level: found by name among those online on the group's servers and those seen on them before, or
+ * by a hash typed as it is (a test server's "name:" key too).
+ */
+function AddPlayerAuth({ serverGroup, onAdd, pending }: { serverGroup: string; onAdd: (playerHash: string, name: string | null, level: number) => void; pending: boolean }) {
+  const [text, setText] = useState('')
+  const [picked, setPicked] = useState<PickedPlayer | null>(null)
   const [level, setLevel] = useState(50)
+  const hash = picked?.hash ?? text.trim().slice(0, 50)
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Add a player by hash</CardTitle>
-        <CardDescription>For a player who is not online. The hash is the player's CD-key hash, or "name:" and the name on a test server.</CardDescription>
+        <CardTitle>Add a player</CardTitle>
+        <CardDescription>
+          Find them by name: the players online on this group's servers, then those seen on them before. Or type their hash: the CD-key hash, or "name:"
+          and the name on a test server.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form
-          className="flex flex-wrap items-end gap-2"
+          className="flex flex-wrap items-start gap-2"
           onSubmit={(e) => {
             e.preventDefault()
-            if (!hash.trim()) return
-            onAdd(hash.trim(), level)
-            setHash('')
+            if (!hash) return
+            onAdd(hash, picked?.name ?? null, level)
+            setText('')
+            setPicked(null)
           }}
         >
           <Field className="min-w-56 flex-1">
-            <FieldLabel htmlFor="auth-hash">Hash</FieldLabel>
-            <Input id="auth-hash" value={hash} maxLength={50} onChange={(e) => setHash(e.target.value)} />
+            <FieldLabel htmlFor="auth-player">Player or hash</FieldLabel>
+            <PlayerPicker id="auth-player" serverGroup={serverGroup} text={text} onTextChange={setText} picked={picked} onPick={setPicked} placeholder="Name or hash" />
           </Field>
           <Field className="w-44">
             <FieldLabel htmlFor="auth-level">Level</FieldLabel>
             <LevelSelect id="auth-level" label="Level" value={level} onChange={setLevel} withoutDefault compact />
           </Field>
-          <Button type="submit" disabled={pending || !hash.trim()}>
-            Add
-          </Button>
+          {/* Level with the fields: under a label of the same height, which only takes the room */}
+          <Field className="w-auto">
+            <FieldLabel aria-hidden className="invisible">
+              Add
+            </FieldLabel>
+            <Button type="submit" disabled={pending || !hash}>
+              Add
+            </Button>
+          </Field>
         </form>
       </CardContent>
     </Card>

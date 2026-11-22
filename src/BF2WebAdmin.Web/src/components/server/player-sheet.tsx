@@ -1,6 +1,6 @@
 import { Copy } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, type Player, type Team } from '@/api/client'
+import { api, type Player, type PlayerRef, type Team } from '@/api/client'
 import type { ModerationKind } from '@/components/server/moderation-dialog'
 import { LevelSelect } from '@/components/auth-level-select'
 import { Button } from '@/components/ui/button'
@@ -14,9 +14,12 @@ import { formatTime } from '@/lib/format'
 import { pingClass } from '@/lib/health'
 import type { PlayerAuthLevels } from './team-table'
 
+const isPlayer = (player: PlayerRef): player is Player => 'score' in player
+
 /**
- * A player's details and actions. Follows the player through the live snapshot by index; when the player leaves, the
- * last known details stay with a note.
+ * A player's details and actions. Follows the player through the live snapshot (by hash, else by index); when the
+ * player leaves, the last known details stay with a note. A player a chat line or an event names who is not on the
+ * server any more has their name, hash, auth level and bans.
  */
 export function PlayerSheet({
   serverId,
@@ -31,8 +34,8 @@ export function PlayerSheet({
   onClose,
 }: {
   serverId: string
-  /** The player as it was when the sheet opened */
-  player: Player | null
+  /** The player as it was when the sheet opened, or as a chat line or an event names them */
+  player: PlayerRef | null
   /** The same player in the current snapshot, if still on the server */
   current: Player | undefined
   teams: Team[]
@@ -50,6 +53,7 @@ export function PlayerSheet({
           <PlayerDetails
             serverId={serverId}
             player={current ?? player}
+            details={current ?? (isPlayer(player) ? player : undefined)}
             left={!current}
             teams={teams}
             ping={ping}
@@ -67,6 +71,7 @@ export function PlayerSheet({
 function PlayerDetails({
   serverId,
   player,
+  details,
   left,
   teams,
   ping,
@@ -76,7 +81,9 @@ function PlayerDetails({
   onModerate,
 }: {
   serverId: string
-  player: Player
+  player: PlayerRef
+  /** What the snapshot had of the player, unless they left before this page opened */
+  details: Player | undefined
   left: boolean
   teams: Team[]
   ping: number | undefined
@@ -87,36 +94,42 @@ function PlayerDetails({
 }) {
   const bans = api.useQuery('get', '/api/servers/{serverId}/bans', { params: { path: { serverId } } })
   const playerBans = (bans.data ?? []).filter(
-    (b) => (!!player.hash && b.identifier === player.hash) || (!!player.ipAddress && b.identifier === player.ipAddress) || b.name === player.name,
+    (b) => (!!player.hash && b.identifier === player.hash) || (!!details?.ipAddress && b.identifier === details.ipAddress) || b.name === player.name,
   )
-  const team = teams.find((t) => t.id === player.team)
+  const team = details && teams.find((t) => t.id === details.team)
 
   return (
     <>
       <SheetHeader>
         <SheetTitle className="flex items-center gap-2">
-          {player.country && <span className={`fi fi-${player.country.toLowerCase()}`} title={player.country} />}
+          {details?.country && <span className={`fi fi-${details.country.toLowerCase()}`} title={details.country} />}
           {player.name}
         </SheetTitle>
-        <SheetDescription>{left ? 'Has left the server' : `Player ${player.index}${player.isAlive ? '' : ', dead'}`}</SheetDescription>
+        <SheetDescription>
+          {left ? (details ? 'Has left the server' : 'Not on the server now') : `Player ${player.index}${details?.isAlive === false ? ', dead' : ''}`}
+        </SheetDescription>
       </SheetHeader>
 
       <div className="space-y-6 px-4 pb-6">
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
-          <dt className="text-muted-foreground">Team</dt>
-          <dd className={teamTextColor(player.team)}>{team?.name ?? player.team}</dd>
-          <dt className="text-muted-foreground">Score</dt>
-          <dd>
-            {player.score.total} ({player.score.kills} kills, {player.score.deaths} deaths)
-          </dd>
-          <dt className="text-muted-foreground">Ping</dt>
-          <dd className={pingClass(ping ?? player.score.ping)}>{ping ?? player.score.ping} ms</dd>
-          <dt className="text-muted-foreground">Country</dt>
-          <dd>{player.country || '-'}</dd>
-          <dt className="text-muted-foreground">IP address</dt>
-          <dd>
-            <Copyable value={player.ipAddress} />
-          </dd>
+          {details && (
+            <>
+              <dt className="text-muted-foreground">Team</dt>
+              <dd className={teamTextColor(details.team)}>{team?.name ?? details.team}</dd>
+              <dt className="text-muted-foreground">Score</dt>
+              <dd>
+                {details.score.total} ({details.score.kills} kills, {details.score.deaths} deaths)
+              </dd>
+              <dt className="text-muted-foreground">Ping</dt>
+              <dd className={pingClass(ping ?? details.score.ping)}>{ping ?? details.score.ping} ms</dd>
+              <dt className="text-muted-foreground">Country</dt>
+              <dd>{details.country || '-'}</dd>
+              <dt className="text-muted-foreground">IP address</dt>
+              <dd>
+                <Copyable value={details.ipAddress} />
+              </dd>
+            </>
+          )}
           <dt className="text-muted-foreground">Hash</dt>
           <dd>{player.hash ? <Copyable value={player.hash} /> : <span className="text-muted-foreground">none sent</span>}</dd>
         </dl>
@@ -127,27 +140,27 @@ function PlayerDetails({
             label="Auth level"
             disabled={!player.hash}
             value={level ?? defaultAuthLevel}
-            onChange={(next) => void actions.setAuthLevel(serverGroup, player.hash, next, player.name)}
+            onChange={(next) => player.hash && void actions.setAuthLevel(serverGroup, player.hash, next, player.name)}
           />
         </section>
 
-        {!left && (
+        {!left && details && (
           <section className="space-y-2">
             <h3 className="font-medium">Actions</h3>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => void actions.switchTeam(player)}>
+              <Button variant="outline" size="sm" onClick={() => void actions.switchTeam(details)}>
                 Switch team
               </Button>
-              <Button variant="outline" size="sm" onClick={() => void actions.killPlayer(player)}>
+              <Button variant="outline" size="sm" onClick={() => void actions.killPlayer(details)}>
                 Kill
               </Button>
-              <Button variant="outline" size="sm" onClick={() => onModerate('warn', player)}>
+              <Button variant="outline" size="sm" onClick={() => onModerate('warn', details)}>
                 Warn
               </Button>
-              <Button variant="outline" size="sm" onClick={() => onModerate('kick', player)}>
+              <Button variant="outline" size="sm" onClick={() => onModerate('kick', details)}>
                 Kick
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => onModerate('ban', player)}>
+              <Button variant="destructive" size="sm" onClick={() => onModerate('ban', details)}>
                 Ban
               </Button>
             </div>

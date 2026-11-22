@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { ArrowRight, RefreshCw, Search, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { api, type Server } from '@/api/client'
+import { api, type ModuleInfo, type Server } from '@/api/client'
 import { StepBar } from '@/components/step-bar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { commandsByModule, groupKind, groupModules, isRecommended, kindText, moduleDescription, moduleName } from '@/lib/modules'
+import { groupKind, groupModules, isRecommended, kindText, namesText } from '@/lib/modules'
 import { encodeServerId } from '@/lib/server-id'
 import { cn } from '@/lib/utils'
 
@@ -21,21 +21,12 @@ const defaultGroup = 'default'
 const shownCommands = 10
 
 /**
- * The servers whose command lists say which commands each module adds: one connected server per group (the servers of
- * a group run the same modules), this group's first. The other groups' lists name the commands of modules that are off
- * here, so the page can say what turning one off takes away.
- */
-function commandSources(servers: Server[], serverGroup: string) {
-  const connected = servers.filter((s) => s.socketState === 'Connected').sort((a, b) => Number(b.serverGroup === serverGroup) - Number(a.serverGroup === serverGroup))
-  return connected.filter((s, i) => connected.findIndex((other) => other.serverGroup === s.serverGroup) === i)
-}
-
-/**
- * The group's modules as checkboxes by kind, each with what it does, the commands it adds (from the servers' command
- * lists) or, when it is off, the commands that are unavailable, and a quiet mark on the ones a server of the group's
- * kind usually runs (2v2 or public, when the page can tell from its servers and modules). A filter finds a module by
- * its name, description or a command. Saving keeps the change for the next reload; Save and reload restarts the modules
- * on the group's servers.
+ * The group's modules as checkboxes by kind, each with what it does, the modules that come with it, the commands it
+ * adds (with theirs) or, when it is off, the commands that are unavailable, and a quiet mark on the ones a server of the
+ * group's kind usually runs (2v2 or public, when the page can tell from its servers and modules). The names, texts and
+ * commands are the server's (GET /api/modules). A filter finds a module by its name, description, a module that comes
+ * with it or a command. Saving keeps the change for the next reload; Save and reload restarts the modules on the
+ * group's servers.
  *
  * In the add server flow (onContinue) it starts from the given selection, and the flow's step bar is always there with
  * the step's own buttons: Back, Skip for now and Save and continue (or Continue without changes).
@@ -53,8 +44,8 @@ export function ModulesForm({
   serverGroup: string
   active: string[]
   defaults: string[]
-  all: string[]
-  /** Every server, for the command lists; the group's own are those with this serverGroup */
+  all: ModuleInfo[]
+  /** Every server; the group's own are those with this serverGroup */
   servers: Server[]
   /** The ticked modules to start from, when not the saved ones (the recommended ones for a new group) */
   initialSelected?: string[]
@@ -71,7 +62,7 @@ export function ModulesForm({
   const groupServers = servers.filter((s) => s.serverGroup === serverGroup)
   const serverCount = groupServers.length
   // The modules turned on or off since the last save
-  const changes = all.filter((m) => selected.has(m) !== active.includes(m)).length
+  const changes = all.filter((m) => selected.has(m.name) !== active.includes(m.name)).length
   const dirty = changes > 0
   const isOn = (name: string) => selected.has(name) || defaults.includes(name)
   // From the saved modules, so a mark does not come and go while the boxes are ticked
@@ -86,15 +77,6 @@ export function ModulesForm({
     toggled.current = null
   }, [selected])
 
-  const sources = commandSources(servers, serverGroup)
-  const commandLists = useQueries({
-    queries: sources.map((s) => api.queryOptions('get', '/api/servers/{serverId}/commands', { params: { path: { serverId: s.id } } })),
-  })
-  const commands = commandsByModule(
-    commandLists.flatMap((q) => (q.data ? [q.data] : [])),
-    all,
-  )
-  const commandsLoading = commandLists.some((q) => q.isPending)
 
   // The bot runs only where the server's settings have a token: asked for while Discord is on
   const discordOn = isOn('DiscordModule')
@@ -150,11 +132,13 @@ export function ModulesForm({
 
   // A command is found with or without its dot
   const query = filter.trim().toLowerCase().replace(/^\./, '')
-  const matchesCommand = (alias: string) => !!query && alias.toLowerCase().includes(query)
-  const matches = (name: string) =>
+  const matchesCommand = (command: string) => !!query && command.toLowerCase().replace(/^\./, '').includes(query)
+  const matches = (module: ModuleInfo) =>
     !query ||
-    [moduleName(name), name, moduleDescription(name) ?? '', isRecommended(name, serverKind) ? 'recommended' : ''].some((text) => text.toLowerCase().includes(query)) ||
-    (commands.get(name) ?? []).some(matchesCommand)
+    [module.displayName, module.name, module.description ?? '', ...module.loadedWith, isRecommended(module.name, serverKind) ? 'recommended' : ''].some((text) =>
+      text.toLowerCase().includes(query),
+    ) ||
+    module.commands.some(matchesCommand)
   const kinds = groupModules(all)
     .map((kind) => ({ ...kind, modules: kind.modules.filter(matches) }))
     .filter((kind) => kind.modules.length > 0)
@@ -194,9 +178,7 @@ export function ModulesForm({
             </Button>
           )}
         </div>
-        {sources.length === 0 && (
-          <p className="text-sm text-muted-foreground">The commands each module adds show here while one of your servers is connected: they come from its command list.</p>
-        )}
+
       </div>
 
       <Card className="py-0">
@@ -210,9 +192,9 @@ export function ModulesForm({
                 </h3>
                 <p className="text-xs text-muted-foreground">{kind.description}</p>
               </div>
-              {kind.modules.map((name) => {
+              {kind.modules.map((module) => {
+                const { name, description } = module
                 const always = defaults.includes(name)
-                const description = moduleDescription(name)
                 const recommended = !always && isRecommended(name, serverKind)
                 const changed = selected.has(name) !== active.includes(name) && !always
                 return (
@@ -220,7 +202,7 @@ export function ModulesForm({
                     <Checkbox id={`module-${name}`} checked={isOn(name)} disabled={readOnly || always} onCheckedChange={(checked) => toggle(name, checked)} />
                     <FieldContent className="min-w-0 gap-1.5">
                       <FieldLabel htmlFor={`module-${name}`} title={name} className="flex-wrap gap-y-1">
-                        {moduleName(name)}
+                        {module.displayName}
                         {always && <span className="font-normal text-muted-foreground">(always on)</span>}
                         {recommended && serverKind && (
                           <span className="text-xs font-normal text-muted-foreground" title={`Usually on for ${kindText(serverKind)}`}>
@@ -234,7 +216,12 @@ export function ModulesForm({
                         )}
                       </FieldLabel>
                       {description && <FieldDescription className="nth-last-2:mt-0">{description}</FieldDescription>}
-                      <ModuleCommands aliases={commands.get(name) ?? []} on={isOn(name)} loading={commandsLoading} expanded={!!query} highlight={matchesCommand} />
+                      {module.loadedWith.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Comes with <span className="text-foreground/80">{namesText(module.loadedWith)}</span>.
+                        </p>
+                      )}
+                      <ModuleCommands commands={module.commands} on={isOn(name)} expanded={!!query} highlight={matchesCommand} />
                       {name === 'DiscordModule' && withoutToken.map((server) => <MissingToken key={server.id} server={server} />)}
                     </FieldContent>
                   </Field>
@@ -295,52 +282,40 @@ export function ModulesForm({
 }
 
 /**
- * The commands a module adds, as chips, the first few until "+N more"; while a filter is typed, all of them with the
- * matches marked. A module that is off says which commands are unavailable instead. A module no connected server runs
- * has no list to show.
+ * The commands a module adds (".alias", as GET /api/modules names them), as chips, the first few until "+N more"; while
+ * a filter is typed, all of them with the matches marked. A module that is off says which commands are unavailable
+ * instead. A module without commands (a game mode, the log) shows none.
  */
-function ModuleCommands({
-  aliases,
-  on,
-  loading,
-  expanded,
-  highlight,
-}: {
-  aliases: string[]
-  on: boolean
-  loading: boolean
-  expanded: boolean
-  highlight: (alias: string) => boolean
-}) {
+function ModuleCommands({ commands, on, expanded, highlight }: { commands: string[]; on: boolean; expanded: boolean; highlight: (command: string) => boolean }) {
   const [open, setOpen] = useState(false)
-  if (aliases.length === 0) return loading ? <span className="h-5 w-40 animate-pulse rounded bg-muted" aria-hidden /> : null
+  if (commands.length === 0) return null
 
   if (!on) {
-    const named = aliases.slice(0, 4).map((a) => `.${a}`)
+    const named = commands.slice(0, 4)
     return (
       <p className="text-sm text-muted-foreground">
         <span className="font-medium text-foreground">Off:</span> {named.join(', ')}
-        {aliases.length > named.length ? ` and ${aliases.length - named.length} more are` : aliases.length === 1 ? ' is' : ' are'} unavailable.
+        {commands.length > named.length ? ` and ${commands.length - named.length} more are` : commands.length === 1 ? ' is' : ' are'} unavailable.
       </p>
     )
   }
 
-  const shown = expanded || open ? aliases : aliases.slice(0, shownCommands)
-  const hidden = aliases.length - shown.length
+  const shown = expanded || open ? commands : commands.slice(0, shownCommands)
+  const hidden = commands.length - shown.length
   return (
     <ul className="flex flex-wrap gap-1" aria-label="Commands it adds">
-      {shown.map((alias) => (
+      {shown.map((command) => (
         <li
-          key={alias}
+          key={command}
           className={cn(
             'rounded-md border px-1.5 font-mono text-xs leading-5 text-muted-foreground',
-            highlight(alias) && 'border-primary/60 bg-primary/10 text-foreground',
+            highlight(command) && 'border-primary/60 bg-primary/10 text-foreground',
           )}
         >
-          .{alias}
+          {command}
         </li>
       ))}
-      {(hidden > 0 || (open && !expanded && aliases.length > shownCommands)) && (
+      {(hidden > 0 || (open && !expanded && commands.length > shownCommands)) && (
         <li>
           <button
             type="button"

@@ -13,7 +13,8 @@ import { groupServers, useServers } from '@/hooks/use-servers'
 import { type Step, useSetupOverview } from '@/hooks/use-setup-steps'
 import { overallHealth, statusColors } from '@/lib/health'
 import { encodeServerId } from '@/lib/server-id'
-import { serverStatus, toneDot, toneText } from '@/lib/server-state'
+import { formatTime } from '@/lib/format'
+import { connectionText, serverStatus, toneDot, toneText } from '@/lib/server-state'
 import { cn } from '@/lib/utils'
 
 type Health = ReturnType<typeof overallHealth>
@@ -110,6 +111,7 @@ export function DashboardPage() {
   )
 }
 
+/** The status in a word; the row's title has the admin channel's connection (since when, or when it was lost). */
 function Status({ server }: { server: Server }) {
   const status = serverStatus(server)
   return (
@@ -127,6 +129,15 @@ function HealthPill({ health }: { health: NonNullable<Health> }) {
       <span className={cn('size-2 shrink-0 rounded-full', statusColors[health.status])} aria-hidden />
       {health.label}
     </span>
+  )
+}
+
+/** Why an offline server has no map or players: its connection was lost (when), or it has not connected since WebAdmin started. */
+function OfflineSince({ server }: { server: Server }) {
+  return server.disconnectedAt ? (
+    <span>Connection lost at {formatTime(server.disconnectedAt)}</span>
+  ) : (
+    <span>Not connected since WebAdmin started</span>
   )
 }
 
@@ -185,7 +196,7 @@ function ServerTable({ servers, health, steps }: { servers: Server[]; health: Ma
                     to="/server/$serverId"
                     params={params}
                     data-row-link
-                    title={server.name}
+                    title={`${server.name}\n${connectionText(server)}`}
                     className="block truncate font-medium outline-none after:absolute after:inset-0"
                   >
                     {server.name}
@@ -221,7 +232,7 @@ function ServerTable({ servers, health, steps }: { servers: Server[]; health: Ma
                   <TableCell colSpan={3} className="text-muted-foreground">
                     <span className="flex flex-wrap items-center gap-x-2">
                       <Separated>
-                        Admin channel not connected
+                        <OfflineSince server={server} />
                         <HowToConnect server={server} />
                       </Separated>
                     </span>
@@ -268,7 +279,7 @@ function ServerCard({ server, health, steps }: { server: Server; health: Health;
             to="/server/$serverId"
             params={{ serverId: encodeServerId(server.id) }}
             data-card-link
-            title={server.name}
+            title={`${server.name}\n${connectionText(server)}`}
             className="block truncate outline-none after:absolute after:inset-0 after:rounded-xl"
           >
             {server.name}
@@ -297,6 +308,11 @@ function ServerCard({ server, health, steps }: { server: Server; health: Health;
           {health && <HealthPill health={health} />}
           {!connected && <HowToConnect server={server} />}
         </p>
+        {!connected && (
+          <p className="text-xs">
+            <OfflineSince server={server} />
+          </p>
+        )}
         {connected && (
           <p className="flex min-w-0 items-center gap-2">
             <Separated>

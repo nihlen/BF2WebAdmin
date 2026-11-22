@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from '@tanstack/react-router'
 import { ArrowRight } from 'lucide-react'
 import { useState } from 'react'
@@ -10,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useServers } from '@/hooks/use-servers'
+import { modulesQuery } from '@/lib/modules'
 import { encodeServerId } from '@/lib/server-id'
 import { cn } from '@/lib/utils'
 import { serverGroupRoute } from '@/router'
@@ -104,7 +106,7 @@ function GroupServerList({ servers, current }: { servers: Server[]; current?: st
 function GroupSettings({ serverGroup }: { serverGroup: string }) {
   const groupModules = api.useQuery('get', '/api/server-groups/{serverGroup}/modules', { params: { path: { serverGroup } } })
   const defaultModules = api.useQuery('get', '/api/server-groups/{serverGroup}/modules', { params: { path: { serverGroup: defaultGroup } } })
-  const allModules = api.useQuery('get', '/api/modules')
+  const allModules = useQuery(modulesQuery)
   const servers = useServers()
   const hash = useLocation({ select: (location) => location.hash })
   const [tab, setTab] = useState(hash === 'admin-levels' ? 'admin-levels' : 'modules')

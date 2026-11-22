@@ -6,6 +6,7 @@
 // Node (the Vite plugin) and the browser (the fake hub) both import this file: no DOM and no Node APIs here.
 
 import type { components } from '../api/schema.d.ts'
+import { loadedWith, type ServerSource } from './server-source.ts'
 
 type S = components['schemas']
 
@@ -54,6 +55,9 @@ const uuid = (seed: number) => {
 
 // ---- Servers ----
 
+// WebAdmin's process started two days ago (GET /api/admin-channel's startedAt): the servers connected then
+const webAdminUp = 2 * day + 6 * hour + 18 * min
+
 const ids = {
   heli1: '198.51.100.20:16570',
   heli2: '198.51.100.20:16571',
@@ -79,6 +83,9 @@ const servers: S['ServerDto'][] = [
     gameState: 'Playing',
     socketState: 'Connected',
     serverGroup: '2v2',
+    gameMode: 'gpm_cq',
+    connectedAt: iso(webAdminUp - 40 * sec),
+    disconnectedAt: null,
   },
   {
     id: ids.heli2,
@@ -92,6 +99,9 @@ const servers: S['ServerDto'][] = [
     gameState: 'PreGame',
     socketState: 'Connected',
     serverGroup: '2v2',
+    gameMode: 'gpm_cq',
+    connectedAt: iso(webAdminUp - 52 * sec),
+    disconnectedAt: null,
   },
   {
     id: ids.test,
@@ -105,6 +115,10 @@ const servers: S['ServerDto'][] = [
     gameState: 'Paused',
     socketState: 'Connected',
     serverGroup: '2v2',
+    gameMode: 'gpm_cq',
+    // Restarted this evening: its connection closed and came back
+    connectedAt: iso(2 * hour + 14 * min),
+    disconnectedAt: iso(2 * hour + 15 * min),
   },
   {
     id: ids.mayhem,
@@ -118,6 +132,9 @@ const servers: S['ServerDto'][] = [
     gameState: 'Playing',
     socketState: 'Connected',
     serverGroup: 'fun',
+    gameMode: 'gpm_cq',
+    connectedAt: iso(41 * min),
+    disconnectedAt: iso(43 * min),
   },
   {
     id: ids.public,
@@ -131,6 +148,10 @@ const servers: S['ServerDto'][] = [
     gameState: 'NotConnected',
     socketState: 'Disconnected',
     serverGroup: 'public',
+    // Not connected since WebAdmin started (the lost scenario has it until 25 minutes ago)
+    gameMode: null,
+    connectedAt: null,
+    disconnectedAt: null,
   },
 ]
 
@@ -227,6 +248,7 @@ const msg = (
     id: uuid(1000 + i),
     playerId: player?.index ?? null,
     playerName: player?.name ?? null,
+    playerHash: player?.hash ?? null,
     teamName: player ? (teams2v2.find((t) => t.id === player.team)?.name ?? null) : null,
     type,
     channel,
@@ -261,22 +283,29 @@ const heliChat: S['ChatLogDto'][] = [
   msg(20, 20 * sec, '.seat to switch seat while landed', null, 'ServerMessage'),
 ]
 
-const event = (i: number, agoMs: number, message: string): S['EventLogDto'] => ({ id: uuid(2000 + i), message, timestamp: iso(agoMs) })
+/** A game event: its kind and the players it names (the acting one first), as the server's event log has them */
+const event = (i: number, agoMs: number, message: string, kind: S['EventLogKind'] = 'Other', players: S['PlayerDto'][] = []): S['EventLogDto'] => ({
+  id: uuid(2000 + i),
+  message,
+  timestamp: iso(agoMs),
+  kind,
+  players: players.map((p) => ({ index: p.index, name: p.name, hash: p.hash })),
+})
 
 const heliEvents: S['EventLogDto'][] = [
-  event(1, 26 * min, 'Map dalian_2_v_2 loaded'),
-  event(2, 24 * min, 'Kestrel joined (SE)'),
-  event(3, 23 * min, 'mr.Hellcat joined (DE)'),
-  event(4, 22 * min, 'Vortex|Ace joined (US)'),
-  event(5, 21 * min, 'GhostRotor joined (FI)'),
-  event(6, 20 * min, 'Round 1 started'),
-  event(7, 17 * min, 'Vortex|Ace killed mr.Hellcat (TV missile)'),
-  event(8, 15 * min, 'Kestrel killed GhostRotor (Z-10 cannon)'),
-  event(9, 12 * min, 'Kestrel killed Vortex|Ace (TV missile)'),
-  event(10, 8 * min, 'Round 1 ended: China 3, USA 2'),
-  event(11, 4 * min, 'Round 2 started'),
-  event(12, 90 * sec, 'Vortex|Ace killed GhostRotor (friendly fire)'),
-  event(13, 30 * sec, 'GhostRotor died'),
+  event(1, 26 * min, 'Map dalian_2_v_2 loaded', 'Map'),
+  event(2, 24 * min, 'Kestrel joined (SE)', 'Join', [kestrel]),
+  event(3, 23 * min, 'mr.Hellcat joined (DE)', 'Join', [hellcat]),
+  event(4, 22 * min, 'Vortex|Ace joined (US)', 'Join', [vortex]),
+  event(5, 21 * min, 'GhostRotor joined (FI)', 'Join', [ghost]),
+  event(6, 20 * min, 'Round 1 started', 'RoundStart'),
+  event(7, 17 * min, 'Vortex|Ace killed mr.Hellcat (TV missile)', 'Kill', [vortex, hellcat]),
+  event(8, 15 * min, 'Kestrel killed GhostRotor (Z-10 cannon)', 'Kill', [kestrel, ghost]),
+  event(9, 12 * min, 'Kestrel killed Vortex|Ace (TV missile)', 'Kill', [kestrel, vortex]),
+  event(10, 8 * min, 'Round 1 ended: China 3, USA 2', 'RoundEnd'),
+  event(11, 4 * min, 'Round 2 started', 'RoundStart'),
+  event(12, 90 * sec, 'Vortex|Ace killed GhostRotor (friendly fire)', 'Kill', [vortex, ghost]),
+  event(13, 30 * sec, 'GhostRotor died', 'Death', [ghost]),
 ]
 
 const mayhemChat: S['ChatLogDto'][] = mayhemPlayers.slice(0, 8).map((p, i) => msg(100 + i, (30 - i * 3) * min, ['lol', 'who is in the blackhawk', 'rush the dam!', 'gg', 'ns', 'stop spawn killing pls', 'haha', 'brb'][i], p))
@@ -290,9 +319,9 @@ function snapshot(serverId: string): S['ServerSnapshotDto'] | null {
     case ids.heli1:
       return { server, maps: maps2v2, teams: teams2v2, players: heliPlayers, chatLog: heliChat, eventLog: heliEvents }
     case ids.heli2:
-      return { server, maps: maps2v2, teams: teams2v2, players: [], chatLog: [], eventLog: [event(30, 3 * hour, 'Map dalian_2_v_2 loaded')] }
+      return { server, maps: maps2v2, teams: teams2v2, players: [], chatLog: [], eventLog: [event(30, 3 * hour, 'Map dalian_2_v_2 loaded', 'Map')] }
     case ids.test:
-      return { server, maps: maps2v2, teams: teams2v2, players: testPlayers, chatLog: [msg(40, 9 * min, '.pause', testPlayers[0])], eventLog: [event(40, 10 * min, 'Builder joined (NL)'), event(41, 9 * min, 'Game paused')] }
+      return { server, maps: maps2v2, teams: teams2v2, players: testPlayers, chatLog: [msg(40, 9 * min, '.pause', testPlayers[0])], eventLog: [event(40, 10 * min, 'Builder joined (NL)', 'Join', testPlayers), event(41, 9 * min, 'Game paused', 'GameState')] }
     case ids.mayhem:
       return {
         server,
@@ -303,7 +332,7 @@ function snapshot(serverId: string): S['ServerSnapshotDto'] | null {
         teams: teams2v2,
         players: mayhemPlayers,
         chatLog: mayhemChat,
-        eventLog: [event(50, 40 * min, 'Map dalian_plant loaded'), event(51, 2 * min, 'Chopper Mayhem layout dalian_mayhem6 loaded')],
+        eventLog: [event(50, 40 * min, 'Map dalian_plant loaded', 'Map'), event(51, 2 * min, 'Chopper Mayhem layout dalian_mayhem6 loaded', 'Map')],
       }
     default:
       return { server, maps: [], teams: [], players: [], chatLog: [], eventLog: [] }
@@ -314,11 +343,24 @@ function snapshot(serverId: string): S['ServerSnapshotDto'] | null {
 const lostAgo = 25 * min
 const lostServer = (serverId: string, scenario: FixtureScenario) => scenario === 'lost' && serverId === ids.public
 
+/** The server as the list and its snapshot have it: its last map and mode, and when its connection came and went */
+const lostServerDto = (server: S['ServerDto']): S['ServerDto'] => ({
+  ...server,
+  map: 'strike_at_karkand',
+  gameMode: 'gpm_cq',
+  connectedAt: iso(3 * hour + 2 * min),
+  disconnectedAt: iso(lostAgo),
+})
+
 function lostSnapshot(snap: S['ServerSnapshotDto']): S['ServerSnapshotDto'] {
   return {
     ...snap,
-    server: { ...snap.server, map: 'strike_at_karkand' },
-    eventLog: [event(60, 3 * hour, 'Map strike_at_karkand loaded'), event(61, lostAgo + 2 * min, 'Round 4 started')],
+    server: lostServerDto(snap.server),
+    eventLog: [
+      event(60, 3 * hour, 'Map strike_at_karkand loaded', 'Map'),
+      event(61, lostAgo + 2 * min, 'Round 4 started', 'RoundStart'),
+      event(62, lostAgo, 'SocketStateChangedEvent Disconnected', 'Connection'),
+    ],
   }
 }
 
@@ -457,8 +499,14 @@ const commandLog = (serverId: string): S['CommandLogEntryDto'][] =>
     .sort((a, b) => b.ago - a.ago)
     .map((e, i) => ({ id: `log-${i}`, serverId, time: iso(e.ago), user: i % 3 === 0 ? 'admin' : 'nihlen', kind: e.kind as S['CommandKind'], command: e.command, response: e.response, success: e.success }))
 
-/** The chat commands, parsed from src/BF2WebAdmin.Server/commands.txt by the plugin ("kick|k <Args>\tAdmin\t(KickCommand)") */
-export function parseCommands(text: string): S['CommandInfoDto'][] {
+/** A chat command with its class, which says the modules that handle it */
+export type FixtureCommand = S['CommandInfoDto'] & { className: string }
+
+/**
+ * The chat commands, parsed from src/BF2WebAdmin.Server/commands.txt by the plugin ("kick|k <Args>\tAdmin\t(KickCommand)"),
+ * with the modules that handle each and its description from the server's source
+ */
+export function parseCommands(text: string, source: ServerSource): FixtureCommand[] {
   const levels: Record<string, number> = { Untrusted: 0, All: 10, Trusted: 20, Admin: 50, SuperAdmin: 75, God: 100 }
   return text
     .split(/\r?\n/)
@@ -466,13 +514,25 @@ export function parseCommands(text: string): S['CommandInfoDto'][] {
     .map((line) => {
       const [usage, level, owner] = line.split('\t')
       const [aliases, ...params] = usage.trim().split(' ')
+      const className = owner?.trim().replace(/[()]/g, '') ?? ''
       return {
+        className,
         aliases: aliases.split('|'),
         parameters: params.filter(Boolean).map((p) => p.replace(/[<>]/g, '')),
         authLevel: levels[level?.trim()] ?? 10,
-        modules: [owner?.includes('Mayhem') ? 'ChopperMayhemModule' : owner?.includes('Heli') ? 'Heli2v2Module' : 'AdminModule'],
+        modules: [...source.modules].filter(([, m]) => m.handles.includes(className)).map(([name]) => name),
+        description: source.descriptions.get(className) ?? null,
       }
     })
+}
+
+/** A server's commands as GET /api/servers/{id}/commands has them: those of the modules its group loads, with those that come with them */
+function serverCommands(server: S['ServerDto'], request: FixtureRequest): S['CommandInfoDto'][] {
+  const enabled = [...groupModules(server.serverGroup), ...groupModules('default')]
+  const loaded = new Set(enabled.flatMap((m) => [m, ...loadedWith(request.source, m)]))
+  return request.commands
+    .map((c) => ({ aliases: c.aliases, parameters: c.parameters, authLevel: c.authLevel, modules: c.modules.filter((m) => loaded.has(m)), description: c.description }))
+    .filter((command) => command.modules.length > 0)
 }
 
 const auth = (serverGroup: string): S['PlayerAuthDto'][] =>
@@ -486,28 +546,52 @@ const auth = (serverGroup: string): S['PlayerAuthDto'][] =>
       ]
     : []
 
-const allModules = [
-  'BF2Module',
-  'ChopperMayhemModule',
-  'DictionaryModule',
-  'DiscordModule',
-  'FunModule',
-  'Heli2v2Module',
-  'JailModule',
-  'LayoutVoteModule',
-  'LogModule',
-  'MapModule',
-  'ServerControlModule',
-  'TestModule',
-  'WebModule',
-]
-
+// The groups' saved module lists (the default group's are the public group's). LayoutVoteModule and FunModule come with
+// MapModule and BF2Module, so GET /api/modules does not list them, but a list saved before still names them
 const groupModules = (group: string) =>
   group === '2v2'
     ? ['BF2Module', 'Heli2v2Module', 'MapModule', 'DiscordModule', 'LayoutVoteModule', 'LogModule']
     : group === 'fun'
       ? ['BF2Module', 'ChopperMayhemModule', 'FunModule', 'MapModule']
       : ['BF2Module', 'LogModule']
+
+// ---- WebAdmin, the player search ----
+
+/** GET /api/admin-channel. A new install (the empty scenario) has no public host configured, so the UI guesses it */
+const adminChannel = (scenario: FixtureScenario): S['AdminChannelInfoDto'] => ({
+  publicHost: scenario === 'empty' ? null : 'webadmin.example.org',
+  port: 4310,
+  certificatePin: hash(990) + hash(991),
+  version: '0.8.0+d58e757',
+  startedAt: iso(webAdminUp),
+})
+
+// Players seen on a group's servers before (the join history), newest join first
+const seenPlayers: Record<string, { name: string; hash: string; ago: number }[]> = {
+  '2v2': [
+    { name: 'RotorBlade', hash: hash(960), ago: 3 * hour },
+    { name: 'TrustedTom', hash: hash(951), ago: 5 * hour },
+    { name: 'nihlen', hash: hash(950), ago: 20 * hour },
+    { name: 'Rook', hash: hash(961), ago: 2 * day },
+    { name: 'SpawnCamper', hash: hash(902), ago: 4 * day },
+    { name: 'Arrow', hash: hash(962), ago: 5 * day },
+    { name: 'Muted_Mike', hash: hash(952), ago: 9 * day },
+  ],
+  fun: [{ name: 'Rotorhead', hash: hash(970), ago: 6 * hour }],
+}
+
+/** GET /api/server-groups/{group}/players: by name or the start of the hash, the online players first, at most 20 */
+function findPlayers(group: string, query: string, scenario: FixtureScenario): S['PlayerSearchDto'][] {
+  const q = query.trim().toLowerCase()
+  if (q.length < 2 || scenario === 'empty') return []
+  const found = (name: string, playerHash: string) => name.toLowerCase().includes(q) || playerHash.startsWith(q)
+  const online = servers
+    .filter((s) => s.serverGroup === group)
+    .flatMap((s) => (snapshot(s.id)?.players ?? []).map((p) => ({ hash: p.hash, name: p.name, serverId: s.id, lastSeen: null })))
+  const seen = (seenPlayers[group] ?? []).map((p) => ({ hash: p.hash, name: p.name, serverId: null, lastSeen: iso(p.ago) }))
+  const results = [...online, ...seen].filter((p) => found(p.name, p.hash))
+  return results.filter((p, i) => results.findIndex((other) => other.hash === p.hash) === i).slice(0, 20)
+}
 
 /** The server the add-server shots add, as the hub reports it once it connects (scripts/ui-capture.mjs sends it) */
 const addedServer: S['ServerDto'] = {
@@ -522,6 +606,9 @@ const addedServer: S['ServerDto'] = {
   gameState: 'PreGame',
   socketState: 'Connected',
   serverGroup: '2v2',
+  gameMode: 'gpm_cq',
+  connectedAt: iso(5 * sec),
+  disconnectedAt: null,
 }
 
 const settings = (server: S['ServerDto']): S['ServerDataDto'] => ({
@@ -604,7 +691,16 @@ const layouts = (server: S['ServerDto']): S['LayoutDto'][] =>
 
 // ---- Requests ----
 
-export type FixtureRequest = { method: string; path: string; query: URLSearchParams; body: unknown; scenario: FixtureScenario; commands: S['CommandInfoDto'][] }
+export type FixtureRequest = {
+  method: string
+  path: string
+  query: URLSearchParams
+  body: unknown
+  scenario: FixtureScenario
+  commands: FixtureCommand[]
+  modules: S['ModuleInfo'][]
+  source: ServerSource
+}
 export type FixtureResponse = { status: number; body?: unknown }
 
 const ok = (body: unknown): FixtureResponse => ({ status: 200, body })
@@ -616,7 +712,7 @@ const action = (message: string) => ok({ message })
 export function fixtureResponse(request: FixtureRequest): FixtureResponse {
   const { method, query, scenario } = request
   const path = decodeURIComponent(request.path)
-  const list = scenario === 'empty' ? [] : servers
+  const list = scenario === 'empty' ? [] : scenario === 'lost' ? servers.map((s) => (s.id === ids.public ? lostServerDto(s) : s)) : servers
   const minutes = Number(query.get('minutes') ?? 60)
 
   if (path === '/api/auth/me' && method === 'GET') return scenario === 'loggedout' ? { status: 401 } : ok({ name: 'admin' })
@@ -641,9 +737,13 @@ export function fixtureResponse(request: FixtureRequest): FixtureResponse {
       { type: 'Discord', success: !!body?.discordBotToken, message: body?.discordBotToken ? 'Logged in as BF2 Bot#1234' : 'No bot token: Discord is off for this server' },
     ] satisfies S['TestServerResult'][])
   }
-  if (path === '/api/modules') return ok(allModules)
+  if (path === '/api/modules') return ok(request.modules)
+  if (path === '/api/admin-channel') return ok(adminChannel(scenario))
 
-  let m = /^\/api\/server-groups\/([^/]+)\/(modules|auth)(\/reload)?$/.exec(path)
+  let m = /^\/api\/server-groups\/([^/]+)\/players$/.exec(path)
+  if (m) return ok(findPlayers(m[1], query.get('query') ?? '', scenario))
+
+  m = /^\/api\/server-groups\/([^/]+)\/(modules|auth)(\/reload)?$/.exec(path)
   if (m) {
     const [, group, kind, reload] = m
     if (reload || method !== 'GET') return noContent
@@ -669,10 +769,14 @@ export function fixtureResponse(request: FixtureRequest): FixtureResponse {
 
   if (rest === '') return method === 'DELETE' ? noContent : ok(snap)
   if (rest === '/settings') return method === 'GET' ? ok(settings(server)) : noContent
-  if (rest === '/commands') return method === 'GET' ? ok(request.commands) : ok({ command: String((request.body as { command?: string })?.command ?? ''), output: ['Done'] })
+  if (rest === '/commands') return method === 'GET' ? ok(serverCommands(server, request)) : ok({ command: String((request.body as { command?: string })?.command ?? ''), output: ['Done'] })
   if (rest === '/log') return ok(commandLog(serverId))
   if (rest === '/chat') return ok({ response: null })
   if (rest === '/rcon') return ok({ request: '', response: '' })
+  if (rest === '/bans' && method === 'POST') {
+    const body = request.body as Partial<S['AddBanRequest']> | undefined
+    return connected ? action(`Banned ${body?.name ?? body?.identifier ?? ''}`) : { status: 400, body: 'The server is not connected' }
+  }
   if (rest === '/bans') return ok(serverId === ids.heli1 || serverId === ids.heli2 ? bans : [])
   if (rest.startsWith('/bans/')) return action('Unbanned')
   if (/^\/players\/\d+\/(warn|kick|ban)$/.test(rest)) return action('Done')

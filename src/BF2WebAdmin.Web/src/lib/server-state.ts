@@ -1,4 +1,5 @@
 import type { GameState, Server } from '@/api/client'
+import { formatRelative, formatTime } from '@/lib/format'
 
 // The game's and the admin channel's states as the server sends them (enum names) in words, the same on every page
 
@@ -23,6 +24,16 @@ export function serverStatus(server: Pick<Server, 'socketState' | 'gameState'>):
   if (server.socketState !== 'Connected') return { label: 'Offline', tone: 'bad' }
   const tone = server.gameState === 'Paused' || server.gameState === 'Restart' || server.gameState === 'NotConnected' ? 'warn' : 'good'
   return { label: gameStateLabel(server.gameState), tone }
+}
+
+/**
+ * The admin channel's connection in words, for a status's title: since when it is connected, when it was lost, or that
+ * it has not connected since WebAdmin started (the server has no times then).
+ */
+export function connectionText(server: Pick<Server, 'socketState' | 'connectedAt' | 'disconnectedAt'>) {
+  const at = (time: string) => `${formatTime(time)} (${formatRelative(time)})`
+  if (server.socketState === 'Connected') return server.connectedAt ? `Connected since ${at(server.connectedAt)}` : 'The admin channel is connected'
+  return server.disconnectedAt ? `Connection lost at ${at(server.disconnectedAt)}` : 'Not connected since WebAdmin started'
 }
 
 export const toneDot: Record<StatusTone, string> = {

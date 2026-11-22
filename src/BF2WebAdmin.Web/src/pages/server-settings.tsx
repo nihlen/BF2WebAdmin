@@ -33,7 +33,7 @@ import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, Sele
 import { Skeleton } from '@/components/ui/skeleton'
 import { playerAuthQuery } from '@/hooks/use-server-actions'
 import { useServers } from '@/hooks/use-servers'
-import { groupKind, isRecommended, type ServerKind } from '@/lib/modules'
+import { groupKind, isRecommended, modulesQuery, type ServerKind } from '@/lib/modules'
 import { encodeServerId } from '@/lib/server-id'
 import { cn } from '@/lib/utils'
 
@@ -173,7 +173,7 @@ function AddModulesStep({ added, onBack, onContinue }: { added: ServerSettings; 
   const servers = useServers()
   const groupModules = api.useQuery('get', '/api/server-groups/{serverGroup}/modules', { params: { path: { serverGroup } } })
   const defaultModules = api.useQuery('get', '/api/server-groups/{serverGroup}/modules', { params: { path: { serverGroup: defaultGroup } } })
-  const allModules = api.useQuery('get', '/api/modules')
+  const allModules = useQuery(modulesQuery)
   const groupServers = (servers.data ?? []).filter((s) => s.serverGroup === serverGroup)
   const isNewGroup = !groupServers.some((s) => s.id !== added.serverId)
   const [kind, setKind] = useState<ServerKind | 'other'>(() => (/2v2/i.test(serverGroup) ? '2v2' : (groupKind(groupServers, []) ?? 'other')))
@@ -196,7 +196,7 @@ function AddModulesStep({ added, onBack, onContinue }: { added: ServerSettings; 
       </div>
     )
   if (!groupModules.data || !defaultModules.data || !allModules.data) return <Skeleton className="h-96 max-w-3xl" />
-  const recommended = kind === 'other' ? [] : allModules.data.filter((m) => m !== 'DiscordModule' && isRecommended(m, kind))
+  const recommended = kind === 'other' ? [] : allModules.data.map((m) => m.name).filter((m) => m !== 'DiscordModule' && isRecommended(m, kind))
 
   return (
     <div className="max-w-3xl space-y-4">

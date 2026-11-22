@@ -45,8 +45,11 @@ look like a file to the server's fallback route.
 
 With `UI_FIXTURES=1` the dev server needs no BF2WebAdmin.Server: `fixtures-plugin.ts` answers every web API request
 from the fixed data in `src/fixtures/data.ts` (five servers in three groups, a 2v2 match in progress, an hour of health
-history, bans, layouts, ...) and `src/fixtures/signalr.ts` stands in for the hub. The cookie `ui-fixture` picks a
-scenario: `default`, `empty` (a new install without servers) or `loggedout`. Nothing of it is in a build.
+history, bans, layouts, ...) and `src/fixtures/signalr.ts` stands in for the hub. The chat commands and the modules are
+the server's own: the plugin reads `../BF2WebAdmin.Server/commands.txt` and the `[ModuleInfo]`, `[LoadedWith]` and
+`[Command]` attributes in its source (`src/fixtures/server-source.ts`). The cookie `ui-fixture` picks a scenario:
+`default`, `empty` (a new install without servers), `loggedout` or `lost` (the offline server's connection was lost).
+Nothing of it is in a build.
 
 ```powershell
 $env:UI_FIXTURES = '1'; npx vite --port 5199 --strictPort

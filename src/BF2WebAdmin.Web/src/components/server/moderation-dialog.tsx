@@ -6,14 +6,14 @@ import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from '@/co
 import { Input } from '@/components/ui/input'
 import { Chip } from '@/components/toggles'
 import { banPeriods, type ServerActions } from '@/hooks/use-server-actions'
+import { banLengthLabel, banLengthText, presetReasons } from '@/lib/bans'
 import { cn } from '@/lib/utils'
 
 export type ModerationKind = 'warn' | 'kick' | 'ban'
 
 export type ModerationRequest = { kind: ModerationKind; player: Player }
 
-// The reasons admins give most; one click fills the field, which can still be edited
-const presetReasons = ['Team killing', 'Spawn killing', 'Cheating', 'Abusive chat', 'Ignoring warnings']
+
 
 const kinds: { kind: ModerationKind; label: string }[] = [
   { kind: 'warn', label: 'Warn' },
@@ -41,7 +41,7 @@ function ModerationForm({ request, actions, onClose }: { request: ModerationRequ
   const [kind, setKind] = useState(request.kind)
   const [reason, setReason] = useState('')
   const [length, setLength] = useState('Perm')
-  const lengthLabel = banPeriods.find((p) => p.value === length)?.label ?? length
+  const lengthLabel = banLengthLabel(length)
 
   const descriptions: Record<ModerationKind, string> = {
     warn: `${player.name} sees the reason in game and stays on the server.`,
@@ -99,9 +99,7 @@ function ModerationForm({ request, actions, onClose }: { request: ModerationRequ
         <FieldSet>
           <FieldLegend variant="label">Length</FieldLegend>
           <Chips label="Length" options={banPeriods} value={length} onChange={setLength} />
-          <FieldDescription>
-            {length === 'Round' ? 'Until the next round starts.' : length === 'Perm' ? 'Until an admin unbans the player on the Bans tab.' : `For ${lengthLabel.toLowerCase()}.`}
-          </FieldDescription>
+          <FieldDescription>{banLengthText(length)}</FieldDescription>
         </FieldSet>
       )}
 
@@ -116,7 +114,7 @@ function ModerationForm({ request, actions, onClose }: { request: ModerationRequ
 }
 
 /** A row of choices as pill buttons; the selected one is filled. */
-function Chips({ label, options, value, onChange }: { label: string; options: { value: string; label: string }[]; value: string; onChange: (value: string) => void }) {
+export function Chips({ label, options, value, onChange }: { label: string; options: { value: string; label: string }[]; value: string; onChange: (value: string) => void }) {
   return (
     <div role="group" aria-label={label} className="flex flex-wrap gap-1.5">
       {options.map((o) => (

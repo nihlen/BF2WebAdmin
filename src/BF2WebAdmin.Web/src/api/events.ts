@@ -43,11 +43,12 @@ export type ViewerFrame = {
 }
 
 export type HubEvents = {
-  // Sent to all clients
+  // Sent to all clients. ServerUpdateEvent is a ServerDto (gameMode, connectedAt and disconnectedAt too) with its time
   ServerUpdateEvent: Server & Timed
   ServerRemoveEvent: { serverId: string }
 
-  // Sent to the clients subscribed to the server
+  // Sent to the clients subscribed to the server. A chat message has the sender's hash (playerHash). The
+  // game events below carry player indexes only; useServerLive names the players, as the snapshot's event log does
   ChatEvent: { message: Message } & Timed
   GameStateEvent: { state: GameState } & Timed
   MapChangeEvent: { map: string; size: number; index: number; teams: Team[] } & Timed

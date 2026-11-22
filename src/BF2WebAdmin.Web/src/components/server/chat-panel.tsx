@@ -1,9 +1,10 @@
 import { CircleHelp, SquareTerminal } from 'lucide-react'
 import { useId, useState } from 'react'
-import type { ChatLogEntry, CommandInfo, Player, Team } from '@/api/client'
+import type { ChatLogEntry, CommandInfo, Player, PlayerRef, Team } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { findOnline } from '@/lib/players'
 import { teamTextColor } from '@/lib/teams'
 import { cn } from '@/lib/utils'
 import { LogList, Time } from './log-list'
@@ -25,7 +26,7 @@ export function ChatPanel({
   commands: CommandInfo[]
   onSend: (message: string) => void
   /** Opens a player's details from their name in the chat */
-  onPlayer?: (player: Player) => void
+  onPlayer?: (player: PlayerRef) => void
   /** Opens the command palette from a button beside the box */
   onCommands?: () => void
   /** The list's size: a fixed height, or the rest of a column */
@@ -50,7 +51,7 @@ export function ChatLog({
   chatLog: ChatLogEntry[]
   players: Player[]
   teams: Team[]
-  onPlayer?: (player: Player) => void
+  onPlayer?: (player: PlayerRef) => void
   className?: string
 }) {
   return (
@@ -60,10 +61,13 @@ export function ChatLog({
   )
 }
 
-function ChatLine({ entry, players, teams, onPlayer }: { entry: ChatLogEntry; players: Player[]; teams: Team[]; onPlayer?: (player: Player) => void }) {
+function ChatLine({ entry, players, teams, onPlayer }: { entry: ChatLogEntry; players: Player[]; teams: Team[]; onPlayer?: (player: PlayerRef) => void }) {
   const { message } = entry
-  // The sender while still on the server: same index and name, as an index is reused after a player leaves
-  const sender = players.find((p) => p.index === message.playerId && p.name === message.playerName)
+  // The sender as the line names them. Their hash stays theirs after they leave, so the name links to their sheet (auth
+  // level, bans) even then; without one, only while the same index has the same name
+  const named: PlayerRef | null = message.playerName ? { index: message.playerId, name: message.playerName, hash: message.playerHash ?? null } : null
+  const sender = named ? findOnline(players, named) : undefined
+  const target = sender ?? (named?.hash ? named : undefined)
   // By team id: the sender's current team, or the team with the name the message carries
   const teamId = sender?.team ?? teams.find((t) => t.name === message.teamName)?.id
   const color =
@@ -81,12 +85,12 @@ function ChatLine({ entry, players, teams, onPlayer }: { entry: ChatLogEntry; pl
       {message.type !== 'Server' && (
         <>
           {' '}
-          {sender && onPlayer ? (
+          {target && onPlayer ? (
             <button
               type="button"
               className="font-medium underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
-              title={`${sender.name}: details and actions`}
-              onClick={() => onPlayer(sender)}
+              title={sender ? `${sender.name}: details and actions` : `${target.name} (not on the server now): auth level and bans`}
+              onClick={() => onPlayer(target)}
             >
               {message.playerName}
             </button>

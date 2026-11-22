@@ -12,6 +12,7 @@ import {
 import { api, errorMessage, isUnauthorized } from '@/api/client'
 import { AppLayout } from '@/components/app-layout'
 import { Button } from '@/components/ui/button'
+import { AboutPage } from '@/pages/about'
 import { DashboardPage } from '@/pages/dashboard'
 import { LoginPage } from '@/pages/login'
 import { ServerActivityPage, ServerBansPage, ServerHealthPage, ServerLivePage } from '@/pages/server'
@@ -150,6 +151,13 @@ export const serverGroupRoute = createRoute({
   component: ServerGroupPage,
 })
 
+// WebAdmin's admin channel and version, from the account menu
+export const aboutRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/about',
+  component: AboutPage,
+})
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute.addChildren([
@@ -157,6 +165,7 @@ const routeTree = rootRoute.addChildren([
     serverAddRoute,
     serverRoute.addChildren([serverLiveRoute, serverHealthRoute, serverBansRoute, serverActivityRoute, serverGroupTabRoute, serverEditRoute, viewerRoute, builderRoute]),
     serverGroupRoute,
+    aboutRoute,
   ]),
 ])
 

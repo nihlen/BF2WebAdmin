@@ -1,8 +1,9 @@
-import { Infinity as Forever, Search, X } from 'lucide-react'
+import { Infinity as Forever, Plus, Search, X } from 'lucide-react'
 import { useDeferredValue, useState } from 'react'
 import { api, type Ban, errorMessage } from '@/api/client'
 import type { ConfirmRequest } from '@/components/confirm-dialog'
 import { CopyButton } from '@/components/copy-button'
+import { AddBanDialog } from '@/components/server/add-ban-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -60,13 +61,35 @@ function BannedAt({ value }: { value: string }) {
 
 /**
  * The server's ban list: the engine's bans, with who banned and why when WebAdmin did it (newest first, as the server
- * sorts them). Unban asks first. A table from the sm width up, as tall as its rows; on a phone one card per ban, so
- * nothing (Unban least of all) is hidden to the side.
+ * sorts them). Unban asks first; Add ban bans a player who need not be online, while the server is connected. A table
+ * from the sm width up, as tall as its rows; on a phone one card per ban, so nothing (Unban least of all) is hidden to
+ * the side.
  */
-export function BanList({ serverId, actions, confirm }: { serverId: string; actions: ServerActions; confirm: (request: ConfirmRequest) => void }) {
+export function BanList({
+  serverId,
+  serverGroup,
+  connected,
+  actions,
+  confirm,
+}: {
+  serverId: string
+  serverGroup: string
+  connected: boolean
+  actions: ServerActions
+  confirm: (request: ConfirmRequest) => void
+}) {
   const bans = api.useQuery('get', '/api/servers/{serverId}/bans', { params: { path: { serverId } } })
   const [search, setSearch] = useState('')
+  const [adding, setAdding] = useState(false)
   const query = useDeferredValue(search.trim().toLowerCase())
+
+  const addButton = (
+    <Button variant="outline" size="sm" disabled={!connected} title={connected ? undefined : 'The server must be connected to ban'} onClick={() => setAdding(true)}>
+      <Plus data-icon="inline-start" />
+      Add ban
+    </Button>
+  )
+  const addDialog = <AddBanDialog open={adding} onOpenChange={setAdding} serverGroup={serverGroup} actions={actions} />
 
   const unbanButton = (ban: Ban) => {
     const who = ban.name ?? ban.identifier
@@ -95,9 +118,13 @@ export function BanList({ serverId, actions, confirm }: { serverId: string; acti
 
   if (bans.data.length === 0)
     return (
-      <div className="space-y-1 p-8 text-center">
-        <p className="font-medium">No bans</p>
-        <p className="text-sm text-muted-foreground">Players banned on this server, from WebAdmin, Discord or in game, show up here.</p>
+      <div className="space-y-3 p-8 text-center">
+        <div className="space-y-1">
+          <p className="font-medium">No bans</p>
+          <p className="text-sm text-muted-foreground">Players banned on this server, from WebAdmin, Discord or in game, show up here.</p>
+        </div>
+        {addButton}
+        {addDialog}
       </div>
     )
 
@@ -128,7 +155,9 @@ export function BanList({ serverId, actions, confirm }: { serverId: string; acti
           {query ? `${shown.length} of ${all.length}` : all.length} {all.length === 1 ? 'ban' : 'bans'}
           {!query && permanent > 0 && `, ${permanent} permanent`}, newest first
         </p>
+        <div className="ml-auto">{addButton}</div>
       </div>
+      {addDialog}
       {shown.length === 0 && (
         <p className="border-t px-4 py-8 text-center text-sm text-muted-foreground">
           No ban matches “{search.trim()}”. The search looks in names, CD-key hashes, addresses, reasons and who banned.

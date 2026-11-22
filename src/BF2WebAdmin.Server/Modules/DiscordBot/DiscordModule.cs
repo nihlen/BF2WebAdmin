@@ -21,6 +21,7 @@ namespace BF2WebAdmin.Server.Modules.DiscordBot;
 /// <see cref="DiscordCommandHandler"/>.
 /// </summary>
 // TODO: .need <players> command?
+[ModuleInfo("Discord bot", "The server's Discord bot: the game in its Discord channels, admin commands from there, .calladmin and .leave. Needs a bot token in the server's settings.")]
 public class DiscordModule : BaseModule, IAsyncDisposable,
     IHandleEventAsync<SocketStateChangedEvent>,
     IHandleEventAsync<ChatMessageEvent>,

@@ -10,6 +10,9 @@ public class CommandAttribute : Attribute
     public Auth AuthLevel { get; }
     public bool CombineLast { get;  }
 
+    /// <summary>What the command does, in one short sentence, for the web UI's command palette. Not in commands.txt.</summary>
+    public string? Description { get; init; }
+
     public CommandAttribute(string format, Auth authLevel, bool combineLast = true)
     {
         AuthLevel = authLevel;

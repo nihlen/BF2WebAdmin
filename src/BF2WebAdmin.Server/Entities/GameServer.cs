@@ -46,6 +46,12 @@ public class GameServer : IGameServer
     public GameState State { get; private set; } = GameState.NotConnected;
     public SocketState SocketState { get; private set; } = SocketState.Disconnected;
 
+    /// <summary>When the admin channel last connected; null until it has since WebAdmin started.</summary>
+    public DateTimeOffset? ConnectedAt { get; private set; }
+
+    /// <summary>When the admin channel last closed; null while it has not since WebAdmin started.</summary>
+    public DateTimeOffset? DisconnectedAt { get; private set; }
+
     public Map? Map { get; private set; }
 
     public IEnumerable<Map> Maps { get { lock (_maps) return _maps.ToArray(); } }
@@ -66,8 +72,8 @@ public class GameServer : IGameServer
     public IEnumerable<(MessageDto Message, DateTimeOffset Time)> Messages => _chatBuffer.Get().Where(x => x.Message != null).OrderBy(x => x.Time);
     private readonly CircularBuffer<(MessageDto Message, DateTimeOffset Time)> _chatBuffer = new(500);
 
-    public IEnumerable<(string Message, DateTimeOffset Time)> Events => _eventBuffer.Get().Where(x => x.Message != null).OrderBy(x => x.Time);
-    private readonly CircularBuffer<(string Message, DateTimeOffset Time)> _eventBuffer = new(500);
+    public IEnumerable<GameEventLog> Events => _eventBuffer.Get().Where(x => x?.Message != null).OrderBy(x => x.Time);
+    private readonly CircularBuffer<GameEventLog> _eventBuffer = new(500);
 
     private readonly bool _enablePositionUpdates = true;
     private readonly SemaphoreSlim _modManagerLock = new(1);
@@ -189,7 +195,9 @@ public class GameServer : IGameServer
 
     public void ResetStartTime() => StartTime = DateTime.UtcNow;
 
-    public void AddEventLog(string message, DateTimeOffset time) => _eventBuffer.Add((message, time));
+    /// <summary>Adds a line to the event log, of a kind and with the players it names (the acting player first; nulls are left out).</summary>
+    public void AddEventLog(string message, DateTimeOffset time, EventLogKind kind = EventLogKind.Other, params Player?[] players) =>
+        _eventBuffer.Add(new GameEventLog(message, time, kind, GameEventLog.Named(players)));
 
     public async ValueTask UpdateServerInfoAsync(string name, int gamePort, int queryPort, int maxPlayers, DateTimeOffset time)
     {
@@ -246,7 +254,7 @@ public class GameServer : IGameServer
     public ValueTask UpdateGameStateAsync(GameState state, DateTimeOffset time)
     {
         State = state;
-        _eventBuffer.Add(($"{nameof(GameStateChangedEvent)} {state}", time));
+        AddEventLog($"{nameof(GameStateChangedEvent)} {state}", time, EventLogKind.GameState);
         return PublishEventAsync(new GameStateChangedEvent(state, time));
     }
 
@@ -255,8 +263,13 @@ public class GameServer : IGameServer
         // TODO: Stop all running tasks/commands when disconnecting - wait for reconnection
         if (state != SocketState)
         {
+            if (state == SocketState.Connected)
+                ConnectedAt = time;
+            else if (SocketState == SocketState.Connected)
+                DisconnectedAt = time;
+
             SocketState = state;
-            _eventBuffer.Add(($"{nameof(SocketStateChangedEvent)} {state}", time));
+            AddEventLog($"{nameof(SocketStateChangedEvent)} {state}", time, EventLogKind.Connection);
             return PublishEventAsync(new SocketStateChangedEvent(state, time));
         }
 
@@ -271,7 +284,7 @@ public class GameServer : IGameServer
             _maps.AddRange(maps);
         }
 
-        _eventBuffer.Add(($"{nameof(MapsChangedEvent)} {string.Join("|", maps.Select(m => $"{m.Index},{m.Name},{m.GameMode},{m.Size}"))}", time));
+        AddEventLog($"{nameof(MapsChangedEvent)} {string.Join("|", maps.Select(m => $"{m.Index},{m.Name},{m.GameMode},{m.Size}"))}", time, EventLogKind.Map);
         return PublishEventAsync(new MapsChangedEvent(Maps, time));
     }
 
@@ -289,7 +302,7 @@ public class GameServer : IGameServer
         // Some settings get cleared when we change map so we need to do it again
         GameWriter.SendConsole(RconScript.InitServer);
 
-        _eventBuffer.Add(($"{nameof(MapChangedEvent)} {Map.Index},{Map.Name},{Map.Size}", time));
+        AddEventLog($"{nameof(MapChangedEvent)} {Map.Index},{Map.Name},{Map.Size}", time, EventLogKind.Map);
         return PublishEventAsync(new MapChangedEvent(Map, Teams.ToList(), time));
     }
 
@@ -314,7 +327,7 @@ public class GameServer : IGameServer
         lock (_players)
             _players.Add(player);
 
-        _eventBuffer.Add(($"{nameof(PlayerJoinEvent)} {player.Name}", time));
+        AddEventLog($"{nameof(PlayerJoinEvent)} {player.Name}", time, EventLogKind.Join, player);
         return PublishEventAsync(new PlayerJoinEvent(player, time));
     }
 
@@ -345,14 +358,14 @@ public class GameServer : IGameServer
 
         player.Vehicle = vehicle;
         player.SubVehicleTemplate = subVehicleTemplate;
-        _eventBuffer.Add(($"{nameof(PlayerVehicleEvent)} {player.Name} {vehicle?.RootVehicleTemplate}", time));
+        AddEventLog($"{nameof(PlayerVehicleEvent)} {player.Name} {vehicle?.RootVehicleTemplate}", time, EventLogKind.Vehicle, player);
         await PublishEventAsync(new PlayerVehicleEvent(player, vehicle, time));
     }
 
     public ValueTask UpdatePlayerTeamAsync(Player player, int teamId, DateTimeOffset time)
     {
         player.Team = GetTeam(teamId);
-        _eventBuffer.Add(($"{nameof(PlayerTeamEvent)} {player.Name} {player.Team.Name}", time));
+        AddEventLog($"{nameof(PlayerTeamEvent)} {player.Name} {player.Team.Name}", time, EventLogKind.Team, player);
         return PublishEventAsync(new PlayerTeamEvent(player, player.Team, time));
     }
 
@@ -363,7 +376,7 @@ public class GameServer : IGameServer
         player.Score.Deaths = deaths;
         player.Score.Total = totalScore;
 
-        _eventBuffer.Add(($"{nameof(PlayerScoreEvent)} {player.Name} {teamScore} {kills} {deaths} {totalScore}", time));
+        AddEventLog($"{nameof(PlayerScoreEvent)} {player.Name} {teamScore} {kills} {deaths} {totalScore}", time, EventLogKind.Score, player);
         return PublishEventAsync(new PlayerScoreEvent(player, teamScore, kills, deaths, totalScore, time));
     }
 
@@ -386,7 +399,7 @@ public class GameServer : IGameServer
             _players.Remove(player);
 
         player.Vehicle?.Players.Remove(player);
-        _eventBuffer.Add(($"{nameof(PlayerLeftEvent)} {player.Name}", time));
+        AddEventLog($"{nameof(PlayerLeftEvent)} {player.Name}", time, EventLogKind.Leave, player);
         await PublishEventAsync(new PlayerLeftEvent(player, time));
     }
 
@@ -396,21 +409,21 @@ public class GameServer : IGameServer
         player.Position = position;
         player.Rotation = rotation;
 
-        _eventBuffer.Add(($"{nameof(PlayerSpawnEvent)} {player.Name} {position}", time));
+        AddEventLog($"{nameof(PlayerSpawnEvent)} {player.Name} {position}", time, EventLogKind.Spawn, player);
         return PublishEventAsync(new PlayerSpawnEvent(player, position, rotation, time));
     }
 
     public ValueTask SetPlayerKillAsync(Player attacker, Position attackerPosition, Player victim, Position victimPosition, string weapon, DateTimeOffset time)
     {
         victim.IsAlive = false;
-        _eventBuffer.Add(($"{nameof(PlayerKillEvent)} {attacker.Name} {victim.Name} {weapon}", time));
+        AddEventLog($"{nameof(PlayerKillEvent)} {attacker.Name} {victim.Name} {weapon}", time, EventLogKind.Kill, attacker, victim);
         return PublishEventAsync(new PlayerKillEvent(attacker, attackerPosition, victim, victimPosition, weapon, time));
     }
 
     public ValueTask SetPlayerDeathAsync(Player player, Position position, bool isSuicide, DateTimeOffset time)
     {
         player.IsAlive = false;
-        _eventBuffer.Add(($"{nameof(PlayerDeathEvent)} {player.Name} {isSuicide}", time));
+        AddEventLog($"{nameof(PlayerDeathEvent)} {player.Name} {isSuicide}", time, EventLogKind.Death, player);
         return PublishEventAsync(new PlayerDeathEvent(player, position, isSuicide, time));
     }
 

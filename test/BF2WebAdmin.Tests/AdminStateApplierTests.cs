@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Server;
 using BF2WebAdmin.Server.AdminChannel;
+using BF2WebAdmin.Server.Communication.DTOs;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Modules;
 using MaxMind.GeoIP2.Responses;
@@ -129,6 +130,19 @@ public class AdminStateApplierTests
             await StreamAsync(server, State(team: 1, alive: false));
 
         Assert.Equal(0, server.Applier.StreamCorrections);
+    }
+
+    [Fact]
+    public async Task TheEventLogSaysTheKindAndThePlayers()
+    {
+        var server = await WithPlayerAsync(State(team: 1, vehicle: Heli));
+        await server.Applier.OnMessageAsync(null!, new EvDeath(11, _tick, PlayerId, 1, Heli, "ahe_ah1z", default));
+
+        var join = server.Events.First(e => e.Kind == EventLogKind.Join);
+        Assert.Equal([(PlayerId, "pilot")], join.Players.Select(p => ((byte)p.Index, p.Name)));
+        var death = server.Events.Last(e => e.Kind == EventLogKind.Death);
+        Assert.Equal("pilot", Assert.Single(death.Players).Name);
+        Assert.Equal(EventLogKind.Death, death.ToDto().Kind);
     }
 
     [Fact]

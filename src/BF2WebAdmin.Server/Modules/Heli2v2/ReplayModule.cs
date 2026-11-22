@@ -14,6 +14,7 @@ namespace BF2WebAdmin.Server.Modules.Heli2v2;
 /// hit a vehicle, two when it hit the terrain or a static object; then the objects are removed. One at a time; never during a round. Loaded with <see cref="Heli2v2Module"/>. docs/replay.md.
 /// </summary>
 [LoadedWith(typeof(Heli2v2Module))]
+[ModuleInfo("Replay", "Replays a TV missile kill in the game, between rounds: the match's last kill or your own last missile.")]
 public class ReplayModule : BaseModule,
     IHandleEventAsync<PlayerKillEvent>,
     IHandleCommand<ReplayCommand>,

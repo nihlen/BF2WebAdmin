@@ -21,6 +21,7 @@ namespace BF2WebAdmin.Server.Modules;
 /// restart, as an admin's <c>.restartserver</c>). Admins load layouts directly with <c>.load</c> or the web map builder.
 /// </summary>
 [LoadedWith(typeof(MapModule))]
+[ModuleInfo("Layout votes", "Players vote to load a saved layout, clear the map, reset the round or restart the server.")]
 public class LayoutVoteModule : BaseModule,
     IHandleCommandAsync<LayoutVoteCommand>,
     IHandleEventAsync<LayoutVoteRequestEvent>,

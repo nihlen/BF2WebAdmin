@@ -13,6 +13,7 @@ namespace BF2WebAdmin.Server.Modules;
 /// smooth turn, every tick), and else a random rotation sent every 25 ms.
 /// </summary>
 [LoadedWith(typeof(BF2Module))]
+[ModuleInfo("Fun", "Things admins do to players: dance, freeze, blur, flip, repair, teleport, rank and score.")]
 public class FunModule : BaseModule,
     IHandleCommand<StopCommand>,
     IHandleCommand<FlipCommand>,

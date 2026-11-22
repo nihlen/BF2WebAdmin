@@ -52,6 +52,9 @@ public static class ServerDtoExtensions
         GameState = server.State,
         SocketState = server.SocketState,
         ServerGroup = server.ModManager.ServerSettings.ServerGroup,
+        GameMode = server.Map?.GameMode,
+        ConnectedAt = server.ConnectedAt,
+        DisconnectedAt = server.DisconnectedAt,
         TimeStamp = timeStamp ?? DateTimeOffset.UtcNow
     };
 
@@ -75,7 +78,7 @@ public static class ServerDtoExtensions
         Maps = server.Maps.Select(m => m.ToDto()).ToList(),
         Teams = server.Teams.Select(t => t.ToDto()).ToList(),
         Players = server.Players.Select(p => p.ToDto()).ToList(),
-        EventLog = server.Events.Select(e => new EventLogDto { Message = e.Message, Timestamp = e.Time }).ToList(),
+        EventLog = server.Events.Select(e => e.ToDto()).ToList(),
         ChatLog = server.Messages.Select(m => new ChatLogDto { Message = m.Message, Timestamp = m.Time }).ToList()
     };
 

@@ -182,6 +182,42 @@ public sealed class ServerAdmin
         return $"Banned {player.DisplayName} {length}";
     }
 
+    /// <summary>
+    /// Bans a CD-key hash (32 hex digits) or an IP address that need not be online, and records it with
+    /// <paramref name="name"/> when known. A player on the server with that hash (or that address and no hash) is banned,
+    /// and so kicked, as by <see cref="BanAsync(Player, BanLength, string?, string)"/>.
+    /// </summary>
+    public async Task<string> BanAsync(string identifier, BanLength length, string? reason, string by, string? name = null)
+    {
+        identifier = identifier.Trim();
+        var byCdKey = HashPattern.IsMatch(identifier);
+        // A whole address: IPAddress.TryParse also takes "0123" or "1.2" as IPv4
+        if (!byCdKey && !(System.Net.IPAddress.TryParse(identifier, out _) && (identifier.Count(c => c == '.') == 3 || identifier.Contains(':'))))
+            throw new AdminCommandException($"Not a CD-key hash (32 hex digits) or an IP address: '{identifier}'", AdminErrorCode.InvalidValue);
+
+        var online = _server.Players.FirstOrDefault(p => byCdKey
+            ? string.Equals(p.Hash, identifier, StringComparison.OrdinalIgnoreCase)
+            : p.IpAddress?.ToString() == identifier && (string.IsNullOrEmpty(p.Hash) || p.HasNameKey));
+        if (online != null)
+            return await BanAsync(online, length, reason, by);
+
+        reason = Reason(reason, $"Banned by {by}");
+        name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        await _server.GameWriter.AddBanAsync(byCdKey, identifier, length);
+        await _bans.SetBanAsync(new ServerBan
+        {
+            ServerId = _server.Id,
+            Identifier = identifier,
+            ByCdKey = byCdKey,
+            Name = Clip(name, ServerBan.NameLength),
+            BannedBy = Clip(by, ServerBan.BannedByLength),
+            Reason = Clip(reason, ServerBan.ReasonLength),
+            BannedAt = DateTime.UtcNow,
+        });
+
+        return $"Banned {(name == null ? identifier : $"{name} ({identifier})")} {length}";
+    }
+
     /// <summary>The server's ban list (from the engine) with WebAdmin's records, newest first.</summary>
     public async Task<IReadOnlyList<BanDto>> GetBansAsync()
     {

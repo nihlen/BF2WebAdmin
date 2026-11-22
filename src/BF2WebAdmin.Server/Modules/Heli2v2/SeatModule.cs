@@ -12,6 +12,7 @@ namespace BF2WebAdmin.Server.Modules.Heli2v2;
 /// (admin channel capability bit 4). Loaded with <see cref="Heli2v2Module"/>, in or out of its 2v2 mode.
 /// </summary>
 [LoadedWith(typeof(Heli2v2Module))]
+[ModuleInfo("Seats", "Teammates choose who flies and who guns when they spawn into the heli together.")]
 public class SeatModule : BaseModule,
     IHandleEventAsync<PlayerLeftEvent>,
     IHandleCommand<PilotCommand>,

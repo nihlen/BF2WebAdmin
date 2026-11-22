@@ -13,6 +13,7 @@ namespace BF2WebAdmin.Server.Modules;
 /// repair) and the position timer. Loaded on every server with <see cref="BF2Module"/>.
 /// </summary>
 [LoadedWith(typeof(BF2Module))]
+[ModuleInfo("Server control", "Restart the game server, and set the gravity, the script mods, auto repair and the position timer.")]
 public class ServerControlModule : BaseModule,
     IHandleCommandAsync<CrashCommand>,
     IHandleCommandAsync<RestartServerCommand>,

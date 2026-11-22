@@ -13,6 +13,7 @@ namespace BF2WebAdmin.Server.Modules;
 /// the Discord webhooks, and the info commands (.time, .pos, .ping). The commands for admins come with it:
 /// <see cref="AdminModule"/>, <see cref="ServerControlModule"/> and <see cref="FunModule"/>.
 /// </summary>
+[ModuleInfo("BF2", "The base of every server: join messages in game and on Discord, info commands such as .ping and .time, and the admin, server control and fun commands.")]
 public class BF2Module : BaseModule,
     IHandleEventAsync<PlayerJoinEvent>,
     IHandleEventAsync<PlayerLeftEvent>,

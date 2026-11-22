@@ -15,6 +15,12 @@ public class AdminChannelSettings
     public string BindAddress { get; set; } = "0.0.0.0";
 
     /// <summary>
+    /// The host name or address the game servers dial (their adminConnect), for the web UI's setup steps. Empty: the UI
+    /// shows the host it is opened at.
+    /// </summary>
+    public string? PublicHost { get; set; }
+
+    /// <summary>
     /// The certificate and key as a value, for a secret: base64 PKCS#12, or PEM text (certificate and private key). When set
     /// it wins over <see cref="CertificatePath"/> and nothing is created or written. <c>--admin-cert-create</c> makes one.
     /// </summary>

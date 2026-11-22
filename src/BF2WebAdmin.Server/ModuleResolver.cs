@@ -2,6 +2,7 @@
 using System.Globalization;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.External;
 using BF2WebAdmin.Server.Abstractions;
@@ -68,9 +69,65 @@ public class ModuleResolver : IModuleResolver
                 c.Attribute.Aliases,
                 c.Attribute.Parameters ?? [],
                 c.Attribute.AuthLevel,
-                c.Modules))
+                c.Modules,
+                c.Attribute.Description))
             .Where(c => c.Aliases.Count > 0)
             .ToList();
+
+    /// <summary>
+    /// The modules a server group can enable (<see cref="AllModuleNames"/>), by class name: their names and descriptions
+    /// from <see cref="ModuleInfoAttribute"/>, the commands they and the modules loaded with them handle (".alias", the
+    /// first alias of each, in declaration order) and the display names of the modules loaded with them.
+    /// </summary>
+    public static IReadOnlyList<ModuleInfo> GetModuleInfos()
+    {
+        var loadedWith = _moduleTypes
+            .Select(t => (Type: t, Owner: t.GetCustomAttribute<LoadedWithAttribute>()?.Module))
+            .Where(t => t.Owner != null)
+            .ToLookup(t => t.Owner!, t => t.Type);
+
+        // The modules that come with a module, and those that come with them
+        IEnumerable<Type> LoadedWith(Type module) => loadedWith[module].SelectMany(t => LoadedWith(t).Prepend(t));
+
+        return _moduleTypes
+            .Where(t => t.GetCustomAttribute<LoadedWithAttribute>() == null)
+            .OrderBy(t => t.Name, StringComparer.Ordinal)
+            .Select(module =>
+            {
+                var attribute = module.GetCustomAttribute<ModuleInfoAttribute>();
+                var with = LoadedWith(module).Distinct().OrderBy(t => t.Name, StringComparer.Ordinal).ToArray();
+                var handlers = with.Prepend(module).ToHashSet();
+                var commands = _commandAttributes
+                    .Where(c => c.Attribute.Aliases.Length > 0 && _commandModuleTypes[c.CommandType].Any(handlers.Contains))
+                    // The longest alias says the most: .position rather than .p
+                    .Select(c => "." + c.Attribute.Aliases.MaxBy(a => a.Length))
+                    .Distinct()
+                    .ToArray();
+
+                return new ModuleInfo(
+                    module.Name,
+                    DisplayNameOf(module),
+                    attribute?.Description,
+                    commands,
+                    with.Select(DisplayNameOf).ToArray());
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// A module's name in words: its <see cref="ModuleInfoAttribute"/>'s, or else the class name without "Module", split
+    /// into words ("ChopperMayhemModule" is "Chopper Mayhem", "Heli2v2Module" "Heli 2v2").
+    /// </summary>
+    private static string DisplayNameOf(Type module)
+    {
+        if (module.GetCustomAttribute<ModuleInfoAttribute>() is { } attribute)
+            return attribute.DisplayName;
+
+        var name = module.Name.EndsWith("Module", StringComparison.Ordinal) ? module.Name[..^"Module".Length] : module.Name;
+        name = Regex.Replace(name, "([a-z])([A-Z])", "$1 $2");
+        // A word before a number, but not the v of 2v2
+        return Regex.Replace(name, "([a-z]{2,})([0-9])", "$1 $2");
+    }
 
     /// <summary>Whether a loaded module handles commands of this type.</summary>
     public bool IsHandled(Type commandType) => _commandModuleTypes[commandType].Any(Modules.ContainsKey);

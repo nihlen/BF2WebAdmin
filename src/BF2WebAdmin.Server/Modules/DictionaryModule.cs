@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 
 namespace BF2WebAdmin.Server.Modules;
 
+[ModuleInfo("Dictionary", "Looks words up in Urban Dictionary from the chat (.define).")]
 public class DictionaryModule : IModule,
     IHandleCommandAsync<DefineCommand>
 {

@@ -4,7 +4,7 @@ using BF2WebAdmin.Server.Extensions;
 
 namespace BF2WebAdmin.Server.Commands.BF2;
 
-[Command("score <Name> <TotalScore> <TeamScore> <Kills> <Deaths>", Auth.Admin)]
+[Command("score <Name> <TotalScore> <TeamScore> <Kills> <Deaths>", Auth.Admin, Description = "Sets a player's score, team score, kills and deaths.")]
 public class ScoreCommand : BaseCommand
 {
     public string Name { get; set; }
@@ -14,7 +14,7 @@ public class ScoreCommand : BaseCommand
     public int Deaths { get; set; }
 }
 
-[Command("score <Reset>", Auth.Admin)]
+[Command("score <Reset>", Auth.Admin, Description = "Resets every player's score with .score reset.")]
 public class ScoreResetCommand : BaseCommand
 {
     public string Reset { get; set; }

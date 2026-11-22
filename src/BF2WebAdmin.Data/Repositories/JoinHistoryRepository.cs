@@ -34,4 +34,21 @@ public class JoinHistoryRepository : IJoinHistoryRepository
             .Take(limit)
             .ToListAsync();
     }
+
+    public async Task<IReadOnlyList<PlayerJoin>> FindJoinsAsync(IReadOnlyCollection<string> serverIpAddresses, string query, int limit)
+    {
+        var ips = serverIpAddresses.Distinct().ToList();
+        var text = query.Trim().ToLower();
+        if (ips.Count == 0 || text.Length == 0)
+            return [];
+
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        return await context.JoinHistory
+            .AsNoTracking()
+            .Where(j => ips.Contains(j.ServerIpAddress) && j.Guid != null && j.Guid != "")
+            .Where(j => j.Name.ToLower().Contains(text) || j.Guid.ToLower().StartsWith(text))
+            .OrderByDescending(j => j.JoinDate)
+            .Take(limit)
+            .ToListAsync();
+    }
 }

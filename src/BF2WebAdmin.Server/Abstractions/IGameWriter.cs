@@ -118,6 +118,9 @@ public interface IGameWriter
     /// <summary>Take a CD-key hash or an address off the engine's ban list.</summary>
     Task RemoveBanAsync(bool byCdKey, string identifier);
 
+    /// <summary>Put a CD-key hash or an address on the engine's ban list (admin.addKeyToBanList or admin.addAddressToBanList), for a player who is not online.</summary>
+    Task AddBanAsync(bool byCdKey, string identifier, Services.BanLength length);
+
     Task<IReadOnlyList<ObjectListEntry>> ListObjectsAsync(string template, int maxEntries = 4096);
     Task<ObjectSpawned> SpawnObjectAsync(string template, Position position, Rotation rotation, int team = 0);
     void SendDeleteObject(long consoleId);

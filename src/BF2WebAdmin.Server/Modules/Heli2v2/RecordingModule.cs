@@ -11,6 +11,7 @@ namespace BF2WebAdmin.Server.Modules.Heli2v2;
 /// Loaded with <see cref="Heli2v2Module"/>.
 /// </summary>
 [LoadedWith(typeof(Heli2v2Module))]
+[ModuleInfo("Recording", "Records a player's flight and plays it back on them. Work in progress.")]
 public class RecordingModule : BaseModule,
     IHandleEventAsync<PlayerPositionEvent>,
     IHandleCommand<RecordCommand>,

@@ -12,6 +12,7 @@ namespace BF2WebAdmin.Server.Modules;
 /// box and Discord), switching and killing players, and auth levels. Loaded on every server with <see cref="BF2Module"/>.
 /// </summary>
 [LoadedWith(typeof(BF2Module))]
+[ModuleInfo("Admin", "Kick, warn, ban, switch and kill players, and set auth levels, in game.")]
 public class AdminModule : BaseModule,
     IHandleCommandAsync<KickCommand>,
     IHandleCommandAsync<WarnCommand>,

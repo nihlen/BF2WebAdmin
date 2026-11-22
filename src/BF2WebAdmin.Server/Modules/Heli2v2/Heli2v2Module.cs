@@ -19,6 +19,7 @@ namespace BF2WebAdmin.Server.Modules.Heli2v2;
 /// saves them (<see cref="MatchStore"/>) and switches the teams after .sw N rounds. The practice commands are in
 /// <see cref="PracticeModule"/>, <see cref="TvMissileModule"/> and <see cref="RecordingModule"/>, which come with it.
 /// </summary>
+[ModuleInfo("Heli 2v2", "2v2 helicopter matches: rounds, scores and results in game and on Discord, saved for the statistics, with the practice commands.")]
 public class Heli2v2Module : BaseModule,
     IHandleEventAsync<MapChangedEvent>,
     IHandleEventAsync<ChatMessageEvent>,

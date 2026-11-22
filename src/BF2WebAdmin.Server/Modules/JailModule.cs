@@ -11,6 +11,7 @@ namespace BF2WebAdmin.Server.Modules;
 /// .jail keeps a player at the jail for an hour: teleported back when they spawn or get more than 100 m away. Leaving
 /// the server doesn't end it; the hour, .free or a module reload do.
 /// </summary>
+[ModuleInfo("Jail", ".jail keeps a player at the jail, on Dalian Plant's carrier, for an hour; .free lets them out.")]
 public class JailModule : BaseModule,
     IHandleCommandAsync<JailPlayerCommand>,
     IHandleCommandAsync<FreePlayerCommand>,

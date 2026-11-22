@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Reflection;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -40,8 +41,20 @@ public record MapRequest(string Name, string GameMode, int Size);
 public record PlayerActionRequest(string? Reason);
 /// <summary>A ban: Length is Perm, Round, a number of seconds, or a number with m, h, d or w (<see cref="BanLength.TryParse"/>).</summary>
 public record BanRequest(string? Reason, string Length);
-/// <summary>A chat command of a loaded module. Parameters are the names in the [Command] pattern.</summary>
-public record CommandInfoDto(IReadOnlyList<string> Aliases, IReadOnlyList<string> Parameters, int AuthLevel, IReadOnlyList<string> Modules);
+/// <summary>A chat command of a loaded module. Parameters are the names in the [Command] pattern; Description says what it does.</summary>
+public record CommandInfoDto(IReadOnlyList<string> Aliases, IReadOnlyList<string> Parameters, int AuthLevel, IReadOnlyList<string> Modules, string? Description);
+/// <summary>A ban of a CD-key hash or an IP address that need not be online. Length as in <see cref="BanRequest"/>; Name is the player's, when known.</summary>
+public record AddBanRequest(string Identifier, string? Reason, string Length, string? Name);
+/// <summary>
+/// A player for the auth table's picker: online now on a server of the group (ServerId set), or seen on one before
+/// (LastSeen: their newest join, from the join history).
+/// </summary>
+public record PlayerSearchDto(string Hash, string Name, string? ServerId, DateTimeOffset? LastSeen);
+/// <summary>
+/// What a game server needs to connect (its serverext.cfg: adminConnect PublicHost:Port, adminCertSha256 CertificatePin),
+/// and WebAdmin's version and start time. PublicHost is null when not configured (ServerSettings:AdminChannel:PublicHost).
+/// </summary>
+public record AdminChannelInfoDto(string? PublicHost, int Port, string? CertificatePin, string Version, DateTimeOffset StartedAt);
 /// <summary>A player's auth level in a server group. Name and ServerId are set while the player is on a server of the group.</summary>
 public record PlayerAuthDto(string PlayerHash, int AuthLevel, string? Name, string? ServerId);
 public record SetPlayerAuthRequest(string PlayerHash, int AuthLevel);
@@ -64,6 +77,8 @@ public static class ApiEndpoints
         auth.MapPost("/logout", (Delegate)LogoutAsync);
         auth.MapGet("/me", (ClaimsPrincipal user) => new UserDto(user.Identity?.Name ?? "")).RequireAuthorization(AdminPolicy);
 
+        api.MapGet("/admin-channel", GetAdminChannel).RequireAuthorization(AdminPolicy).WithTags("WebAdmin");
+
         // For monitoring (Gatus): 200 while the game server's admin channel is connected, 503 while it is not, 404 for an unknown server
         api.MapGet("/health/servers/{serverId}", GetServerHealthAsync).AllowAnonymous().WithTags("Health");
 
@@ -85,6 +100,7 @@ public static class ApiEndpoints
         servers.MapPost("/{serverId}/map/next", NextMapAsync);
         servers.MapPost("/{serverId}/pause", TogglePauseAsync);
         servers.MapGet("/{serverId}/bans", GetBansAsync);
+        servers.MapPost("/{serverId}/bans", AddBanAsync);
         servers.MapDelete("/{serverId}/bans/{identifier}", UnbanAsync);
         servers.MapPost("/{serverId}/players/{index:int}/warn", WarnPlayerAsync);
         servers.MapPost("/{serverId}/players/{index:int}/kick", KickPlayerAsync);
@@ -100,7 +116,7 @@ public static class ApiEndpoints
         api.MapGroup("/layouts").WithTags("Layouts").RequireAuthorization(AdminPolicy).MapLayoutEndpoints();
 
         var modules = api.MapGroup("/").WithTags("Modules").RequireAuthorization(AdminPolicy);
-        modules.MapGet("/modules", () => ModuleResolver.AllModuleNames.Order().ToArray());
+        modules.MapGet("/modules", () => ModuleResolver.GetModuleInfos());
         modules.MapGet("/server-groups/{serverGroup}/modules", GetServerGroupModulesAsync);
         modules.MapPut("/server-groups/{serverGroup}/modules", SetServerGroupModulesAsync);
         modules.MapPost("/server-groups/{serverGroup}/modules/reload", ReloadServerGroupModulesAsync);
@@ -108,6 +124,7 @@ public static class ApiEndpoints
         var playerAuth = api.MapGroup("/server-groups/{serverGroup}/auth").WithTags("Player auth").RequireAuthorization(AdminPolicy);
         playerAuth.MapGet("/", GetPlayerAuthAsync);
         playerAuth.MapPut("/", SetPlayerAuthAsync);
+        api.MapGet("/server-groups/{serverGroup}/players", FindPlayersAsync).WithTags("Player auth").RequireAuthorization(AdminPolicy);
 
         api.MapExport();
     }
@@ -348,7 +365,7 @@ public static class ApiEndpoints
             return TypedResults.NotFound();
 
         return TypedResults.Ok(server.ModManager.GetCommands()
-            .Select(c => new CommandInfoDto(c.Aliases, c.Parameters, (int)c.AuthLevel, c.Modules))
+            .Select(c => new CommandInfoDto(c.Aliases, c.Parameters, (int)c.AuthLevel, c.Modules, c.Description))
             .ToArray());
     }
 
@@ -424,6 +441,17 @@ public static class ApiEndpoints
             return TypedResults.BadRequest(ServerAdmin.Describe(e));
         }
     }
+
+    /// <summary>Ban a CD-key hash or an IP address, online or not (a player online with it is banned and kicked).</summary>
+    private static Task<Results<Ok<ActionResponse>, BadRequest<string>, NotFound>> AddBanAsync(string serverId, AddBanRequest request, ClaimsPrincipal user,
+        IGameServerRegistry registry, IServerBanRepository bans, CommandLog log) =>
+        RunActionAsync(serverId, user, registry, log, $"Ban {request.Name ?? request.Identifier} ({request.Length}): {request.Reason}", server =>
+        {
+            if (!BanLength.TryParse(request.Length, out var length))
+                throw new AdminCommandException($"Not a ban length: '{request.Length}' (Perm, Round, seconds, or 30m, 12h, 7d, 2w)", AdminErrorCode.InvalidValue);
+
+            return new ServerAdmin(server, bans).BanAsync(request.Identifier ?? "", length, request.Reason, GetUserId(user), request.Name);
+        });
 
     private static Task<Results<Ok<ActionResponse>, BadRequest<string>, NotFound>> UnbanAsync(string serverId, string identifier, ClaimsPrincipal user,
         IGameServerRegistry registry, IServerBanRepository bans, CommandLog log) =>
@@ -531,6 +559,62 @@ public static class ApiEndpoints
         }
 
         return TypedResults.NoContent();
+    }
+
+    private const int MaxPlayerResults = 20;
+
+    /// <summary>
+    /// The players whose name contains <paramref name="query"/> (ignoring case) or whose hash starts with it: those online
+    /// on the group's servers first, then those seen on them before (the join history, by the servers' addresses), newest
+    /// first; at most 20, one per hash. Players without a hash are left out.
+    /// </summary>
+    private static async Task<PlayerSearchDto[]> FindPlayersAsync(string serverGroup, IGameServerRegistry registry, IJoinHistoryRepository joins,
+        string query = "")
+    {
+        query = query.Trim();
+        if (query.Length < 2)
+            return [];
+
+        var results = new Dictionary<string, PlayerSearchDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (hash, (name, serverId)) in OnlinePlayers(serverGroup, registry))
+        {
+            if (name.Contains(query, StringComparison.OrdinalIgnoreCase) || hash.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+                results.TryAdd(hash, new PlayerSearchDto(hash, name, serverId, null));
+        }
+
+        var addresses = registry.GetGameServers(serverGroup).Select(s => s.IpAddress.ToString())
+            .Concat((await registry.GetDisconnectedServersAsync()).Where(s => s.ServerGroup == serverGroup).Select(s => s.IpAddress))
+            .Where(ip => !string.IsNullOrEmpty(ip))
+            .ToArray();
+
+        foreach (var join in await joins.FindJoinsAsync(addresses, query, 500))
+        {
+            if (results.Count >= MaxPlayerResults)
+                break;
+            if (results.TryGetValue(join.Guid, out var online))
+            {
+                if (online.LastSeen is null)
+                    results[join.Guid] = online with { LastSeen = new DateTimeOffset(DateTime.SpecifyKind(join.JoinDate, DateTimeKind.Utc)) };
+                continue;
+            }
+
+            results[join.Guid] = new PlayerSearchDto(join.Guid, join.Name, null, new DateTimeOffset(DateTime.SpecifyKind(join.JoinDate, DateTimeKind.Utc)));
+        }
+
+        return results.Values.Take(MaxPlayerResults).ToArray();
+    }
+
+    private static readonly DateTimeOffset StartedAt = new(Process.GetCurrentProcess().StartTime.ToUniversalTime(), TimeSpan.Zero);
+
+    private static readonly string Version =
+        typeof(ApiEndpoints).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
+
+    /// <summary>What a game server's serverext.cfg needs to connect to this WebAdmin, and its version.</summary>
+    private static AdminChannelInfoDto GetAdminChannel(IOptions<ServerSettings> settings, AdminListener listener)
+    {
+        var channel = settings.Value.AdminChannel;
+        return new AdminChannelInfoDto(string.IsNullOrWhiteSpace(channel.PublicHost) ? null : channel.PublicHost.Trim(), channel.Port,
+            listener.CertificatePin, Version, StartedAt);
     }
 
     private static Dictionary<string, (string Name, string ServerId)> OnlinePlayers(string serverGroup, IGameServerRegistry registry)

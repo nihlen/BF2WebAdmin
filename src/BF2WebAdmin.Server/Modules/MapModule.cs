@@ -11,6 +11,7 @@ namespace BF2WebAdmin.Server.Modules;
 /// The in-game map builder commands (.o, .undo, .clear, .save, .load). They act on the server's <see cref="MapBuilder"/>,
 /// the same objects the web map builder shows.
 /// </summary>
+[ModuleInfo("Map builder", "The in-game map builder commands (.o, .undo, .clear, .save, .load), on the same objects as the web map builder.")]
 public class MapModule : IModule,
     IHandleCommandAsync<MapLoadCommand>,
     IHandleCommandAsync<MapSaveCommand>,

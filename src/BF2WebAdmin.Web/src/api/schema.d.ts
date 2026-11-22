@@ -109,6 +109,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin-channel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdminChannelInfoDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health/servers/{serverId}": {
         parameters: {
             query?: never;
@@ -133,6 +168,45 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/server-groups/{serverGroup}/players": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    query?: string;
+                };
+                header?: never;
+                path: {
+                    serverGroup: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PlayerSearchDto"][];
+                    };
                 };
             };
         };
@@ -842,7 +916,48 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    serverId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AddBanRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ActionResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": string;
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -2048,7 +2163,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": string[];
+                        "application/json": components["schemas"]["ModuleInfo"][];
                     };
                 };
             };
@@ -2390,6 +2505,21 @@ export interface components {
         ActionResponse: {
             message: string;
         };
+        AddBanRequest: {
+            identifier: string;
+            reason: null | string;
+            length: string;
+            name: null | string;
+        };
+        AdminChannelInfoDto: {
+            publicHost: null | string;
+            /** Format: int32 */
+            port: number;
+            certificatePin: null | string;
+            version: string;
+            /** Format: date-time */
+            startedAt: string;
+        };
         BanDto: {
             identifier: string;
             byCdKey: boolean;
@@ -2475,6 +2605,7 @@ export interface components {
             /** Format: int32 */
             authLevel: number;
             modules: string[];
+            description: null | string;
         };
         /** @enum {unknown} */
         CommandKind: "Chat" | "Command" | "Rcon" | "Action";
@@ -2509,6 +2640,16 @@ export interface components {
             message: string;
             /** Format: date-time */
             timestamp: string;
+            kind: components["schemas"]["EventLogKind"];
+            players: components["schemas"]["EventLogPlayerDto"][];
+        };
+        /** @enum {unknown} */
+        EventLogKind: "Other" | "Kill" | "Death" | "Join" | "Leave" | "Spawn" | "Team" | "Score" | "Vehicle" | "VehicleDestroyed" | "Revive" | "Kick" | "Ban" | "Bot" | "RoundStart" | "RoundEnd" | "Map" | "ControlPoint" | "GameState" | "Connection";
+        EventLogPlayerDto: {
+            /** Format: int32 */
+            index: number;
+            name: string;
+            hash: null | string;
         };
         ExportJoin: {
             /** Format: int64 */
@@ -2737,6 +2878,7 @@ export interface components {
             /** Format: int32 */
             playerId: null | number;
             playerName: null | string;
+            playerHash: null | string;
             teamName: null | string;
             type: string;
             channel: string;
@@ -2827,6 +2969,13 @@ export interface components {
             closestCurrent: number;
             moved: boolean;
         };
+        ModuleInfo: {
+            name: string;
+            displayName: string;
+            description: null | string;
+            commands: string[];
+            loadedWith: string[];
+        };
         PendingResyncDto: {
             /** Format: int32 */
             index: number;
@@ -2897,6 +3046,13 @@ export interface components {
             position: null | components["schemas"]["Vector3"];
             rotation: null | components["schemas"]["Vector3"];
         };
+        PlayerSearchDto: {
+            hash: string;
+            name: string;
+            serverId: null | string;
+            /** Format: date-time */
+            lastSeen: null | string;
+        };
         ProblemDetails: {
             type: null | string;
             title: null | string;
@@ -2963,6 +3119,11 @@ export interface components {
             gameState: components["schemas"]["GameState"];
             socketState: components["schemas"]["SocketState"];
             serverGroup: string;
+            gameMode: null | string;
+            /** Format: date-time */
+            connectedAt: null | string;
+            /** Format: date-time */
+            disconnectedAt: null | string;
         };
         ServerHealthDto: {
             latest: null | components["schemas"]["ServerHealthWindowDto"];

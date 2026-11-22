@@ -6,6 +6,7 @@ using BF2WebAdmin.Server.Extensions;
 
 namespace BF2WebAdmin.Server.Modules;
 
+[ModuleInfo("Chopper Mayhem", "The Chopper Mayhem game mode: jets that only push, and on Dalian Plant its layout, safe bases and portals. The layout needs the Map builder module.")]
 public class ChopperMayhemModule : BaseModule,
     IHandleEventAsync<MapChangedEvent>,
     IHandleEventAsync<PlayerKillEvent>,

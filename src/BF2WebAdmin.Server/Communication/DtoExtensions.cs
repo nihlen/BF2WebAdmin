@@ -11,6 +11,7 @@ public static class MessageExtensions
         {
             PlayerId = message.Player?.Index,
             PlayerName = message.Player?.Name,
+            PlayerHash = string.IsNullOrEmpty(message.Player?.Hash) ? null : message.Player.Hash,
             TeamName = message.Player?.Team?.Name,
             Type = message.Type.ToString(),
             Channel = message.Channel,

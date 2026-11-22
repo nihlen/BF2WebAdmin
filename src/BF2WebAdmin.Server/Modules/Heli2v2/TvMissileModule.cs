@@ -11,6 +11,7 @@ namespace BF2WebAdmin.Server.Modules.Heli2v2;
 /// chat (.tvlog, while 2v2 mode is on). Loaded with <see cref="Heli2v2Module"/>.
 /// </summary>
 [LoadedWith(typeof(Heli2v2Module))]
+[ModuleInfo("TV missile", "The TV missile's settings, back to the defaults on each map, and a player's shots measured in the chat.")]
 public class TvMissileModule : BaseModule,
     IHandleEventAsync<MapChangedEvent>,
     IHandleEventAsync<ProjectilePositionEvent>,

@@ -252,11 +252,13 @@ hours; [metrics.md](metrics.md) lists them with the rest of WebAdmin's metrics.
    ```json
    "ServerSettings": {
      "IpAddress": "...",
-     "AdminChannel": { "Port": 4310, "BindAddress": "0.0.0.0", "Certificate": "<base64 PKCS#12>", "CertificatePath": "/data/admin-channel.pfx", "CertificatePassword": "" }
+     "AdminChannel": { "Port": 4310, "BindAddress": "0.0.0.0", "PublicHost": "webadmin.example.org", "Certificate": "<base64 PKCS#12>", "CertificatePath": "/data/admin-channel.pfx", "CertificatePassword": "" }
    }
    ```
 
-   `Port` must not be the game port. Set either `Certificate` or `CertificatePath`.
+   `Port` must not be the game port. Set either `Certificate` or `CertificatePath`. `PublicHost` is the name the game
+   servers dial (their `adminConnect`); it is only shown, in the web UI's setup steps with the port and the pin
+   (`GET /api/admin-channel`). Without it the UI shows the host it is opened at.
 3. **Servers.** Set the key (and the test-server flag) in the server edit form, or in `ServerSettings:GameServers`.
    The columns `Server.AdminKey` and `Server.IsTestServer` come with the schema ([database.md](database.md)).
 4. **Game server** (`serverext.cfg` beside the OpenBF2 `bf2` binary, module loaded with `openbf2.addModDll serverext`):
@@ -280,6 +282,7 @@ WebAdmin's public name and admin-channel port (`webadmin.example.com:4310` below
 | Setting | Value |
 |---|---|
 | `ServerSettings__AdminChannel__Port` | The listener port, default 4310 |
+| `ServerSettings__AdminChannel__PublicHost` | `webadmin.example.com`, for the web UI's setup steps |
 | `ServerSettings__AdminChannel__Certificate` | The base64 PKCS#12 (or PEM) from `--admin-cert-create`, kept as a secret. With it set, a new container uses the same certificate and never writes one. Without it (and without a `CertificatePath` on a volume), every new container would create its own certificate and break every server's pin |
 | `ServerSettings__AdminChannel__CertificatePassword` | Not set: the secret store protects the value |
 | `Server.AdminKey` | One key per server (server edit form) |

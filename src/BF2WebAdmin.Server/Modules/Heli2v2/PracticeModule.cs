@@ -17,6 +17,7 @@ namespace BF2WebAdmin.Server.Modules.Heli2v2;
 /// else a teleport back to the limit when a position update shows a player above it.
 /// </summary>
 [LoadedWith(typeof(Heli2v2Module))]
+[ModuleInfo("Practice", "Heli 2v2's practice tools: back to the pad, an altitude limit, no collisions, following a player, the heli MG and no fences.")]
 public class PracticeModule : BaseModule,
     IHandleEventAsync<MapChangedEvent>,
     IHandleEventAsync<PlayerPositionEvent>,

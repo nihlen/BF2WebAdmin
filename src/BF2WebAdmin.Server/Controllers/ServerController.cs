@@ -77,7 +77,7 @@ public class ServerController : Controller
             Maps = server.Maps.Select(m => m.ToDto()),
             Teams = server.Teams.Select(t => t.ToDto()),
             Players = server.Players.Select(p => p.ToDto()).ToList(),
-            EventLog = server.Events.Select(e => new EventLogDto { Message = e.Message, Timestamp = e.Time }),
+            EventLog = server.Events.Select(e => e.ToDto()),
             ChatLog = server.Messages.Select(m => new ChatLogDto { Message = m.Message, Timestamp = m.Time })
         };
 

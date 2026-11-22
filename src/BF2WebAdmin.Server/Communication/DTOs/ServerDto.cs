@@ -13,4 +13,13 @@ public class ServerDto
     public GameState GameState { get; set; }
     public SocketState SocketState { get; set; }
     public string ServerGroup { get; set; }
+
+    /// <summary>The running map's game mode (gpm_cq, gpm_ctf, ...); kept as last seen while the server is not connected, null before it has been.</summary>
+    public string? GameMode { get; set; }
+
+    /// <summary>When the admin channel last connected; null when it has not since WebAdmin started (see <c>GET /api/admin-channel</c>'s StartedAt).</summary>
+    public DateTimeOffset? ConnectedAt { get; set; }
+
+    /// <summary>When the admin channel last closed; null while connected since WebAdmin started, or never connected.</summary>
+    public DateTimeOffset? DisconnectedAt { get; set; }
 }

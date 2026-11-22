@@ -17,54 +17,54 @@ public abstract class AdminChatCommand : BaseCommand
 }
 
 /// <summary>kick &lt;player&gt; [reason]: a player by index or part of the name.</summary>
-[Command("kick|k <Args>", Auth.Admin)]
+[Command("kick|k <Args>", Auth.Admin, Description = "Kicks a player, with an optional reason.")]
 public class KickCommand : AdminChatCommand
 {
     public override string Line => "kick " + Args;
 }
 
 /// <summary>warn &lt;player&gt; [reason]</summary>
-[Command("warn|w <Args>", Auth.Admin)]
+[Command("warn|w <Args>", Auth.Admin, Description = "Warns a player, with an optional reason.")]
 public class WarnCommand : AdminChatCommand
 {
     public override string Line => "warn " + Args;
 }
 
 /// <summary>ban &lt;player&gt; [length] [reason]: length Perm (default), Round, seconds, 30m, 12h, 7d, 2w.</summary>
-[Command("ban|b <Args>", Auth.SuperAdmin)]
+[Command("ban|b <Args>", Auth.SuperAdmin, Description = "Bans a player, for good or for a length, with an optional reason.")]
 public class BanCommand : AdminChatCommand
 {
     public override string Line => "ban " + Args;
 }
 
 /// <summary>unban &lt;CD-key hash or address&gt;</summary>
-[Command("unban <Args>", Auth.SuperAdmin)]
+[Command("unban <Args>", Auth.SuperAdmin, Description = "Lifts a ban by CD-key hash or IP address.")]
 public class UnbanCommand : AdminChatCommand
 {
     public override string Line => "unban " + Args;
 }
 
-[Command("banlist", Auth.Admin)]
+[Command("banlist", Auth.Admin, Description = "Lists the server's bans.")]
 public class BanListCommand : AdminChatCommand
 {
     public override string Line => "banlist";
 }
 
-[Command("clearbans", Auth.God)]
+[Command("clearbans", Auth.God, Description = "Removes every ban on the server.")]
 public class ClearBansCommand : AdminChatCommand
 {
     public override string Line => "clearbans";
 }
 
 /// <summary>map &lt;map&gt; &lt;mode&gt; [size]: a map of the rotation.</summary>
-[Command("map|m <Args>", Auth.Admin)]
+[Command("map|m <Args>", Auth.Admin, Description = "Changes the map: a map name, a game mode and an optional size.")]
 public class RunMapCommand : AdminChatCommand
 {
     public override string Line => "map " + Args;
 }
 
 /// <summary>The players (admin.listPlayers).</summary>
-[Command("list", Auth.Admin)]
+[Command("list", Auth.Admin, Description = "Lists the players on the server.")]
 public class ListPlayersCommand : AdminChatCommand
 {
     public override string Line => "list";

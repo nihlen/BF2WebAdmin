@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace BF2WebAdmin.Server.Modules;
 
+[ModuleInfo("Web", "Connects the server to this web UI: chat, commands and live updates.")]
 public class WebModule : BaseModule,
     IHandleEventAsync<ServerUpdateEvent>,
     IHandleEventAsync<PlayerPositionEvent>,

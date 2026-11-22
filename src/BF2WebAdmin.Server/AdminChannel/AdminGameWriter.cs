@@ -338,6 +338,15 @@ public class AdminGameWriter : IGameWriter
     public Task RemoveBanAsync(bool byCdKey, string identifier) =>
         ConsoleAsync((byCdKey ? "admin.removeKeyFromBanList " : "admin.removeAddressFromBanList ") + ConsoleWord(identifier));
 
+    // The engine's ban time: "perm", "round", or seconds from now (BanList::parseBanTime); the list is saved at once
+    public Task AddBanAsync(bool byCdKey, string identifier, BanLength length) =>
+        ConsoleAsync((byCdKey ? "admin.addKeyToBanList " : "admin.addAddressToBanList ") + ConsoleWord(identifier) + " " + length.Kind switch
+        {
+            BanKind.Round => "round",
+            BanKind.Timed => ((long)length.Duration.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            _ => "perm",
+        });
+
     /// <summary>A template, type or property name: one word, no spaces or line breaks.</summary>
     private static string ConsoleWord(string word) =>
         string.IsNullOrWhiteSpace(word) || word.Any(c => char.IsWhiteSpace(c) || char.IsControl(c))

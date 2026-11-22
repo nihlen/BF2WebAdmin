@@ -7,6 +7,7 @@ using Serilog.Events;
 
 namespace BF2WebAdmin.Server.Modules;
 
+[ModuleInfo("Log", "Writes the chat and the game events to log files on the WebAdmin host.")]
 public class LogModule : IModule, IDisposable,
     IHandleEventAsync<ChatMessageEvent>,
     IHandleEventAsync<SocketStateChangedEvent>,

@@ -164,6 +164,46 @@ public class ServerAdminTests
     }
 
     [Fact]
+    public async Task AHashThatIsNotOnlineIsAddedToTheBanListAndRecorded()
+    {
+        var answer = await _admin.BanAsync(HashB, BanLength.For(TimeSpan.FromHours(12)), "smurf", "alex", "  old name ");
+
+        await _writer.Received(1).AddBanAsync(true, HashB, BanLength.For(TimeSpan.FromHours(12)));
+        await _writer.DidNotReceiveWithAnyArgs().BanAsync(default!, default, default, default!);
+        await _bans.Received(1).SetBanAsync(Arg.Is<ServerBan>(b =>
+            b.Identifier == HashB && b.ByCdKey && b.Name == "old name" && b.BannedBy == "alex" && b.Reason == "smurf"));
+        Assert.Equal($"Banned old name ({HashB}) for 12 hours", answer);
+    }
+
+    [Fact]
+    public async Task AnAddressThatIsNotOnlineIsBannedByAddressWithoutAName()
+    {
+        await _admin.BanAsync("203.0.113.50", BanLength.Round, null, "alex");
+
+        await _writer.Received(1).AddBanAsync(false, "203.0.113.50", BanLength.Round);
+        await _bans.Received(1).SetBanAsync(Arg.Is<ServerBan>(b => b.Identifier == "203.0.113.50" && !b.ByCdKey && b.Name == null && b.Reason == "Banned by alex"));
+    }
+
+    [Fact]
+    public async Task AHashOfAPlayerOnlineBansThePlayer()
+    {
+        await _admin.BanAsync(HashA.ToUpperInvariant(), BanLength.Permanent, "cheating", "alex");
+
+        await _writer.Received(1).BanAsync(_netsky, true, BanLength.Permanent, "cheating");
+        await _writer.DidNotReceiveWithAnyArgs().AddBanAsync(default, default!, default);
+    }
+
+    [Theory]
+    [InlineData("netsky")]
+    [InlineData("0123")]
+    [InlineData("")]
+    public async Task OnlyAHashOrAnAddressCanBeBanned(string identifier)
+    {
+        await Assert.ThrowsAsync<AdminCommandException>(() => _admin.BanAsync(identifier, BanLength.Permanent, null, "alex"));
+        await _writer.DidNotReceiveWithAnyArgs().AddBanAsync(default, default!, default);
+    }
+
+    [Fact]
     public async Task UnbanRemovesTheKeyAndTheRecord()
     {
         _writer.ListBansAsync(true).Returns(new[] { $"Key: {HashA} Perm" });

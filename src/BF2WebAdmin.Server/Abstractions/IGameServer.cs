@@ -34,6 +34,8 @@ public interface IGameServer
     int MaxPlayers { get; }
     GameState State { get; }
     SocketState SocketState { get; }
+    DateTimeOffset? ConnectedAt { get; }
+    DateTimeOffset? DisconnectedAt { get; }
 
     Map? Map { get; }
     IEnumerable<Map> Maps { get; }
@@ -42,7 +44,7 @@ public interface IGameServer
     IEnumerable<Vehicle> Vehicles { get; }
     IEnumerable<Projectile> Projectiles { get; }
     IEnumerable<(MessageDto Message, DateTimeOffset Time)> Messages { get; }
-    IEnumerable<(string Message, DateTimeOffset Time)> Events { get; }
+    IEnumerable<Entities.GameEventLog> Events { get; }
     ValueTask CreateModManagerAsync(bool forceReinitialize = false);
     Player? GetPlayer(int index);
     Player? GetPlayerByName(string namePart);

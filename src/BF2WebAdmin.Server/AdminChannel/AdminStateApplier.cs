@@ -3,6 +3,7 @@ using BF2WebAdmin.Common;
 using BF2WebAdmin.Common.Entities.Game;
 using BF2WebAdmin.Server.Entities;
 using BF2WebAdmin.Server.Communication;
+using BF2WebAdmin.Server.Communication.DTOs;
 using BF2WebAdmin.Server.Metrics;
 
 namespace BF2WebAdmin.Server.AdminChannel;
@@ -517,7 +518,7 @@ public class AdminStateApplier : IAdminSessionHandler
                 break;
 
             case EvRoundStart ev:
-                _server.AddEventLog($"RoundStart {ev.Map} {ev.Mode} tickets {ev.Tickets1}/{ev.Tickets2}", time);
+                _server.AddEventLog($"RoundStart {ev.Map} {ev.Mode} tickets {ev.Tickets1}/{ev.Tickets2}", time, EventLogKind.RoundStart);
                 GameMetrics.MapLoaded(_server, ev.Map);
                 var teams = _server.Teams.ToList();
                 await _server.UpdateMapAsync(FindMap(ev.Map, ev.Mode, 0, -1),
@@ -527,7 +528,7 @@ public class AdminStateApplier : IAdminSessionHandler
                 break;
 
             case EvRoundEnd ev:
-                _server.AddEventLog($"RoundEnd tickets {ev.Tickets1}/{ev.Tickets2} winner {ev.Winner} victory {ev.VictoryType}", time);
+                _server.AddEventLog($"RoundEnd tickets {ev.Tickets1}/{ev.Tickets2} winner {ev.Winner} victory {ev.VictoryType}", time, EventLogKind.RoundEnd);
                 break;
 
             case EvPlayerConnect ev:
@@ -585,7 +586,8 @@ public class AdminStateApplier : IAdminSessionHandler
                 if (FindPlayer(ev.Player) is { } revived)
                 {
                     revived.IsAlive = true;
-                    _server.AddEventLog($"Revive {revived.Name} by {(ev.Medic >= 0 ? FindPlayer(ev.Medic)?.Name : "?")}", time);
+                    _server.AddEventLog($"Revive {revived.Name} by {(ev.Medic >= 0 ? FindPlayer(ev.Medic)?.Name : "?")}", time, EventLogKind.Revive,
+                        ev.Medic >= 0 ? FindPlayer(ev.Medic) : null, revived);
                 }
                 break;
 
@@ -616,11 +618,13 @@ public class AdminStateApplier : IAdminSessionHandler
             case EvVehicleDestroyed ev:
                 if (_server.FindVehicle((int)ev.NetId) is { } destroyed)
                     destroyed.IsDestroyed = true;
-                _server.AddEventLog($"VehicleDestroyed {ev.Template} {ev.NetId} by {(ev.Attacker >= 0 ? FindPlayer(ev.Attacker)?.Name : "-")}", time);
+                _server.AddEventLog($"VehicleDestroyed {ev.Template} {ev.NetId} by {(ev.Attacker >= 0 ? FindPlayer(ev.Attacker)?.Name : "-")}", time,
+                    EventLogKind.VehicleDestroyed, ev.Attacker >= 0 ? FindPlayer(ev.Attacker) : null);
                 break;
 
             case EvControlPoint ev:
-                _server.AddEventLog($"ControlPoint {(ev.Kind == 1 ? "captured" : "neutralised")} {ev.ControlPoint.Template} team {ev.ControlPoint.Team}", time);
+                _server.AddEventLog($"ControlPoint {(ev.Kind == 1 ? "captured" : "neutralised")} {ev.ControlPoint.Template} team {ev.ControlPoint.Team}", time,
+                    EventLogKind.ControlPoint);
                 _server.UpdateControlPoint(ev.ControlPoint);
                 break;
 
@@ -629,19 +633,20 @@ public class AdminStateApplier : IAdminSessionHandler
                 break;
 
             case EvKick ev:
-                _server.AddEventLog($"Kick {ev.Player} {ev.Name}", time);
+                _server.AddEventLog($"Kick {ev.Player} {ev.Name}", time, EventLogKind.Kick, FindPlayer(ev.Player));
                 GameMetrics.AdminAction(_server, "kick");
                 break;
 
             case EvBan ev:
                 GameMetrics.AdminAction(_server, "ban");
-                _server.AddEventLog($"Ban {ev.Player} {ev.Name} type {ev.BanType} expiry {ev.Expiry}", time);
+                _server.AddEventLog($"Ban {ev.Player} {ev.Name} type {ev.BanType} expiry {ev.Expiry}", time, EventLogKind.Ban, FindPlayer(ev.Player));
                 break;
 
             case EvBot ev:
                 if (FindPlayer(ev.Player) is { } bot)
                     bot.IsBot = true;
-                _server.AddEventLog($"Bot {ev.Player} {(ev.Kind switch { 1 => "created", 2 => "removed", _ => "team change" })} team {ev.Team}", time);
+                _server.AddEventLog($"Bot {ev.Player} {(ev.Kind switch { 1 => "created", 2 => "removed", _ => "team change" })} team {ev.Team}", time,
+                    EventLogKind.Bot, FindPlayer(ev.Player));
                 break;
 
             case EvProjectileCollision ev:
@@ -731,7 +736,8 @@ public class AdminStateApplier : IAdminSessionHandler
         }
 
         // Team kills, suicides and crashes are reported by the Death that follows, as before
-        _server.AddEventLog($"Kill {ev.Kind} {victim.Name} by {(ev.Attacker >= 0 ? FindPlayer(ev.Attacker)?.Name : "-")} {ev.Weapon}", time);
+        _server.AddEventLog($"Kill {ev.Kind} {victim.Name} by {(ev.Attacker >= 0 ? FindPlayer(ev.Attacker)?.Name : "-")} {ev.Weapon}", time,
+            EventLogKind.Kill, ev.Attacker >= 0 ? FindPlayer(ev.Attacker) : null, victim);
     }
 
     private ValueTask ApplyScoreAsync(Player player, AdminPlayerScore score, DateTimeOffset time)

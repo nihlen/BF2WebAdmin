@@ -224,6 +224,9 @@ async function main() {
       await page.addStyleTag({ content: stillCss }).catch(() => {})
       await page.evaluate(coverWebGl).catch((e) => log.push(`cover: ${e.message}`))
       await page.waitForTimeout(200)
+      // Freeze the page: the render loops (3D views, minimap) stop, so the screenshot neither waits on them nor moves
+      await page.evaluate(() => (window.requestAnimationFrame = () => 0)).catch(() => {})
+      await page.waitForTimeout(100)
 
       const layout = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
@@ -233,7 +236,12 @@ async function main() {
       }))
 
       const file = path.join(out, `${id}.png`)
-      await page.screenshot({ path: file, fullPage: true })
+      try {
+        await page.screenshot({ path: file, fullPage: true, timeout: 60000 })
+      } catch (error) {
+        log.push(`screenshot: ${String(error?.message ?? error).split('\n')[0]}`)
+        await page.screenshot({ path: file, timeout: 60000 }).catch(() => {})
+      }
       // Long pages also in viewport-high slices, which stay readable when a reviewer opens them
       const parts = []
       const sliceCount = Math.min(6, Math.ceil(layout.scrollHeight / viewport.height))
@@ -243,8 +251,11 @@ async function main() {
           const height = Math.min(viewport.height, layout.scrollHeight - y)
           if (height < 80) continue
           const partFile = path.join(out, `${id}.part${i + 1}.png`)
-          await page.screenshot({ path: partFile, fullPage: true, clip: { x: 0, y, width: viewport.width, height } })
-          parts.push(path.basename(partFile))
+          const taken = await page
+            .screenshot({ path: partFile, fullPage: true, clip: { x: 0, y, width: viewport.width, height }, timeout: 60000 })
+            .then(() => true)
+            .catch(() => false)
+          if (taken) parts.push(path.basename(partFile))
         }
       }
 

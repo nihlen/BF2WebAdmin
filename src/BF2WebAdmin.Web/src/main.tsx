@@ -44,7 +44,8 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <RouterProvider router={router} />
-        <Toaster position="bottom-right" />
+        {/* On a phone the toasts stay above the server pages' bottom tab bar */}
+        <Toaster position="bottom-right" mobileOffset={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom))' }} />
       </TooltipProvider>
       <ReactQueryDevtools buttonPosition="bottom-left" />
     </QueryClientProvider>

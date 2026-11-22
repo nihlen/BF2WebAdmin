@@ -1,13 +1,15 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, Eye, EyeOff, KeyRound, Plus, Settings2, Sparkles } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, CircleCheck, Eye, EyeOff, KeyRound, Plus, Settings2, Sparkles } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, errorMessage, type ServerSettings } from '@/api/client'
 import { ConfirmButton } from '@/components/confirm-button'
 import { CopyButton } from '@/components/copy-button'
+import { ConfigLinesDisclosure, ConnectLines, NewServerConnect } from '@/components/server/connect-guide'
 import { ConnectionTestResults } from '@/components/server/connection-test'
 import { useServerPage } from '@/components/server/server-context'
+import { SetupChecklist } from '@/components/setup-checklist'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +23,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -55,19 +57,61 @@ function generateKey() {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+/**
+ * Adding a server in two steps: its details, then connecting the game server. The second step is a state of this page,
+ * not a page of its own: it needs the key the form just generated, which it has here without fetching it again. When
+ * the owner leaves, the server's Live tab shows the same connect card until the server connects.
+ */
 export function ServerAddPage() {
+  // The key is generated when the page opens, so the owner has nothing to make up
+  const [initial] = useState<ServerSettings>(() => ({ ...newServer, adminKey: generateKey() }))
+  const [added, setAdded] = useState<ServerSettings | null>(null)
+
   return (
     <div className="space-y-6">
       <title>BF2 Web Admin - Add server</title>
-      <div className="space-y-1">
+      <div className="space-y-3">
         <h1 className="text-3xl font-semibold">Add a server</h1>
-        <p className="text-muted-foreground">
-          Register a game server that runs OpenBF2 with the server extension. Once it is saved here, the game server connects to this WebAdmin by
-          itself.
+        <AddSteps current={added ? 2 : 1} />
+        <p className="max-w-3xl text-muted-foreground">
+          {added
+            ? 'The server is saved. Now the game server needs these lines to connect to this WebAdmin; it does so by itself once it has them.'
+            : 'A game server that runs OpenBF2 with the server extension. After you add it here, the next step gives the lines for its configuration.'}
         </p>
       </div>
-      <ServerSettingsForm initial={newServer} />
+      {added ? (
+        <NewServerConnect serverId={added.serverId} address={`${added.ipAddress}:${added.gamePort}`} adminKey={added.adminKey} />
+      ) : (
+        <ServerSettingsForm initial={initial} onCreated={setAdded} />
+      )}
     </div>
+  )
+}
+
+function AddSteps({ current }: { current: 1 | 2 }) {
+  const steps = ['Server', 'Connect']
+  return (
+    <ol className="flex flex-wrap items-center gap-2 text-sm" aria-label="Steps">
+      {steps.map((label, i) => {
+        const n = i + 1
+        const done = n < current
+        return (
+          <li key={label} className="flex items-center gap-2" aria-current={n === current ? 'step' : undefined}>
+            {i > 0 && <ChevronRight aria-hidden className="size-4 text-muted-foreground/60" />}
+            <span
+              className={cn(
+                'flex size-6 items-center justify-center rounded-full border text-xs font-medium',
+                n === current && 'border-primary bg-primary text-primary-foreground',
+                done && 'border-emerald-500 text-emerald-500',
+              )}
+            >
+              {done ? <Check className="size-3.5" aria-label="Done" /> : n}
+            </span>
+            <span className={cn(n === current ? 'font-medium' : 'text-muted-foreground')}>{label}</span>
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 
@@ -87,8 +131,11 @@ export function ServerEditPage() {
 
 type FieldName = 'serverGroup' | 'ipAddress' | 'gamePort' | 'queryPort' | 'adminKey'
 
-/** The settings of a new server (no serverId) or an existing one, whose address and game port are fixed. */
-function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; serverId?: string }) {
+/**
+ * The settings of a new server (no serverId) or an existing one, whose address and game port are fixed. A new one is
+ * handed to onCreated once saved, for the connect step.
+ */
+function ServerSettingsForm({ initial, serverId, onCreated }: { initial: ServerSettings; serverId?: string; onCreated?: (settings: ServerSettings) => void }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [form, setForm] = useState(initial)
@@ -127,7 +174,15 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
     await navigate({ to: '/server/$serverId', params: { serverId: encodeServerId(savedId) } })
   }
 
-  const create = api.useMutation('post', '/api/servers', { onSuccess: (_, { body }) => onSaved(body.serverId) })
+  const create = api.useMutation('post', '/api/servers', {
+    onSuccess: async (_, { body }) => {
+      leaving.current = true
+      toast.success('Server added')
+      // The list then has the new server, offline, and the hub's server updates turn it connected
+      await queryClient.invalidateQueries({ queryKey: ['get', '/api/servers'] })
+      onCreated?.(body)
+    },
+  })
   const update = api.useMutation('put', '/api/servers/{serverId}/settings', { onSuccess: (_, { body }) => onSaved(body.serverId) })
   const remove = api.useMutation('delete', '/api/servers/{serverId}', {
     onSuccess: async () => {
@@ -138,6 +193,9 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
   })
   const test = api.useMutation('post', '/api/servers/test')
   const saving = create.isPending || update.isPending
+  // The saved server as the server list has it, which the hub keeps current: its setup steps and whether it is connected
+  const server = useServers().data?.find((s) => s.id === serverId)
+  const connected = server?.socketState === 'Connected'
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -160,6 +218,8 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
             <p className="text-sm text-muted-foreground">How WebAdmin reaches this server, its group and its Discord bot.</p>
           </div>
         )}
+        {/* The full setup checklist lives here; the other pages only point to it */}
+        {server && <SetupChecklist server={server} />}
 
         <Card>
           <CardHeader>
@@ -223,7 +283,7 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
               <FieldLabel htmlFor="adminKey">Admin key</FieldLabel>
               <SecretField
                 id="adminKey"
-                stored={!!initial.adminKey}
+                stored={!!serverId && !!initial.adminKey}
                 value={form.adminKey ?? ''}
                 initialValue={initial.adminKey ?? ''}
                 invalid={!!shown('adminKey')}
@@ -232,29 +292,17 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
                 generate
                 setLabel="Key set"
               />
-              <FieldDescription>32 to 128 hex digits. Generate makes a new random key of 64 digits; copy it into the game server's configuration.</FieldDescription>
+              <FieldDescription>
+                {serverId
+                  ? '32 to 128 hex digits. Generate makes a new random key of 64 digits; the game server then needs the new key too.'
+                  : 'WebAdmin made a random key of 64 hex digits; the next step puts it in the lines for the game server. Your own key needs 32 to 128 hex digits.'}
+              </FieldDescription>
               {shown('adminKey') && <FieldError>{shown('adminKey')}</FieldError>}
             </Field>
           </CardContent>
         </Card>
 
-        <DiscordSection form={form} initial={initial} set={set} />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Test server</CardTitle>
-            <CardDescription>For a server where players join without a CD key, such as a local server for testing and map building.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Field orientation="horizontal">
-              <Checkbox id="isTestServer" checked={form.isTestServer} onCheckedChange={(checked) => set('isTestServer', checked)} />
-              <FieldContent>
-                <FieldLabel htmlFor="isTestServer">This is a test server</FieldLabel>
-                <FieldDescription>Players without a CD-key hash are keyed by their name, so admin levels and statistics still work.</FieldDescription>
-              </FieldContent>
-            </Field>
-          </CardContent>
-        </Card>
+        <OptionalSection form={form} initial={initial} set={set} />
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <Button type="submit" disabled={saving || (!!serverId && !dirty)}>
@@ -298,13 +346,45 @@ function ServerSettingsForm({ initial, serverId }: { initial: ServerSettings; se
           </CardHeader>
           <CardContent>
             {test.isPending || test.data ? (
-              <ConnectionTestResults pending={test.isPending} results={test.data} discordConfigured={!!form.discordBotToken} />
+              <ConnectionTestResults pending={test.isPending} results={test.data} discordConfigured={!!form.discordBotToken} unsaved={!serverId} />
+            ) : connected ? (
+              <p className="flex items-center gap-2 text-sm">
+                <CircleCheck className="size-4 shrink-0 text-emerald-500" />
+                <span>
+                  <span className="font-medium">Admin channel connected.</span> <span className="text-muted-foreground">Test connection checks the query port too.</span>
+                </span>
+              </p>
             ) : (
-              <p className="text-sm text-muted-foreground">Not tested yet. Press Test connection.</p>
+              <p className="text-sm text-muted-foreground">
+                {serverId ? 'Not tested yet. Press Test connection.' : 'Press Test connection to check that the query port answers. The admin channel connects after you add the server.'}
+              </p>
             )}
           </CardContent>
         </Card>
-        <ConnectSteps form={form} serverId={serverId} keyStored={!!initial.adminKey && form.adminKey === initial.adminKey} />
+        {serverId ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Connect the game server</CardTitle>
+              <CardDescription>
+                {connected ? 'The game server is connected with these lines in its serverext.cfg.' : 'The game server dials WebAdmin with these lines; nothing connects to the game server.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* The lines show the key as it is in the form, so a new key here is the one to copy */}
+              {connected ? <ConfigLinesDisclosure serverId={serverId} adminKey={form.adminKey} /> : <ConnectLines serverId={serverId} adminKey={form.adminKey} />}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>Next: connect the game server</CardTitle>
+              <CardDescription>
+                After you add the server, WebAdmin shows the lines for the game server's <code>serverext.cfg</code> with this key, and waits for it to
+                connect.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        )}
       </aside>
 
       <AlertDialog open={blocker.status === 'blocked'} onOpenChange={(open) => !open && blocker.reset?.()}>
@@ -482,6 +562,7 @@ function SecretField({
 }) {
   const [replacing, setReplacing] = useState(!stored)
   const [shown, setShown] = useState(false)
+  const input = useRef<HTMLInputElement>(null)
 
   if (!replacing)
     return (
@@ -507,6 +588,7 @@ function SecretField({
     <div className="flex flex-wrap gap-2">
       <div className="relative min-w-0 flex-[1_1_16rem]">
         <Input
+          ref={input}
           id={id}
           value={value}
           type={shown ? 'text' : 'password'}
@@ -541,7 +623,21 @@ function SecretField({
           }}
         >
           <Sparkles data-icon="inline-start" />
-          Generate key
+          {value ? 'Regenerate' : 'Generate key'}
+        </Button>
+      )}
+      {/* A key the game server already has: the field empties and takes it */}
+      {generate && value && !stored && (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            onChange('')
+            setShown(true)
+            input.current?.focus()
+          }}
+        >
+          Use my own key
         </Button>
       )}
       {stored && (
@@ -566,8 +662,11 @@ const discordChannels = [
   { key: 'discordMatchResultChannel', label: 'Match result channel', hint: 'The result of every finished 2v2 match' },
 ] as const
 
-/** The Discord bot: optional, so closed until opened (open from the start when something is set). */
-function DiscordSection({
+/**
+ * What a server works without: the Discord bot and the test-server flag. Closed until opened, and open from the start
+ * when something in it is set, so the required fields come first.
+ */
+function OptionalSection({
   form,
   initial,
   set,
@@ -576,91 +675,67 @@ function DiscordSection({
   initial: ServerSettings
   set: <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => void
 }) {
-  const configured = !!(initial.discordBotToken || initial.discordAdminChannel || initial.discordNotificationChannel || initial.discordMatchResultChannel)
-  const [open, setOpen] = useState(configured)
+  const discord = !!(initial.discordBotToken || initial.discordAdminChannel || initial.discordNotificationChannel || initial.discordMatchResultChannel)
+  const [open, setOpen] = useState(discord || initial.isTestServer)
+  const summary = [discord ? 'Discord bot set up' : 'Discord bot not set up', initial.isTestServer ? 'test server' : null].filter(Boolean).join(', ')
 
   return (
     <Card>
       <CardHeader>
-        <button type="button" className="flex w-full items-start justify-between gap-4 text-left" aria-expanded={open} aria-controls="discord-settings" onClick={() => setOpen((o) => !o)}>
+        <button type="button" className="flex w-full items-start justify-between gap-4 text-left" aria-expanded={open} aria-controls="optional-settings" onClick={() => setOpen((o) => !o)}>
           <span className="space-y-1.5">
-            <CardTitle>
-              Discord <span className="font-normal text-muted-foreground">(optional)</span>
-            </CardTitle>
-            <CardDescription>
-              {configured ? 'A bot posts the game to Discord channels and takes admin commands there.' : 'Not set up. A bot can post the game to Discord channels and take admin commands there.'}
-            </CardDescription>
+            <CardTitle>Optional</CardTitle>
+            <CardDescription>Discord bot and test server. {summary}.</CardDescription>
           </span>
           <ChevronDown className={cn('mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
         </button>
       </CardHeader>
       {open && (
-        <CardContent id="discord-settings">
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="discordBotToken">Bot token</FieldLabel>
-              <SecretField
-                id="discordBotToken"
-                stored={!!initial.discordBotToken}
-                value={form.discordBotToken}
-                initialValue={initial.discordBotToken}
-                onChange={(value) => set('discordBotToken', value)}
-                setLabel="Token set"
-              />
-              <FieldDescription>From the Discord developer portal: your application → Bot → Reset Token. The bot must be in your Discord server.</FieldDescription>
-            </Field>
-            <p className="text-sm text-muted-foreground">
-              Channel ids: in Discord, turn on Developer Mode (User Settings → Advanced), then right-click a channel and choose Copy Channel ID. Leave
-              a channel empty to skip it.
-            </p>
-            {discordChannels.map((c) => (
-              <Field key={c.key}>
-                <FieldLabel htmlFor={c.key}>{c.label}</FieldLabel>
-                <Input id={c.key} value={form[c.key]} inputMode="numeric" placeholder="Channel id, such as 1098765432109876543" onChange={(e) => set(c.key, e.target.value)} />
-                <FieldDescription>{c.hint}</FieldDescription>
+        <CardContent id="optional-settings" className="space-y-8">
+          <FieldSet>
+            <FieldLegend>Discord</FieldLegend>
+            <FieldDescription>A bot posts the game to Discord channels and takes admin commands there.</FieldDescription>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="discordBotToken">Bot token</FieldLabel>
+                <SecretField
+                  id="discordBotToken"
+                  stored={!!initial.discordBotToken}
+                  value={form.discordBotToken}
+                  initialValue={initial.discordBotToken}
+                  onChange={(value) => set('discordBotToken', value)}
+                  setLabel="Token set"
+                />
+                <FieldDescription>From the Discord developer portal: your application → Bot → Reset Token. The bot must be in your Discord server.</FieldDescription>
               </Field>
-            ))}
-          </FieldGroup>
+              <p className="text-sm text-muted-foreground">
+                Channel ids: in Discord, turn on Developer Mode (User Settings → Advanced), then right-click a channel and choose Copy Channel ID. Leave
+                a channel empty to skip it.
+              </p>
+              {discordChannels.map((c) => (
+                <Field key={c.key}>
+                  <FieldLabel htmlFor={c.key}>{c.label}</FieldLabel>
+                  <Input id={c.key} value={form[c.key]} inputMode="numeric" placeholder="Channel id, such as 1098765432109876543" onChange={(e) => set(c.key, e.target.value)} />
+                  <FieldDescription>{c.hint}</FieldDescription>
+                </Field>
+              ))}
+            </FieldGroup>
+          </FieldSet>
+          <FieldSet>
+            <FieldLegend>Test server</FieldLegend>
+            <Field orientation="horizontal">
+              <Checkbox id="isTestServer" checked={form.isTestServer} onCheckedChange={(checked) => set('isTestServer', checked)} />
+              <FieldContent>
+                <FieldLabel htmlFor="isTestServer">This is a test server</FieldLabel>
+                <FieldDescription>
+                  For a server where players join without a CD key, such as a local one for testing and map building. They are keyed by their name, so
+                  admin levels and statistics still work.
+                </FieldDescription>
+              </FieldContent>
+            </Field>
+          </FieldSet>
         </CardContent>
       )}
-    </Card>
-  )
-}
-
-/**
- * What the game server needs to connect: its serverext.cfg lines. WebAdmin's public admin host and certificate pin are
- * not in the web API (backend-suggestions.md), so those two stay placeholders with a note where to find them.
- */
-function ConnectSteps({ form, serverId, keyStored }: { form: ServerSettings; serverId?: string; keyStored: boolean }) {
-  const id = serverId ?? (form.ipAddress.trim() ? `${form.ipAddress.trim()}:${form.gamePort}` : '<ip>:<game port>')
-  const key = keyStored ? '<the stored key>' : form.adminKey?.trim() || '<the admin key>'
-  const config = [`adminConnect <WebAdmin's host>:4310`, `adminServerId ${id}`, `adminKey ${key}`, `adminCertSha256 <WebAdmin's certificate pin>`].join('\n')
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Connect the game server</CardTitle>
-        <CardDescription>The game server dials WebAdmin; nothing connects to the game server.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
-        <ol className="list-decimal space-y-2 pl-5">
-          <li>{serverId ? 'Keep the admin key here and on the game server the same.' : 'Fill in the form, generate an admin key and add the server.'}</li>
-          <li>
-            Put these lines in the game server's <code>serverext.cfg</code>, beside the OpenBF2 <code>bf2</code> binary:
-          </li>
-        </ol>
-        <div className="relative">
-          <pre tabIndex={0} aria-label="serverext.cfg lines" className="overflow-x-auto rounded-lg bg-muted p-3 pr-10 font-mono text-xs leading-relaxed">{config}</pre>
-          <CopyButton value={config} label="Copy the lines" className="absolute top-2 right-2" />
-        </div>
-        <p className="text-muted-foreground">
-          4310 is WebAdmin's default admin channel port (<code>ServerSettings:AdminChannel:Port</code>). WebAdmin writes its certificate pin to its log
-          at startup, and <code>BF2WebAdmin.Server --admin-pin</code> prints it.
-        </p>
-        <ol start={3} className="list-decimal space-y-2 pl-5">
-          <li>Start the game server. It connects within seconds; Test connection then shows the admin channel as connected.</li>
-        </ol>
-      </CardContent>
     </Card>
   )
 }

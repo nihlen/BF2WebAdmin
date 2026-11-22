@@ -42,12 +42,6 @@ const tryStep = async (log, name, fn) => {
   }
 }
 
-const clickTab = (name) => async (page, log) =>
-  tryStep(log, `tab ${name}`, async () => {
-    await page.getByRole('tab', { name: new RegExp(name, 'i') }).first().click({ timeout: 4000 })
-    await page.waitForTimeout(600)
-  })
-
 const openNav = async (page, log) =>
   tryStep(log, 'open navigation', async () => {
     await page.locator('[data-sidebar="trigger"], button[aria-label*="sidebar" i], button:has-text("Toggle Sidebar")').first().click({ timeout: 4000 })
@@ -82,10 +76,42 @@ const clickButton = (name, label = name) => async (page, log) =>
 const testConnection = async (page, log) => {
   await fillAddForm(page, log)
   await tryStep(log, 'test connection', async () => {
-    await page.getByRole('button', { name: /test/i }).first().click({ timeout: 4000 })
+    // Exact since r03: the Optional section's toggle mentions the test-server flag
+    await page.getByRole('button', { name: /^Test connection$/ }).first().click({ timeout: 4000 })
     await page.waitForTimeout(1200)
   })
 }
+
+const addServer = async (page, log) => {
+  await fillAddForm(page, log)
+  await tryStep(log, 'add server', async () => {
+    await page.getByRole('button', { name: /^Add server$/ }).last().click({ timeout: 4000 })
+    await page.getByText(/Waiting for 198\.51\.100\.30:16570/).waitFor({ timeout: 4000 })
+  })
+}
+
+const addedServerConnects = async (page, log) =>
+  tryStep(log, 'the new server connects', async () => {
+    await page.evaluate(() =>
+      // eslint-disable-next-line no-undef
+      window.__fixtureHub.emit('ServerUpdateEvent', {
+        id: '198.51.100.30:16570',
+        name: '2v2 Heli | Dalian #3',
+        ipAddress: '198.51.100.30',
+        gamePort: 16570,
+        queryPort: 29900,
+        map: 'dalian_2_v_2',
+        players: 0,
+        maxPlayers: 16,
+        gameState: 'PreGame',
+        socketState: 'Connected',
+        serverGroup: '2v2',
+        timeStamp: new Date().toISOString(),
+      }),
+    )
+    await page.getByText(/is connected$/).waitFor({ timeout: 4000 })
+    await page.waitForTimeout(400)
+  })
 
 /** The shots: name, path, scenario (ui-fixture cookie), viewports, and the steps to the state */
 const shots = [
@@ -108,12 +134,18 @@ const shots = [
   },
   { name: 'dashboard', path: '/', viewports: ['desktop', 'phone'] },
   { name: 'dashboard-empty', path: '/', scenario: 'empty', viewports: ['desktop', 'phone'] },
+  // Since r03 the setup steps are one reminder row above the list, which opens into the servers' checklists
+  { name: 'dashboard-setup', path: '/', viewports: ['desktop'], steps: [clickButton(/^Show steps$/, 'show setup steps')] },
   { name: 'nav-open', path: '/', viewports: ['phone'], overlay: true, steps: [openNav] },
   { name: 'server-add', path: '/server/add', viewports: ['desktop', 'phone'] },
   { name: 'server-add-tested', path: '/server/add', viewports: ['desktop'], steps: [testConnection] },
   // Since r02: "New group" beside the group list opens the name field; with no servers the field has suggestions
   { name: 'server-add-new-group', path: '/server/add', viewports: ['desktop'], steps: [clickButton(/^New group$/, 'new group')] },
   { name: 'server-add-first', path: '/server/add', scenario: 'empty', viewports: ['desktop', 'phone'] },
+  // Since r03: Add server saves and goes to step 2, the lines for the game server and a live wait for it to connect
+  { name: 'server-add-connect', path: '/server/add', viewports: ['desktop', 'phone'], steps: [addServer] },
+  // ... which turns into the connected state when the hub reports the new server (the fake hub sends it)
+  { name: 'server-add-connected', path: '/server/add', viewports: ['desktop', 'phone'], steps: [addServer, addedServerConnects] },
   { name: 'server-edit', path: `${heli1}/edit`, viewports: ['desktop'] },
   { name: 'server-group', path: '/servergroup/2v2', viewports: ['desktop', 'phone'] },
   // The unsaved-changes bar sticks to the window's bottom, so the shot is of the screen
@@ -131,15 +163,50 @@ const shots = [
     ],
   },
   { name: 'server', path: heli1, viewports: ['desktop', 'phone'] },
-  { name: 'server-tab-maps', path: heli1, viewports: ['desktop'], steps: [clickTab('maps')] },
-  { name: 'server-tab-commands', path: heli1, viewports: ['desktop'], steps: [clickTab('commands')] },
-  // Since r02: chat that comes while Maps is open is counted on the Chat tab (the fake hub sends two lines)
+  // Since r03 the maps are "Change map…" in the header's Round menu, a dialog
+  {
+    name: 'server-tab-maps',
+    path: heli1,
+    viewports: ['desktop'],
+    overlay: true,
+    steps: [
+      clickButton('More round actions', 'round menu'),
+      async (page, log) =>
+        tryStep(log, 'change map', async () => {
+          await page.getByRole('menuitem', { name: /Change map/ }).click({ timeout: 4000 })
+          await page.waitForTimeout(600)
+        }),
+    ],
+  },
+  // Since r03 the commands are a palette, opened by Commands beside the chat box (or Ctrl+K)
+  { name: 'server-tab-commands', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Commands$/, 'open commands')] },
+  // Chat that comes while it is not in view. Since r03 chat is always on Live on desktop, so the shot scrolls the log up
+  // and the new lines show as a "2 new messages" jump; on a phone, the Players segment is open and the Chat segment
+  // counts them. The fixtures' chat fits the desktop log, so the fake hub first sends earlier lines until it scrolls,
+  // then the two new ones
   {
     name: 'server-chat-unread',
     path: heli1,
-    viewports: ['desktop'],
+    viewports: ['desktop', 'phone'],
     steps: [
-      clickTab('maps'),
+      async (page, log) =>
+        tryStep(log, 'scroll the chat up', async () => {
+          const chatLog = page.locator('h2:text-is("Chat") + ul')
+          if (!(await chatLog.count())) return
+          await chatLog.evaluate((el) => {
+            const said = ['ready?', 'go', 'nice shot', 'lag again', 'tv on the left', 'one more round', 'swap sides?', 'ok']
+            if (el.scrollHeight > el.clientHeight + 80) return
+            for (let i = 0; i < said.length; i++)
+              // eslint-disable-next-line no-undef
+              window.__fixtureHub.emit('ChatEvent', {
+                message: { id: `00000000-0000-4000-b000-00000000000${i}`, type: 'Player', channel: 'Global', flags: '', playerId: i % 2 ? 1 : 3, playerName: i % 2 ? 'mr.Hellcat' : 'GhostRotor', teamName: i % 2 ? 'China' : 'USA', text: said[i] },
+                timeStamp: new Date().toISOString(),
+              })
+          })
+          await page.waitForTimeout(300)
+          await chatLog.evaluate((el) => el.scrollTo({ top: 0 }))
+          await page.waitForTimeout(300)
+        }),
       async (page, log) =>
         tryStep(log, 'two new chat lines', async () => {
           await page.evaluate(() => {
@@ -159,10 +226,27 @@ const shots = [
         }),
     ],
   },
-  // Since r02: on a phone the tab bar shows three tabs and a More menu with the rest
+  // Since r03 the phone's tab bar is at the bottom: Live, Health, 3D, Builder and More with the rest
   { name: 'server-tabs-more', path: heli1, viewports: ['phone'], overlay: true, steps: [clickButton(/More pages/, 'open More')] },
+  // Since r03 the round actions are a Round split button with a menu, and Restart server is apart in a "⋯" menu; on a
+  // phone all of them are one menu button beside the name
+  { name: 'server-round-menu', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton('More round actions', 'round menu')] },
+  { name: 'server-actions', path: heli1, viewports: ['phone'], overlay: true, steps: [clickButton('Round and server actions', 'actions menu')] },
   // Bans, activity and health are pages of their own under the server's tab bar since r01
   { name: 'server-tab-bans', path: `${heli1}/bans`, viewports: ['desktop', 'phone'] },
+  // Since r03: the search field over names, hashes, addresses and reasons
+  {
+    name: 'server-tab-bans-search',
+    path: `${heli1}/bans`,
+    viewports: ['desktop'],
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'search the bans', async () => {
+          await page.getByRole('searchbox', { name: /search the bans/i }).fill('spawn', { timeout: 4000 })
+          await page.waitForTimeout(400)
+        }),
+    ],
+  },
   { name: 'server-tab-activity', path: `${heli1}/activity`, viewports: ['desktop'] },
   { name: 'server-health', path: `${heli1}/health`, viewports: ['desktop', 'phone'] },
   {
@@ -230,6 +314,38 @@ const shots = [
         }),
     ],
   },
+  // Since r03: below lg the builder's panels (objects, spawns, built, layouts) are a bottom sheet over the 3D view
+  {
+    name: 'builder-panels',
+    path: `${heli1}/builder`,
+    viewports: ['phone'],
+    wait: 2500,
+    overlay: true,
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'open the panels', async () => {
+          await page.getByRole('button', { name: /^Objects, spawns and layouts/ }).first().dispatchEvent('click', {}, { timeout: 4000 })
+          await page.waitForTimeout(1500)
+        }),
+    ],
+  },
+  // Since r03: "Clear all built" is in the Apply card's menu, behind a confirmation that names the count
+  {
+    name: 'builder-clear',
+    path: `${heli1}/builder`,
+    viewports: ['desktop'],
+    wait: 2500,
+    overlay: true,
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'clear all built', async () => {
+          await page.getByRole('button', { name: 'More builder actions' }).first().dispatchEvent('click', {}, { timeout: 4000 })
+          await page.waitForTimeout(600)
+          await page.getByRole('menuitem', { name: /Clear all built/ }).first().dispatchEvent('click', {}, { timeout: 4000 })
+          await page.waitForTimeout(800)
+        }),
+    ],
+  },
 ]
 
 // Animations, transitions and the caret off, so two runs give the same pixels
@@ -279,13 +395,16 @@ const coverWebGl = () => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: '2147483646',
+      // Above the page, below what floats over it (the phone's tab bar at z-40, dialogs, sheets and menus at z-50)
+      zIndex: '30',
       pointerEvents: 'none',
     })
     cover.textContent = '3D view (WebGL, not scored)'
     document.body.appendChild(cover)
     covered++
   }
+  // A state the page shows over its 3D view (such as the viewer's "waiting for frames") is part of the UI: above the cover
+  for (const keep of document.querySelectorAll('[data-ui-capture-keep]')) keep.style.zIndex = '31'
   return covered
 }
 
@@ -322,6 +441,25 @@ async function main() {
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {})
       await page.waitForTimeout(300)
       await page.addStyleTag({ content: stillCss }).catch(() => {})
+      const layout = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        innerWidth: window.innerWidth,
+        scrollHeight: document.documentElement.scrollHeight,
+        url: location.pathname,
+      }))
+
+      // A long page is shot with the viewport as tall as the page, so fixed parts (the sidebar, the phone's tab bar)
+      // reach its bottom as they do while scrolling. A part sized by the viewport (the 3D views, in svh) grows with it,
+      // so the viewport follows the page until it fits. This comes before the 3D views are covered and frozen, so the
+      // cover fits the resized view. A shot of an overlay (sheet, dialog, menu) shows the screen as the user sees it
+      const tall = !shot.overlay && layout.scrollHeight > viewport.height
+      for (let i = 0, height = viewport.height; tall && i < 4 && layout.scrollHeight > height; i++) {
+        height = Math.min(layout.scrollHeight, 8000)
+        await page.setViewportSize({ width: viewport.width, height })
+        await page.waitForTimeout(500)
+        layout.scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
+      }
+
       const covered = await page.evaluate(coverWebGl).catch((e) => (log.push(`cover: ${e.message}`), 0))
       await page.waitForTimeout(200)
       // A page with a 3D view is frozen: its render loop would keep the screenshot waiting. The 2D minimap keeps drawing
@@ -330,21 +468,6 @@ async function main() {
         await page.waitForTimeout(100)
       }
 
-      const layout = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        innerWidth: window.innerWidth,
-        scrollHeight: document.documentElement.scrollHeight,
-        url: location.pathname,
-      }))
-
-      // A long page is shot with the viewport as tall as the page, so fixed parts (the sidebar) reach its bottom as they
-      // do while scrolling. A shot of an overlay (sheet, dialog, menu) shows the screen as the user sees it
-      const tall = !shot.overlay && layout.scrollHeight > viewport.height
-      if (tall) {
-        await page.setViewportSize({ width: viewport.width, height: Math.min(layout.scrollHeight, 8000) })
-        await page.waitForTimeout(500)
-        layout.scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
-      }
       const file = path.join(out, `${id}.png`)
       try {
         await page.screenshot({ path: file, fullPage: !shot.overlay, timeout: 60000 })

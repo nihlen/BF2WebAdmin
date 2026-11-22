@@ -9,7 +9,7 @@ import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/componen
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { healthConnectionsQuery, healthMinutes, healthQuery, healthRoundsQuery } from '@/hooks/use-server-live'
-import { chipLabels, clock, connectionReasonsText, healthTitle, ms, reasonsText, sentence, statusColors, statusHelp } from '@/lib/health'
+import { clock, connectionReasonsText, currentConnections, ms, overallHealth, reasonsText, sentence, statusColors, statusHelp, statusLabels } from '@/lib/health'
 import { nearestIndex } from '@/lib/nearest-index'
 import { cn } from '@/lib/utils'
 
@@ -43,9 +43,6 @@ const connectionPhrases: Record<string, string> = {
 }
 
 const connectionRank: Record<PlayerConnection['status'], number> = { Bad: 0, Warn: 1, Good: 2 }
-
-// The connections come right after their window; older ones are of a module that stopped sending them
-const connectionsMaxAgeMs = 15_000
 
 /** How a figure or a state reads: info is a loading level, none is nothing to rate (no data, offline, stepped time). */
 type Level = 'good' | 'warn' | 'bad' | 'info' | 'none'
@@ -98,19 +95,19 @@ const sameServer =
     (query?.queryKey[2] as { params?: { path?: { serverId?: string } } } | undefined)?.params?.path?.serverId === serverId ? previous : undefined
 
 /**
- * The latest window's status as a small chip for the server header: nothing while the server is offline or has sent no
- * window. Reads the query that useServerLive keeps current.
+ * The server's health now as a small chip for the server header, the worse of the latest window and its players'
+ * connections, with the reasons in its title: nothing while the server is offline or has sent no window. Reads the
+ * query that useServerLive keeps current.
  */
 export function HealthChip({ serverId, connected }: { serverId: string; connected: boolean }) {
-  const health = useQuery({ ...healthQuery(serverId), staleTime: Infinity })
-  const latest = health.data?.latest
-  if (!connected || !latest) return null
+  const health = overallHealth(useQuery({ ...healthQuery(serverId), staleTime: Infinity }).data)
+  if (!connected || !health) return null
 
-  const title = healthTitle(latest)
   return (
-    <span className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border px-2 text-xs font-medium whitespace-nowrap" title={title}>
-      <span className={cn('size-2 shrink-0 rounded-full', statusColors[latest.status])} aria-hidden />
-      {chipLabels[latest.status]}
+    <span className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border px-2 text-xs font-medium whitespace-nowrap" title={health.title}>
+      <span className={cn('size-2 shrink-0 rounded-full', statusColors[health.status])} aria-hidden />
+      {health.label}
+      <span className="sr-only">. {health.reason}</span>
     </span>
   )
 }
@@ -132,22 +129,24 @@ export function HealthPanel({ serverId, connected }: { serverId: string; connect
   const history = health.data?.history
   const summary = useMemo(() => summarize(history ?? []), [history])
 
-  const connections = health.data?.connections ?? null
-  const showConnections =
-    connected && latest && connections && Date.parse(latest.time) - Date.parse(connections.time) < connectionsMaxAgeMs
+  const connections = connected && health.data ? currentConnections(health.data) : null
   const players = useMemo(
     () =>
-      showConnections
+      connections
         ? [...connections.players].sort(
             (a, b) => connectionRank[a.status] - connectionRank[b.status] || (a.name ?? '').localeCompare(b.name ?? '') || a.playerId - b.playerId,
           )
         : null,
-    [showConnections, connections],
+    [connections],
+  )
+  const lastHour = useMemo(
+    () => (latest ? lastHourVerdict(history ?? [], connectionsHistory.data ?? [], Date.parse(latest.time)) : null),
+    [latest, history, connectionsHistory.data],
   )
 
   return (
     <div className="space-y-4">
-      <Verdict server={serverVerdict(latest, connected)} players={players && playersVerdict(players)} />
+      <Verdict server={serverVerdict(latest, connected)} players={players && playersVerdict(players)} lastHour={connected ? lastHour : null} />
 
       {latest && (
         <>
@@ -187,7 +186,7 @@ export function HealthPanel({ serverId, connected }: { serverId: string; connect
                   (summary.counts[s] > 0 || (summary.windows > 0 && s !== 'Loading' && s !== 'Stepped')) && (
                     <span key={s} className="flex items-center gap-1.5">
                       <span className={cn('inline-block size-2 shrink-0 rounded-full', statusColors[s])} />
-                      {summary.counts[s]} {s.toLowerCase()}
+                      {summary.counts[s]} {statusLabels[s].toLowerCase()}
                     </span>
                   ),
               )}
@@ -243,7 +242,7 @@ function serverVerdict(latest: ServerHealthWindow | null, connected: boolean): V
   const time = `Window of ${(latest.wallUs / 1_000_000).toFixed(1)} s received at ${clock(latest.time)}`
   switch (latest.status) {
     case 'Good':
-      return { level: 'good', title: 'Running smoothly', time }
+      return { level: 'good', title: 'The server runs smoothly', time }
     case 'Loading':
       return { level: 'info', title: 'A level is loading', detail: statusHelp.Loading, time }
     case 'Stepped':
@@ -273,17 +272,70 @@ function playersVerdict(players: PlayerConnection[]): VerdictLine | null {
   return { level, title: `${lines.join('; ')}.` }
 }
 
-function Verdict({ server, players }: { server: VerdictLine; players: VerdictLine | null }) {
-  const style = levelStyles[server.level]
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/**
+ * The hour up to the latest window in a sentence: the windows that were degraded or warned, and a player's packet loss
+ * or ping when it went over the tiles' limits. Null before there is a window in it.
+ */
+function lastHourVerdict(history: ServerHealthWindow[], connections: ServerConnections[], latestTime: number): VerdictLine | null {
+  const from = latestTime - 60 * 60_000
+  const windows = history.filter((w) => Date.parse(w.time) > from)
+  if (windows.length === 0) return null
+  const bad = windows.filter((w) => w.status === 'Bad').length
+  const warn = windows.filter((w) => w.status === 'Warn').length
+  // Players who joined during a window have too low figures, as in the charts
+  const readings = connections.filter((c) => Date.parse(c.time) > from).flatMap((c) => c.players.filter((p) => !p.partial))
+  const lossWorst = readings.reduce<PlayerConnection | null>((w, c) => (!w || lossOf(c) > lossOf(w) ? c : w), null)
+  const pingWorst = readings.reduce<PlayerConnection | null>((w, c) => (!w || c.ping > w.ping ? c : w), null)
+
+  let level: Level = bad > 0 ? 'bad' : warn > 0 ? 'warn' : 'good'
+  const parts: string[] = []
+  if (bad > 0) parts.push(plural(bad, 'degraded window'))
+  if (warn > 0) parts.push(`${plural(warn, 'window')} with warnings`)
+  if (lossWorst && lossOf(lossWorst) > limits.lossPercent.warn) {
+    const direction = lossWorst.lossToPlayerPercent >= lossWorst.lossFromPlayerPercent ? 'to' : 'from'
+    parts.push(`packet loss ${direction} ${playerName(lossWorst)} up to ${lossOf(lossWorst).toFixed(1)} %`)
+    level = worse(level, limitLevel(lossOf(lossWorst), limits.lossPercent))
+  }
+  if (pingWorst && pingWorst.ping > limits.pingMs.warn) {
+    parts.push(`ping of ${playerName(pingWorst)} up to ${pingWorst.ping} ms`)
+    level = worse(level, limitLevel(pingWorst.ping, limits.pingMs))
+  }
+  return parts.length > 0
+    ? { level, title: `${sentence(and.format(parts))}.`, detail: `Of ${plural(windows.length, 'window')}; the history below shows when.` }
+    : { level, title: 'No problems.', detail: `All ${plural(windows.length, 'window')} ran smoothly, and no player's connection went over the limits.` }
+}
+
+/**
+ * The verdict, split in now (the latest window and its connections) and the last hour, so that a problem a while ago
+ * does not read as one now, nor the other way round. The box takes the colour of now.
+ */
+function Verdict({ server, players, lastHour }: { server: VerdictLine; players: VerdictLine | null; lastHour: VerdictLine | null }) {
+  const now = players ? worse(server.level, players.level) : server.level
+  const style = levelStyles[now]
   return (
-    <div className={cn('flex items-start gap-3 rounded-xl border p-4', style.box)}>
-      <span className={cn('mt-2 size-3 shrink-0 rounded-full', style.dot)} aria-hidden />
-      <div className="min-w-0 space-y-1">
-        <p className={cn('text-xl leading-tight font-semibold', style.text)}>{server.title}</p>
-        {server.detail && <p className="text-sm">{server.detail}</p>}
-        {players && <p className={cn('text-sm font-medium', levelStyles[players.level].text)}>{players.title}</p>}
-        {server.time && <p className="text-xs text-muted-foreground">{server.time}</p>}
+    <div className={cn('grid gap-4 rounded-xl border p-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]', style.box)}>
+      <div className="flex min-w-0 items-start gap-3">
+        <span className={cn('mt-6 size-3 shrink-0 rounded-full', style.dot)} aria-hidden />
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Now</p>
+          <p className={cn('text-xl leading-tight font-semibold', levelStyles[server.level].text)}>{server.title}</p>
+          {server.detail && <p className="text-sm">{server.detail}</p>}
+          {players && <p className={cn('text-sm font-medium', levelStyles[players.level].text)}>{players.title}</p>}
+          {server.time && <p className="text-xs text-muted-foreground">{server.time}</p>}
+        </div>
       </div>
+      {lastHour && (
+        <div className="flex min-w-0 items-start gap-3 border-t border-foreground/10 pt-4 md:border-t-0 md:border-l md:pt-0 md:pl-4">
+          <span className={cn('mt-6 size-2.5 shrink-0 rounded-full', levelStyles[lastHour.level].dot)} aria-hidden />
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Last hour</p>
+            <p className={cn('font-medium', levelStyles[lastHour.level].text)}>{lastHour.title}</p>
+            {lastHour.detail && <p className="text-xs text-muted-foreground">{lastHour.detail}</p>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -403,7 +455,7 @@ function ConnectionStatus({ connection: c }: { connection: PlayerConnection }) {
   return (
     <Badge variant={c.status === 'Bad' ? 'destructive' : 'secondary'}>
       <span className={cn('inline-block size-2 shrink-0 rounded-full', statusColors[c.status])} />
-      {c.status}
+      {statusLabels[c.status]}
     </Badge>
   )
 }

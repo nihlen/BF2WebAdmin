@@ -56,6 +56,8 @@ const ids = {
   test: '198.51.100.21:16570',
   mayhem: '203.0.113.40:16570',
   public: '203.0.113.41:16570',
+  // The server the add-server shots add: not in the list, which the capture's fake hub event extends for one page only
+  added: '198.51.100.30:16570',
 }
 
 export const mainServerId = ids.heli1
@@ -489,6 +491,21 @@ const groupModules = (group: string) =>
       ? ['BF2Module', 'ChopperMayhemModule', 'FunModule', 'MapModule']
       : ['BF2Module', 'LogModule']
 
+/** The server the add-server shots add, as the hub reports it once it connects (scripts/ui-capture.mjs sends it) */
+const addedServer: S['ServerDto'] = {
+  id: ids.added,
+  name: '2v2 Heli | Dalian #3',
+  ipAddress: '198.51.100.30',
+  gamePort: 16570,
+  queryPort: 29900,
+  map: 'dalian_2_v_2',
+  players: 0,
+  maxPlayers: 16,
+  gameState: 'PreGame',
+  socketState: 'Connected',
+  serverGroup: '2v2',
+}
+
 const settings = (server: S['ServerDto']): S['ServerDataDto'] => ({
   serverId: server.id,
   serverGroup: server.serverGroup,
@@ -619,6 +636,12 @@ export function fixtureResponse(request: FixtureRequest): FixtureResponse {
   m = /^\/api\/servers\/([^/]+)(\/.*)?$/.exec(path)
   if (!m) return notFound
   const [, serverId, rest = ''] = m
+  // The added server's settings and its health (none yet), which its setup steps and the sidebar's health dot ask for once
+  // the fake hub has announced it
+  if (serverId === ids.added && scenario === 'default') {
+    if (rest === '/settings') return ok(settings(addedServer))
+    if (rest === '/health') return ok(healthFor(serverId, minutes))
+  }
   const server = list.find((s) => s.id === serverId)
   if (!server) return notFound
   const connected = server.socketState === 'Connected'

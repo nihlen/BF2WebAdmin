@@ -20,10 +20,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { PlayerPosition } from '@/hooks/use-server-live'
 import type { ServerActions } from '@/hooks/use-server-actions'
 import { authLevelName, authLevels, defaultAuthLevel } from '@/lib/auth-levels'
-import { connectionReasonsText, pingClass, statusColors } from '@/lib/health'
+import { connectionReasonsText, pingClass, statusColors, statusLabels } from '@/lib/health'
 import { teamTextColor } from '@/lib/teams'
 import { cn } from '@/lib/utils'
 
@@ -63,20 +64,15 @@ export function TeamTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className={cn('w-10', teamTextColor(team.id))}>{team.name}</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead className="text-center" title="Score">
-              S
+            {/* The team heads its players' names; the slot number is in the player sheet */}
+            <TableHead className={cn('pl-3 font-semibold', teamTextColor(team.id))}>
+              {team.name}
+              <span className="ml-1.5 font-normal text-muted-foreground tabular-nums">{players.length}</span>
             </TableHead>
-            <TableHead className="hidden text-center sm:table-cell" title="Kills">
-              K
-            </TableHead>
-            <TableHead className="hidden text-center sm:table-cell" title="Deaths">
-              D
-            </TableHead>
-            <TableHead className="text-center" title="Ping">
-              P
-            </TableHead>
+            <ColumnHead label="Score" short="S" />
+            <ColumnHead label="Kills" short="K" className="hidden sm:table-cell" />
+            <ColumnHead label="Deaths" short="D" className="hidden sm:table-cell" />
+            <ColumnHead label="Ping" short="P" />
             <TableHead className="w-px">
               <span className="sr-only">Actions</span>
             </TableHead>
@@ -85,7 +81,7 @@ export function TeamTable({
         <TableBody>
           {players.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="text-center text-muted-foreground">
+              <TableCell colSpan={6} className="text-center text-muted-foreground">
                 No players
               </TableCell>
             </TableRow>
@@ -96,8 +92,7 @@ export function TeamTable({
               const level = player.hash ? levels.get(player.hash) : undefined
               return (
                 <TableRow key={player.index}>
-                  <TableCell>{player.index}</TableCell>
-                  <TableCell className="max-w-0 w-full">
+                  <TableCell className="w-full max-w-0 pl-3">
                     <button
                       type="button"
                       className="flex max-w-full items-center gap-2 text-left hover:underline"
@@ -121,10 +116,10 @@ export function TeamTable({
                       )}
                     </button>
                   </TableCell>
-                  <TableCell className="text-center">{player.score.total}</TableCell>
-                  <TableCell className="hidden text-center sm:table-cell">{player.score.kills}</TableCell>
-                  <TableCell className="hidden text-center sm:table-cell">{player.score.deaths}</TableCell>
-                  <TableCell className="text-center">
+                  <TableCell className="text-right tabular-nums">{player.score.total}</TableCell>
+                  <TableCell className="hidden text-right tabular-nums sm:table-cell">{player.score.kills}</TableCell>
+                  <TableCell className="hidden text-right tabular-nums sm:table-cell">{player.score.deaths}</TableCell>
+                  <TableCell className="text-right">
                     <Ping ping={positions.current.get(player.index)?.ping ?? player.score.ping} connection={connections.get(player.index)} />
                   </TableCell>
                   <TableCell>
@@ -139,18 +134,42 @@ export function TeamTable({
   )
 }
 
+/** A column's name in full, or its first letter on a phone where four words do not fit; the title and screen readers have it whole. */
+function ColumnHead({ label, short, className }: { label: string; short: string; className?: string }) {
+  return (
+    <TableHead className={cn('text-right', className)} title={label}>
+      <span className="sm:hidden" aria-hidden>
+        {short}
+      </span>
+      <span className="max-sm:sr-only">{label}</span>
+    </TableHead>
+  )
+}
+
 /**
- * The ping, coloured when high, and a dot when the latest health window rated the connection Warn or Bad (loss, an
- * unsteady ping), with the reasons in its title.
+ * The ping, coloured when high. When the latest health window rated the connection Warn or Bad (loss, an unsteady
+ * ping), a dot before it opens a tooltip with the reasons, which a touch screen can show too.
  */
 function Ping({ ping, connection }: { ping: number; connection: PlayerConnection | undefined }) {
-  const troubled = connection && connection.status !== 'Good'
-  const title = [`Ping ${ping} ms`, troubled && `Connection ${connection.status}: ${connectionReasonsText(connection)}`].filter(Boolean).join('. ')
+  const value = <span className={cn('tabular-nums', pingClass(ping))}>{ping}</span>
+  if (!connection || connection.status === 'Good') return value
+
   return (
-    <span className={cn('inline-flex items-center gap-1 tabular-nums', pingClass(ping))} title={title}>
-      {troubled && <span className={cn('size-1.5 shrink-0 rounded-full', statusColors[connection.status])} aria-hidden />}
-      {ping}
-      {troubled && <span className="sr-only">, connection {connection.status}</span>}
+    <span className="inline-flex items-center gap-1">
+      <Tooltip>
+        <TooltipTrigger
+          render={<button type="button" />}
+          aria-label={`Connection ${statusLabels[connection.status]}: ${connectionReasonsText(connection)}`}
+          className="flex size-4 items-center justify-center rounded-full focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        >
+          <span className={cn('size-1.5 rounded-full', statusColors[connection.status])} />
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          Connection {statusLabels[connection.status].toLowerCase()}: {connectionReasonsText(connection)}. Ping {connection.pingMin}–{connection.pingMax}{' '}
+          ms, loss to / from {connection.lossToPlayerPercent.toFixed(1)} / {connection.lossFromPlayerPercent.toFixed(1)} % in the last 10 s.
+        </TooltipContent>
+      </Tooltip>
+      {value}
     </span>
   )
 }

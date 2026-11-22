@@ -191,13 +191,14 @@ function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="px-4 py-3 font-semibold text-primary">BF2 Web Admin</SidebarHeader>
-      <SidebarContent>
+      {/* The app's main navigation: a landmark, so a screen reader can jump to it and nothing in it is outside one */}
+      <SidebarContent role="navigation" aria-label="Servers">
         <SidebarGroup>
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton className={activeLink} render={<Link to="/" activeOptions={{ exact: true }} />}>
                 <LayoutDashboard />
-                Dashboard
+                Servers
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

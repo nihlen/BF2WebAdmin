@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Pause, Play, Radio } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Eye, Move3d, Orbit, Pause, Play, Radio, RadioTower, Tv } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, errorMessage, fetchClient, type MissileSummary } from '@/api/client'
 import { useHubEvent, useViewerSubscription } from '@/api/hub'
@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { LiveBuffer, TICK_RATE } from '@/viewer/buffer'
 import { isHelicopter } from '@/viewer/cameras'
@@ -58,6 +59,7 @@ export function ViewerPage() {
   const [effects, setEffects] = useState(true)
   const [hitboxes, setHitboxes] = useState(false)
   const missileRequest = useRef<number | null>(null)
+  const frameRate = useFrameRate(buffer)
 
   const map = snapshot.data?.server.map ?? ''
   const players = useMemo(() => snapshot.data?.players ?? [], [snapshot.data])
@@ -177,6 +179,9 @@ export function ViewerPage() {
   const teams = new Map(players.map((p) => [p.name, p.team]))
   const playerNames = new Map(players.map((p) => [p.index, p.name]))
   const outcomeOf = (m: MissileSummary) => missileOutcome(m, teams, playerNames)
+  // Nothing has come from the stream yet (or since the server restarted), and no missile replay is shown: the view
+  // would be an empty map, so it says why. The frame rate re-renders the page each second it changes
+  const waiting = frameRate === 0 && buffer.isEmpty && !selected
 
   // Desktop: the 3D view beside the panels, the timeline under both. Below lg one column: the view, the timeline under
   // it, then the panels
@@ -191,38 +196,44 @@ export function ViewerPage() {
         {selected && <MissileOverlay missile={selected} outcome={outcomeOf(selected)} playback={playback} onJump={() => scene?.seekImpact()} />}
         {selected && <Legend />}
         {!scene && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading the 3D view…</div>}
+        {scene && waiting && <WaitingForFrames connected={server.socketState === 'Connected'} players={players.length} />}
       </div>
 
       <aside className="flex min-w-0 flex-col gap-3 [grid-area:aside] lg:min-h-0 lg:overflow-hidden">
         <Card className="gap-2 p-3">
           <div className="text-sm font-medium">Camera</div>
-          <div className="grid grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2">
-            <CameraButton mode="free" current={cameraMode} onSelect={setCameraMode} label="Free" title="Fly freely: drag to look, WASD/QE to move (Shift faster, Alt slower)" />
+          <div role="radiogroup" aria-label="Camera" className="grid grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2">
+            <CameraButton mode="free" current={cameraMode} onSelect={setCameraMode} icon={Move3d} label="Free" title="Fly freely: drag to look, WASD/QE to move (Shift faster, Alt slower)" />
             <CameraButton
               mode="orbit"
               current={cameraMode}
               onSelect={setCameraMode}
+              icon={Orbit}
               label="Orbit"
               title="Circle the selected player, or the selected missile: drag to turn, wheel to zoom"
-              disabled={subject < 0 && !selected}
+              disabledReason={subject < 0 && !selected ? 'Pick a player or a TV missile first' : undefined}
             />
             <CameraButton
               mode="player"
               current={cameraMode}
               onSelect={setCameraMode}
+              icon={Eye}
               label="Player view"
               title="What the selected player's camera shows, live or at the timeline's tick: his view mode and camera as the server reports them every tick (the TV launcher, his TV missile; inferred when the server keeps him in the launcher)"
-              disabled={subject < 0}
+              disabledReason={subject < 0 ? 'Pick a player first' : undefined}
             />
             <CameraButton
               mode="missile"
               current={cameraMode}
               onSelect={setCameraMode}
+              icon={Tv}
               label="Missile TV"
               title="The selected missile's own TV camera, rebuilt from its recorded flight (a replay; no player needed)"
-              disabled={!selected}
+              disabledReason={!selected ? 'Pick a TV missile first' : undefined}
             />
           </div>
+          {/* Touch has no hover for the tooltips: the hint says what the greyed modes need */}
+          {subject < 0 && !selected && <p className="text-xs text-muted-foreground">Pick a player for Orbit and Player view, or a TV missile for Missile TV.</p>}
           <div className="max-h-48 space-y-0.5 overflow-y-auto">
             {players.length === 0 && <p className="text-xs text-muted-foreground">No players</p>}
             {players.map((p) => (
@@ -282,7 +293,7 @@ export function ViewerPage() {
       </aside>
 
       <div className="min-w-0 [grid-area:timeline]">
-        <Timeline scene={scene} playback={playback} buffer={buffer} onLive={() => selectMissile(null)} />
+        <Timeline scene={scene} playback={playback} frameRate={frameRate} onLive={() => selectMissile(null)} />
       </div>
     </div>
   )
@@ -300,30 +311,82 @@ function Toggle({ id, checked, onChange, label, title }: { id: string; checked: 
   )
 }
 
+/**
+ * A camera mode in the radio group, the active one filled. A mode that needs a pick says which in a tooltip; a disabled
+ * button gets no pointer events, so the tooltip hangs on a wrapper.
+ */
 function CameraButton({
   mode,
   current,
   onSelect,
+  icon: Icon,
   label,
   title,
-  disabled,
+  disabledReason,
 }: {
   mode: CameraMode
   current: CameraMode
   onSelect: (mode: CameraMode) => void
+  icon: React.ComponentType
   label: string
   title: string
-  disabled?: boolean
+  disabledReason?: string
 }) {
-  return (
-    <Button variant={mode === current ? 'default' : 'outline'} size="sm" title={title} disabled={disabled} onClick={() => onSelect(mode)}>
+  const active = mode === current
+  const button = (
+    <Button
+      role="radio"
+      aria-checked={active}
+      variant={active ? 'default' : 'outline'}
+      size="sm"
+      title={disabledReason ? undefined : title}
+      disabled={!!disabledReason}
+      className="w-full"
+      onClick={() => onSelect(mode)}
+    >
+      <Icon data-icon="inline-start" />
       {label}
     </Button>
   )
+  if (!disabledReason) return button
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span tabIndex={0} className="block rounded-md focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none" />}>
+        {button}
+      </TooltipTrigger>
+      <TooltipContent>{disabledReason}</TooltipContent>
+    </Tooltip>
+  )
 }
 
-/** Frames a second from the hub: 30 per stream while the server streams for the viewer */
-function FrameRate({ buffer }: { buffer: LiveBuffer }) {
+/**
+ * Over the 3D view while no frame has come: what the view shows, why it is empty, and that it starts by itself. Kept
+ * above the screenshot tool's WebGL cover (data-ui-capture-keep), as it is the state to look at.
+ */
+function WaitingForFrames({ connected, players }: { connected: boolean; players: number }) {
+  const why = !connected
+    ? 'The game server is not connected, so there is nothing to stream.'
+    : players === 0
+      ? 'Nobody is on the server, so there is nothing to show yet.'
+      : "None has come yet: the server's module may not send it, or has not started."
+  return (
+    <div data-ui-capture-keep className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50 p-4">
+      <div role="status" className="max-w-md space-y-2 rounded-lg border bg-background/95 p-4 text-sm shadow-lg">
+        <p className="flex items-center gap-2 font-medium">
+          <RadioTower className="size-4 text-muted-foreground" />
+          Waiting for live frames
+        </p>
+        <p className="text-muted-foreground">
+          The view draws the players, helicopters and TV missiles from the game server's 30 Hz position stream. {why} It starts by itself when
+          frames come; meanwhile, a TV missile from the list can be replayed.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/** Frames a second from the hub: 30 per stream while the server streams for the viewer, 0 while none arrive */
+function useFrameRate(buffer: LiveBuffer) {
   const [rate, setRate] = useState(0)
   useEffect(() => {
     let lastTick = buffer.lastTick
@@ -333,6 +396,10 @@ function FrameRate({ buffer }: { buffer: LiveBuffer }) {
     }, 1000)
     return () => clearInterval(timer)
   }, [buffer])
+  return rate
+}
+
+function FrameRate({ rate }: { rate: number }) {
   return (
     <Badge variant={rate > 0 ? 'secondary' : 'outline'} title="Server ticks received in the last second">
       {rate > 0 ? `${rate} ticks/s` : 'No live frames'}
@@ -606,13 +673,9 @@ function TimelineTrack({ scene, playback }: { scene: ViewerScene | null; playbac
   )
 }
 
-function Timeline({ scene, playback, buffer, onLive }: { scene: ViewerScene | null; playback: PlaybackState | null; buffer: LiveBuffer; onLive: () => void }) {
-  if (!playback)
-    return (
-      <div className="flex h-10 items-center">
-        <FrameRate buffer={buffer} />
-      </div>
-    )
+function Timeline({ scene, playback, frameRate, onLive }: { scene: ViewerScene | null; playback: PlaybackState | null; frameRate: number; onLive: () => void }) {
+  // Without frames or a missile there is nothing to play or scrub, and the view's own message says why
+  if (!playback || (playback.end <= playback.start && !playback.missile)) return null
   const speedItems = speeds.map((s) => ({ value: s, label: `${s}x` }))
   const { tick, start, end, playing, live, speed, missile } = playback
 
@@ -646,7 +709,7 @@ function Timeline({ scene, playback, buffer, onLive }: { scene: ViewerScene | nu
         Live
       </Button>
       {/* Beside Live, outside the 3D view: whether frames arrive is part of what Live means */}
-      <FrameRate buffer={buffer} />
+      <FrameRate rate={frameRate} />
       <Select items={speedItems} value={speed} onValueChange={(value) => value !== null && scene?.setSpeed(value)}>
         <SelectTrigger className="w-20" aria-label="Playback speed" title="Playback speed">
           <SelectValue />

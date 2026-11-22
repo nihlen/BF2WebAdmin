@@ -1,6 +1,7 @@
-import { CircleHelp } from 'lucide-react'
+import { CircleHelp, SquareTerminal } from 'lucide-react'
 import { useId, useState } from 'react'
 import type { ChatLogEntry, CommandInfo, Player, Team } from '@/api/client'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { teamTextColor } from '@/lib/teams'
@@ -14,6 +15,7 @@ export function ChatPanel({
   commands,
   onSend,
   onPlayer,
+  onCommands,
   listClassName = 'h-[500px]',
 }: {
   chatLog: ChatLogEntry[]
@@ -23,15 +25,17 @@ export function ChatPanel({
   onSend: (message: string) => void
   /** Opens a player's details from their name in the chat */
   onPlayer?: (player: Player) => void
+  /** Opens the command palette from a button beside the box */
+  onCommands?: () => void
   /** The list's size: a fixed height on the server page, the rest of a column in the map builder */
   listClassName?: string
 }) {
   return (
     <>
-      <LogList className={listClassName} items={chatLog} empty="No chat yet">
+      <LogList className={listClassName} items={chatLog} itemKey={(entry) => entry.message.id} empty="No chat yet">
         {(entry) => <ChatLine key={entry.message.id} entry={entry} players={players} teams={teams} onPlayer={onPlayer} />}
       </LogList>
-      <ChatInput players={players} commands={commands} onSend={onSend} />
+      <ChatInput players={players} commands={commands} onSend={onSend} onCommands={onCommands} />
     </>
   )
 }
@@ -119,7 +123,17 @@ function suggest(text: string, players: Player[], commands: CommandInfo[]): Sugg
 const chatHelp = 'A message is said in game. ".command" runs a chat command, "!command" an admin command, and "!" with a console line runs it on the server. ↑ and ↓ go through what you sent, Tab completes commands and player names.'
 
 /** One line: chat, ".command" or "!command" (an admin command or a console line). Up and down go through what was sent; Tab takes the selected suggestion. */
-function ChatInput({ players, commands, onSend }: { players: Player[]; commands: CommandInfo[]; onSend: (message: string) => void }) {
+function ChatInput({
+  players,
+  commands,
+  onSend,
+  onCommands,
+}: {
+  players: Player[]
+  commands: CommandInfo[]
+  onSend: (message: string) => void
+  onCommands?: () => void
+}) {
   const helpId = useId()
   const [text, setText] = useState('')
   const [history, setHistory] = useState<string[]>([])
@@ -144,7 +158,7 @@ function ChatInput({ players, commands, onSend }: { players: Player[]; commands:
 
   return (
     <form
-      className="relative border-t p-2"
+      className="relative flex gap-2 border-t p-2"
       onSubmit={(e) => {
         e.preventDefault()
         if (!text.trim()) return
@@ -176,65 +190,73 @@ function ChatInput({ players, commands, onSend }: { players: Player[]; commands:
       <p id={helpId} className="sr-only">
         {chatHelp}
       </p>
-      <Input
-        aria-label="Chat message or command"
-        placeholder="Message or .command"
-        aria-describedby={helpId}
-        className="pr-8"
-        value={text}
-        onChange={(e) => update(e.target.value)}
-        onBlur={() => setDismissed(true)}
-        onKeyDown={(e) => {
-          if (suggestions.length > 0) {
-            if (e.key === 'Tab') {
+      <div className="relative min-w-0 flex-1">
+        <Input
+          aria-label="Chat message or command"
+          placeholder="Message or .command"
+          aria-describedby={helpId}
+          className="pr-8"
+          value={text}
+          onChange={(e) => update(e.target.value)}
+          onBlur={() => setDismissed(true)}
+          onKeyDown={(e) => {
+            if (suggestions.length > 0) {
+              if (e.key === 'Tab') {
+                e.preventDefault()
+                accept(suggestions[active])
+                return
+              }
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setSelected((active + 1) % suggestions.length)
+                return
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setSelected((active - 1 + suggestions.length) % suggestions.length)
+                return
+              }
+              if (e.key === 'Escape') {
+                setDismissed(true)
+                return
+              }
+            }
+  
+            if (e.key === 'ArrowUp' && history.length > 0) {
               e.preventDefault()
-              accept(suggestions[active])
-              return
-            }
-            if (e.key === 'ArrowDown') {
-              e.preventDefault()
-              setSelected((active + 1) % suggestions.length)
-              return
-            }
-            if (e.key === 'ArrowUp') {
-              e.preventDefault()
-              setSelected((active - 1 + suggestions.length) % suggestions.length)
-              return
-            }
-            if (e.key === 'Escape') {
-              setDismissed(true)
-              return
-            }
-          }
-
-          if (e.key === 'ArrowUp' && history.length > 0) {
-            e.preventDefault()
-            const index = historyIndex === null ? history.length - 1 : Math.max(historyIndex - 1, 0)
-            setHistoryIndex(index)
-            setText(history[index])
-          } else if (e.key === 'ArrowDown' && historyIndex !== null) {
-            e.preventDefault()
-            const index = historyIndex + 1
-            if (index >= history.length) update('')
-            else {
+              const index = historyIndex === null ? history.length - 1 : Math.max(historyIndex - 1, 0)
               setHistoryIndex(index)
               setText(history[index])
+            } else if (e.key === 'ArrowDown' && historyIndex !== null) {
+              e.preventDefault()
+              const index = historyIndex + 1
+              if (index >= history.length) update('')
+              else {
+                setHistoryIndex(index)
+                setText(history[index])
+              }
             }
-          }
-        }}
-      />
-      <Tooltip>
-        <TooltipTrigger
-          render={<button type="button" />}
-          aria-label="What the chat box takes"
-          className="absolute top-1/2 right-4 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-        >
-          <CircleHelp className="size-4" />
-        </TooltipTrigger>
-        <TooltipContent side="top" align="end" className="max-w-sm">
-          {chatHelp}
-        </TooltipContent>
-      </Tooltip>
+          }}
+        />
+        <Tooltip>
+          <TooltipTrigger
+            render={<button type="button" />}
+            aria-label="What the chat box takes"
+            className="absolute top-1/2 right-2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            <CircleHelp className="size-4" />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="end" className="max-w-sm">
+            {chatHelp}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+      {onCommands && (
+        <Button type="button" variant="outline" onClick={onCommands} aria-label="Commands" title="Find and run a command (Ctrl+K)">
+          <SquareTerminal data-icon="inline-start" />
+          <span className="hidden sm:inline">Commands</span>
+        </Button>
+      )}
     </form>
   )
 }

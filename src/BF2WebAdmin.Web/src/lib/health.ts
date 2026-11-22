@@ -1,4 +1,4 @@
-import type { PlayerConnection, ServerHealthStatus, ServerHealthWindow } from '@/api/client'
+import type { PlayerConnection, ServerConnections, ServerHealth, ServerHealthStatus, ServerHealthWindow } from '@/api/client'
 
 // The health windows' and connections' ratings (WebAdmin's ServerHealthRules and PlayerConnectionRules) in words and
 // colours, the same on the Health tab, the server header's chip and the dashboard's and sidebar's dots
@@ -16,11 +16,11 @@ export const statusHelp: Partial<Record<ServerHealthStatus, string>> = {
   Stepped: 'Stepped time is on, so the tick figures do not describe a real-time server.',
 }
 
-/** The latest window's status in a word, for the server header's chip and the dashboard's and sidebar's dots. */
-export const chipLabels: Record<ServerHealthStatus, string> = {
+/** A status in a word, the same for a window, a connection and a server's overall health, wherever it shows. */
+export const statusLabels: Record<ServerHealthStatus, string> = {
   Good: 'Healthy',
   Warn: 'Warning',
-  Bad: 'Problems',
+  Bad: 'Degraded',
   Loading: 'Loading level',
   Stepped: 'Stepped time',
 }
@@ -60,15 +60,58 @@ const connectionReasons: Record<string, string> = {
   lowSendRate: 'sends at the low rate',
 }
 
-/** What the latest window says, in a sentence: its reasons with their figures, or that it ran smoothly. */
-export function healthTitle(latest: ServerHealthWindow) {
-  return latest.reasons.length > 0
-    ? `${sentence(reasonsText(latest))} in the window received at ${clock(latest.time)}`
-    : (statusHelp[latest.status] ?? `Running smoothly in the window received at ${clock(latest.time)}`)
-}
-
 /** A player's connection problems in words, such as "unsteady ping"; empty for a good connection. */
 export const connectionReasonsText = (c: PlayerConnection) => c.reasons.map((r) => connectionReasons[r] ?? r).join(', ')
+
+// The connections come right after their window; older ones are of a module that stopped sending them
+const connectionsMaxAgeMs = 15_000
+
+/** The players' connections of the latest window, or null when there are none or they are older than the window. */
+export function currentConnections(health: Pick<ServerHealth, 'latest' | 'connections'>): ServerConnections | null {
+  const { latest, connections } = health
+  if (!latest || !connections) return null
+  return Date.parse(latest.time) - Date.parse(connections.time) < connectionsMaxAgeMs ? connections : null
+}
+
+/** What is wrong with a player's connection, with its figure and the player's name ("packet loss to GhostRotor 5.5 %"). */
+function connectionProblem(c: PlayerConnection) {
+  const name = c.name ?? `player ${c.playerId}`
+  return c.reasons
+    .map((r) => {
+      switch (r) {
+        case 'lossToPlayer':
+          return `packet loss to ${name} ${c.lossToPlayerPercent.toFixed(1)} %`
+        case 'lossFromPlayer':
+          return `packet loss from ${name} ${c.lossFromPlayerPercent.toFixed(1)} %`
+        case 'pingSpread':
+          return `unsteady ping of ${name} (${c.pingMin}–${c.pingMax} ms)`
+        case 'lowSendRate':
+          return `${name} sends at the low rate`
+        default:
+          return `${name}: ${r}`
+      }
+    })
+    .join(', ')
+}
+
+const severity: Record<ServerHealthStatus, number> = { Bad: 3, Warn: 2, Good: 1, Loading: 0, Stepped: 0 }
+
+/**
+ * A server's health now in one status: the worse of the latest window and its players' connections, so that it is
+ * amber as soon as anything warns, and its reasons in a sentence for a tooltip. A window that is loading a level or in
+ * stepped time keeps its own status unless a connection is worse. Null without a window.
+ */
+export function overallHealth(health: Pick<ServerHealth, 'latest' | 'connections'> | undefined) {
+  const latest = health?.latest
+  if (!latest) return null
+  const troubled = (currentConnections(health)?.players ?? []).filter((p) => p.status !== 'Good')
+  const status = troubled.reduce<ServerHealthStatus>((s, p) => (severity[p.status] > severity[s] ? p.status : s), latest.status)
+  const problems = [...(latest.reasons.length > 0 ? [reasonsText(latest)] : []), ...troubled.map(connectionProblem)]
+  const reason = problems.length > 0 ? `${sentence(problems.join('; '))}.` : (statusHelp[latest.status] ?? 'Running smoothly.')
+  // Where a line has room for one problem only (the dashboard), the first and how many more; the title has them all
+  const summary = problems.length > 1 ? `${sentence(problems[0])}, and ${problems.length - 1} more.` : reason
+  return { status, label: statusLabels[status], reason, summary, title: `${statusLabels[status]}: ${reason} Window received at ${clock(latest.time)}.` }
+}
 
 /** A ping worth a look: amber over 100 ms, red over 200 ms. */
 export const pingClass = (ping: number) =>

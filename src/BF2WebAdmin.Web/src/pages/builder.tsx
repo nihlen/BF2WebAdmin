@@ -1,18 +1,21 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Crosshair, Loader2, MessageSquare, Move3d, RotateCw, Trash2, Undo2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Crosshair, Ellipsis, Loader2, MessageSquare, Move3d, PanelBottomOpen, RotateCw, Trash2, Undo2, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { toast } from 'sonner'
 import { api, ApiError, errorMessage, fetchClient } from '@/api/client'
 import { useHubEvent } from '@/api/hub'
-import { ConfirmButton } from '@/components/confirm-button'
+import { useConfirm } from '@/components/confirm-dialog'
 import { ChatPanel } from '@/components/server/chat-panel'
 import { useServerPage } from '@/components/server/server-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useServerActions } from '@/hooks/use-server-actions'
@@ -69,8 +72,13 @@ export function BuilderPage() {
   const [snap, setSnap] = useState(false)
   const [applying, setApplying] = useState(false)
   const [tab, setTab] = useState('objects')
-  const [chatOpen, setChatOpen] = useState(() => readChatOpen())
+  const [chatOpen, setChatOpen] = useState(() => readFlag(chatOpenKey))
   const [recent, setRecent] = useState(readRecent)
+  const [introDismissed, setIntroDismissed] = useState(() => readFlag(introKey))
+  // Below lg the panels are a bottom sheet over a full-height view; the sheet closes when something is placed or picked
+  const wide = useWide()
+  const [panelsOpen, setPanelsOpen] = useState(false)
+  const { confirm, dialog: confirmDialog } = useConfirm()
   const chatRef = useRef<HTMLDivElement>(null)
   const nextDraft = useRef(1)
   const actions = useServerActions(serverId, snapshot.data)
@@ -89,11 +97,7 @@ export function BuilderPage() {
     const open = !chatOpen
     setChatOpen(open)
     setSeenChat(chatLog.at(-1)?.message.id ?? '')
-    try {
-      localStorage.setItem(chatOpenKey, open ? '1' : '0')
-    } catch {
-      // Not remembered, that is all
-    }
+    writeFlag(chatOpenKey, open)
     // Below lg the chat opens under the 3D view, which may be off screen
     if (open) requestAnimationFrame(() => chatRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
   }
@@ -336,6 +340,7 @@ export function BuilderPage() {
       scene.cancelDragPlace()
       if (!position) return
       addDraft(spec, position, [0, 0, 0])
+      setPanelsOpen(false)
       scene.focusView()
     }
     const up = (ev: PointerEvent) => end(ev)
@@ -461,6 +466,17 @@ export function BuilderPage() {
     }
   }
 
+  const confirmClear = () =>
+    confirm({
+      title: `Clear all ${items.length} built item${items.length === 1 ? '' : 's'}?`,
+      description: builder?.canResync
+        ? `Every built object, spawn point and helipad on ${map} (${items.length}) is removed from the game. A saved layout can bring them back.`
+        : `This server can only clear by restarting the round: the ${items.length} built items are removed and the scores are put back afterwards.`,
+      confirmLabel: `Clear ${items.length}`,
+      destructive: true,
+      onConfirm: () => void clearAll(),
+    })
+
   const clearAll = async () => {
     try {
       const { data } = await fetchClient.POST('/api/servers/{serverId}/builder/clear', { params: { path: { serverId } } })
@@ -477,6 +493,46 @@ export function BuilderPage() {
   const selectedItem = sceneItemOf(selected)
   const selectedDraft = selected ? drafts.get(selected) : undefined
   const serverName = snapshot.data?.server.name ?? serverId
+  const dismissIntro = () => {
+    setIntroDismissed(true)
+    writeFlag(introKey, true)
+  }
+
+  const panels = (
+    <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="flex min-h-0 flex-1 flex-col">
+      <TabsList variant="line" className="w-full justify-start">
+        <TabsTrigger value="objects">Objects</TabsTrigger>
+        <TabsTrigger value="spawns">Spawns</TabsTrigger>
+        <TabsTrigger value="built">Built</TabsTrigger>
+        <TabsTrigger value="layouts">Layouts</TabsTrigger>
+      </TabsList>
+      <TabsContent value="objects" className="flex min-h-0 flex-1 flex-col">
+        <Palette
+          catalog={catalog}
+          levelCatalog={levelCatalog}
+          recent={recent}
+          checking={onLevel.isFetching}
+          error={onLevel.isError ? errorMessage(onLevel.error) : !connected && !onLevel.data ? 'The game server is not connected: which objects this map has is not known.' : null}
+          onRetry={() => void onLevel.refetch()}
+          onPress={(template, e) => beginPlace({ kind: 'Object', template, team: 0 }, e)}
+          onPlaceAhead={(template) => {
+            if (!scene) return
+            addDraft({ kind: 'Object', template, team: 0 }, scene.placeAhead({ kind: 'Object', template, team: 0 }), [0, 0, 0])
+            setPanelsOpen(false)
+          }}
+        />
+      </TabsContent>
+      <TabsContent value="spawns" className="min-h-0 flex-1 overflow-y-auto">
+        <SpawnsTab teamName={teamName} onPress={beginPlace} sceneItems={sceneItems} onSelect={(key) => { setSelected(key); setPanelsOpen(false) }} />
+      </TabsContent>
+      <TabsContent value="built" className="min-h-0 flex-1 overflow-y-auto">
+        <BuiltList items={sceneItems} selected={selected} onSelect={(key) => { setSelected(key); scene?.focus(key); setPanelsOpen(false) }} />
+      </TabsContent>
+      <TabsContent value="layouts" className="min-h-0 flex-1 overflow-y-auto">
+        <LayoutsTab serverId={serverId} state={builder} hasDrafts={drafts.size > 0} onLoaded={() => { setDrafts(new Map()); setSelected(null); setPanelsOpen(false) }} />
+      </TabsContent>
+    </Tabs>
+  )
 
   return (
     <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1">
@@ -506,9 +562,12 @@ export function BuilderPage() {
         </Button>
       </div>
 
-      {/* Desktop: the 3D view, the chat and the panels side by side. Below lg one column: the view, the chat, the panels */}
+      {!introDismissed && <BuilderIntro onDismiss={dismissIntro} />}
+
+      {/* Desktop: the 3D view, the chat and the panels side by side. Below lg one column: the view, the chat, then the
+          selection and Apply, with the panels in a bottom sheet */}
       <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1 lg:flex-row">
-        <div className="relative h-[min(55svh,30rem)] min-h-[280px] min-w-0 overflow-hidden rounded-lg border bg-black lg:h-auto lg:min-h-0 lg:flex-1">
+        <div className="relative h-[min(68svh,40rem)] min-h-[320px] min-w-0 overflow-hidden rounded-lg border bg-black lg:h-auto lg:min-h-0 lg:flex-1">
           <div ref={containerRef} className="absolute inset-0" />
           {!scene && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading the 3D view…</div>}
           <div className="pointer-events-none absolute top-2 left-2 hidden max-w-[calc(100%-14rem)] rounded bg-black/60 px-2 py-1 text-xs text-white/80 lg:block">
@@ -548,37 +607,26 @@ export function BuilderPage() {
         )}
 
         <aside className="flex min-w-0 flex-col gap-3 lg:w-80 lg:shrink-0 lg:overflow-hidden">
-          <Card className="h-[28rem] gap-2 p-3 lg:h-auto lg:min-h-0 lg:flex-1">
-            <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="flex min-h-0 flex-1 flex-col">
-              <TabsList variant="line" className="w-full justify-start">
-                <TabsTrigger value="objects">Objects</TabsTrigger>
-                <TabsTrigger value="spawns">Spawns</TabsTrigger>
-                <TabsTrigger value="built">Built</TabsTrigger>
-                <TabsTrigger value="layouts">Layouts</TabsTrigger>
-              </TabsList>
-              <TabsContent value="objects" className="flex min-h-0 flex-1 flex-col">
-                <Palette
-                  catalog={catalog}
-                  levelCatalog={levelCatalog}
-                  recent={recent}
-                  checking={onLevel.isFetching}
-                  error={onLevel.isError ? errorMessage(onLevel.error) : !connected && !onLevel.data ? 'The game server is not connected: which objects this map has is not known.' : null}
-                  onRetry={() => void onLevel.refetch()}
-                  onPress={(template, e) => beginPlace({ kind: 'Object', template, team: 0 }, e)}
-                  onPlaceAhead={(template) => scene && addDraft({ kind: 'Object', template, team: 0 }, scene.placeAhead({ kind: 'Object', template, team: 0 }), [0, 0, 0])}
-                />
-              </TabsContent>
-              <TabsContent value="spawns" className="min-h-0 flex-1 overflow-y-auto">
-                <SpawnsTab teamName={teamName} onPress={beginPlace} sceneItems={sceneItems} onSelect={setSelected} />
-              </TabsContent>
-              <TabsContent value="built" className="min-h-0 flex-1 overflow-y-auto">
-                <BuiltList items={sceneItems} selected={selected} onSelect={(key) => { setSelected(key); scene?.focus(key) }} />
-              </TabsContent>
-              <TabsContent value="layouts" className="min-h-0 flex-1 overflow-y-auto">
-                <LayoutsTab serverId={serverId} state={builder} hasDrafts={drafts.size > 0} onLoaded={() => { setDrafts(new Map()); setSelected(null) }} />
-              </TabsContent>
-            </Tabs>
-          </Card>
+          {wide ? (
+            <Card className="gap-2 p-3 lg:min-h-0 lg:flex-1">{panels}</Card>
+          ) : (
+            <>
+              <Button variant="outline" className="w-full justify-start" onClick={() => setPanelsOpen(true)}>
+                <PanelBottomOpen data-icon="inline-start" />
+                Objects, spawns and layouts
+                <span className="ml-auto text-xs font-normal text-muted-foreground tabular-nums">{items.length} built</span>
+              </Button>
+              <Sheet open={panelsOpen} onOpenChange={setPanelsOpen}>
+                <SheetContent side="bottom" className="gap-0 pb-[env(safe-area-inset-bottom)] data-[side=bottom]:h-[85svh]">
+                  <SheetHeader className="pb-1">
+                    <SheetTitle>Build on {map || 'the map'}</SheetTitle>
+                    <SheetDescription>What you place is a draft until you apply it.</SheetDescription>
+                  </SheetHeader>
+                  <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">{panels}</div>
+                </SheetContent>
+              </Sheet>
+            </>
+          )}
 
           {selectedItem && (
             <SelectionPanel
@@ -621,41 +669,84 @@ export function BuilderPage() {
                 <Undo2 />
                 Discard
               </Button>
+              {/* Clearing everything is rare and cannot be undone: out of the way, behind a confirmation that names the count */}
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label="More builder actions" title="More builder actions" />}>
+                  <Ellipsis />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-auto min-w-48">
+                  <DropdownMenuItem variant="destructive" disabled={items.length === 0} onClick={confirmClear}>
+                    <Trash2 />
+                    Clear all built ({items.length})…
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </Card>
-
-          {items.length > 0 && (
-            <ConfirmButton
-              title={`Clear all ${items.length} built item${items.length === 1 ? '' : 's'}?`}
-              description={
-                builder?.canResync
-                  ? `Every built object, spawn point and helipad on ${map} (${items.length}) is removed from the game. A saved layout can bring them back.`
-                  : `This server can only clear by restarting the round: the ${items.length} built items are removed and the scores are put back afterwards.`
-              }
-              confirmLabel={`Clear ${items.length}`}
-              onConfirm={() => void clearAll()}
-              variant="ghost"
-              className="self-start text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 />
-              Clear all built ({items.length})
-            </ConfirmButton>
-          )}
         </aside>
       </div>
+      {confirmDialog}
     </div>
   )
 }
 
 const chatOpenKey = 'builder.chatOpen'
+const introKey = 'builder.introDismissed'
 
-/** Whether the chat was open the last time, in this browser */
-function readChatOpen() {
+/** A yes/no remembered in this browser, such as whether the chat was open the last time */
+function readFlag(key: string) {
   try {
-    return localStorage.getItem(chatOpenKey) === '1'
+    return localStorage.getItem(key) === '1'
   } catch {
     return false
   }
+}
+
+function writeFlag(key: string, value: boolean) {
+  try {
+    localStorage.setItem(key, value ? '1' : '0')
+  } catch {
+    // Not remembered, that is all
+  }
+}
+
+const wideQuery = '(min-width: 64rem)'
+const subscribeWide = (onChange: () => void) => {
+  const query = window.matchMedia(wideQuery)
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
+/** Whether the page has the desktop layout (lg): the panels beside the view, not in a sheet */
+function useWide() {
+  return useSyncExternalStore(subscribeWide, () => window.matchMedia(wideQuery).matches)
+}
+
+/**
+ * The first visit's three sentences: what a draft is, what Apply does and what a layout is for. Hidden for good in this
+ * browser with its close button.
+ */
+function BuilderIntro({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <Card size="sm" className="relative gap-2 p-3 pr-10 text-sm">
+      <p className="font-medium">How building works</p>
+      <ol className="grid gap-x-6 gap-y-1 text-muted-foreground md:grid-cols-3">
+        <li>
+          <span className="font-medium text-foreground">1. Place.</span> Drag an object onto the map, or click it to put it mid-view. It is a draft
+          that only you see.
+        </li>
+        <li>
+          <span className="font-medium text-foreground">2. Apply.</span> Apply builds your drafts in the game, for every player on the server.
+        </li>
+        <li>
+          <span className="font-medium text-foreground">3. Save.</span> Save what is built as a layout under Layouts, to load it again on this map.
+        </li>
+      </ol>
+      <Button variant="ghost" size="icon-sm" className="absolute top-2 right-2" aria-label="Hide the introduction" title="Got it, hide this" onClick={onDismiss}>
+        <X />
+      </Button>
+    </Card>
+  )
 }
 
 // -------------------------------------------------------------------------------------------------------------------
@@ -698,6 +789,9 @@ function ResyncStatus({ state }: { state: BuilderState | undefined }) {
   )
 }
 
+const allCategories = 'all'
+const categoryItemLabel = (key: string) => (key === allCategories ? 'All categories' : categoryLabel(key))
+
 /** The object templates this map's level uses, to drag onto the map or click to put in the middle of the view */
 function Palette({
   catalog,
@@ -724,18 +818,22 @@ function Palette({
   const [bySize, setBySize] = useState(true)
   const [category, setCategory] = useState('')
   const [showGround, setShowGround] = useState(false)
-  // The chips, the biggest first
-  const categories = useMemo(() => {
+  // The categories with their counts, the biggest first, after All
+  const categoryItems = useMemo(() => {
     const counts = new Map<string, number>()
     for (const c of levelCatalog ?? []) counts.set(categoryKey(c.category), (counts.get(categoryKey(c.category)) ?? 0) + 1)
-    return [...counts.entries()].sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+    const sorted = [...counts.entries()].sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+    return [
+      { value: allCategories, label: `All categories (${levelCatalog?.length ?? 0})`, count: levelCatalog?.length ?? 0 },
+      ...sorted.map(([key, count]) => ({ value: key, label: `${categoryLabel(key)} (${count})`, count })),
+    ]
   }, [levelCatalog])
   const { shown, hidden } = useMemo(() => {
     const words = filter.toLowerCase().split(/\s+/).filter(Boolean)
     const matching = (levelCatalog ?? []).filter(
       (c) => (!category || categoryKey(c.category) === category) && words.every((w) => c.name.includes(w) || c.category.toLowerCase().includes(w)),
     )
-    // A chosen chip shows its objects, roads and water too
+    // A chosen category shows its objects, roads and water too
     const visible = showGround || category ? matching : matching.filter((c) => !isGroundOrWater(c))
     return { shown: visible.sort((a, b) => (bySize ? b.size - a.size : a.name.localeCompare(b.name))), hidden: matching.length - visible.length }
   }, [levelCatalog, filter, bySize, category, showGround])
@@ -772,16 +870,19 @@ function Palette({
       <p className="text-xs text-muted-foreground" title="Templates the level does not use can crash the game">
         The {levelCatalog.length} objects this map's level uses. Drag one onto the map, or click it to put it mid-view.
       </p>
-      <div role="group" aria-label="Category" className="flex flex-wrap gap-1">
-        <Chip pressed={!category} onClick={() => setCategory('')}>
-          All
-        </Chip>
-        {categories.map(([key, count]) => (
-          <Chip key={key} pressed={category === key} onClick={() => setCategory(category === key ? '' : key)} title={key}>
-            {categoryLabel(key)} <span className="text-muted-foreground tabular-nums">{count}</span>
-          </Chip>
-        ))}
-      </div>
+      <Select items={categoryItems} value={category || allCategories} onValueChange={(value) => setCategory(value === null || value === allCategories ? '' : value)}>
+        <SelectTrigger className="w-full" aria-label="Category">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {categoryItems.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              <span className="flex-1">{categoryItemLabel(item.value)}</span>
+              <span className="text-muted-foreground tabular-nums">{item.count}</span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
         <div role="group" aria-labelledby="palette-sort" className="flex items-center gap-1">
           <span id="palette-sort" className="mr-0.5 text-muted-foreground">
@@ -823,24 +924,6 @@ function Palette({
         )}
       </div>
     </div>
-  )
-}
-
-/** A small toggle in a row of filters */
-function Chip({ pressed, onClick, title, children }: { pressed: boolean; onClick: () => void; title?: string; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={pressed}
-      title={title}
-      onClick={onClick}
-      className={cn(
-        'inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs whitespace-nowrap transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
-        pressed && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 [&_span]:text-primary-foreground/70',
-      )}
-    >
-      {children}
-    </button>
   )
 }
 

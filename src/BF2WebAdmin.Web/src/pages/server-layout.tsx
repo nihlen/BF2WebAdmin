@@ -15,9 +15,18 @@ import { ServerPageContext, useServerPage } from '@/components/server/server-con
 import { SetupStrip } from '@/components/setup-checklist'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useIsMobile, useIsWide } from '@/hooks/use-mobile'
 import { useServerActions } from '@/hooks/use-server-actions'
 import { healthQuery, useServerLive } from '@/hooks/use-server-live'
 import { useServers } from '@/hooks/use-servers'
@@ -67,9 +76,9 @@ export function ServerLayout() {
         )}
       >
         {server && <title>{`BF2 Web Admin - ${server.name}`}</title>}
-        <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-3 max-md:flex-nowrap max-md:items-center">
           {server ? <ServerHeader server={server} /> : <Skeleton className="h-12 flex-1" />}
-          {server && <ServerActions server={server} snapshot={connected ? snapshot : undefined} />}
+          {server && <ServerActions server={server} snapshot={connected ? snapshot : undefined} onLive={onLive} />}
         </div>
         <ServerTabBar serverId={serverId} />
         {server && !setupElsewhere && <SetupStrip server={server} />}
@@ -100,9 +109,9 @@ function HubAlert() {
 }
 
 /**
- * The name, the status and the health on one line (the status wraps under a long name). On desktop a quiet second
- * line has the map, players, address and group; on a phone the address and group are in the "⋯" menu. The health chip
- * leads to the Health tab.
+ * The name, the status and the health on one line (on desktop the status wraps under a long name; on a phone the name
+ * truncates, as the app bar above has it whole). On desktop a quiet second line has the map, players, address and
+ * group; on a phone the address and group are in the actions menu. The health chip leads to the Health tab.
  */
 function ServerHeader({ server }: { server: Server }) {
   const { serverId } = useServerPage()
@@ -114,8 +123,8 @@ function ServerHeader({ server }: { server: Server }) {
 
   return (
     <header className="min-w-0 flex-[1_1_18rem] space-y-1">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-        <h1 className="max-w-full truncate text-xl font-semibold sm:text-2xl" title={server.name}>
+      <div className="flex min-w-0 items-center gap-x-3 gap-y-1 max-sm:gap-x-2 md:flex-wrap">
+        <h1 className="max-w-full min-w-0 truncate text-lg font-semibold sm:text-2xl" title={server.name}>
           {server.name}
         </h1>
         <span className="flex shrink-0 items-center gap-2 text-sm">
@@ -131,7 +140,7 @@ function ServerHeader({ server }: { server: Server }) {
               title="Open the Health tab"
               className="group/health inline-flex items-center rounded-full pr-1 transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
             >
-              <HealthChip serverId={serverId} connected={connected} />
+              <HealthChip serverId={serverId} connected={connected} compact />
               <ChevronRight aria-hidden className="size-3.5 text-muted-foreground group-hover/health:text-foreground" />
             </Link>
           )}
@@ -159,22 +168,26 @@ function ServerHeader({ server }: { server: Server }) {
 }
 
 /**
- * The round and server actions, the same on every tab and at every width, so they are always in the same place: a
- * split button, Restart round… with Pause or Resume and Change map… in its menu, and a "⋯" button with the server
- * actions: Settings, Copy address, the group's page and, apart at the end, Restart server, which disconnects everyone.
- * The round actions and Restart server need the connection (the snapshot is given then); the rest are there while
- * offline too. Every action shows its progress until the game confirms it.
+ * The round and server actions, in the same place on every tab. From md up: a split button, Restart round… with Pause
+ * or Resume and Change map… in its menu, and a "⋯" button with the server actions: Settings, Copy address, the group's
+ * page and, apart at the end, Restart server, which disconnects everyone. On desktop Live, where there is room, Pause
+ * or Resume is a button of its own before them (the header keeps its height). On a phone all of them are one "⋯" menu
+ * beside the name, so the header is one line. The round actions and Restart server need the connection (the snapshot
+ * is given then); the rest are there while offline too. Every action shows its progress until the game confirms it.
  */
-function ServerActions({ server, snapshot }: { server: Server; snapshot: ServerSnapshot | undefined }) {
+function ServerActions({ server, snapshot, onLive }: { server: Server; snapshot: ServerSnapshot | undefined; onLive: boolean }) {
   const { serverId } = useServerPage()
   const actions = useServerActions(serverId, snapshot)
   const { confirm, dialog } = useConfirm()
   const pending = usePendingActions(serverId)
+  const mobile = useIsMobile()
+  const wide = useIsWide()
   const [mapsOpen, setMapsOpen] = useState(false)
   const params = { serverId: encodeServerId(serverId) }
   const address = `${server.ipAddress}:${server.gamePort}`
   const players = snapshot?.players.length ?? 0
   const paused = snapshot?.server.gameState === 'Paused'
+  const pauseApart = onLive && wide
   const playersText = players === 0 ? 'No players are online.' : `${players} ${players === 1 ? 'player is' : 'players are'} online.`
 
   // A key ending in a colon stands for all of its kind, such as map: for a change to any map
@@ -206,8 +219,90 @@ function ServerActions({ server, snapshot }: { server: Server; snapshot: ServerS
       () => toast.error('Could not copy the address'),
     )
 
+  const pauseItem = (
+    <DropdownMenuItem disabled={busy('pause')} onClick={() => void actions.togglePause()}>
+      {paused ? <Play /> : <Pause />}
+      {paused ? 'Resume' : 'Pause'}
+    </DropdownMenuItem>
+  )
+  const changeMapItem = (
+    <DropdownMenuItem onClick={() => setMapsOpen(true)}>
+      <MapIcon />
+      Change map…
+    </DropdownMenuItem>
+  )
+  const serverItems = (
+    <>
+      <DropdownMenuItem render={<Link to="/server/$serverId/edit" params={params} />}>
+        <Settings />
+        Settings
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => void copyAddress()}>
+        <Copy />
+        Copy {address}
+      </DropdownMenuItem>
+      <DropdownMenuItem render={<Link to="/servergroup/$serverGroup" params={{ serverGroup: server.serverGroup }} />}>
+        <Settings2 />
+        Group {server.serverGroup} page
+      </DropdownMenuItem>
+      {snapshot && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" disabled={busy('restart-server')} onClick={restartServer}>
+            <Power />
+            Restart server…
+          </DropdownMenuItem>
+        </>
+      )}
+    </>
+  )
+  const dialogs = (
+    <>
+      {snapshot && <ChangeMapDialog open={mapsOpen} onOpenChange={setMapsOpen} serverId={serverId} snapshot={snapshot} actions={actions} />}
+      {dialog}
+    </>
+  )
+
+  if (mobile)
+    return (
+      <div className="shrink-0">
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label={snapshot ? 'Round and server actions' : 'Server actions'} />}>
+            {busy('restart-map', 'pause', 'next-map', 'map:', 'restart-server') ? <Loader2 className="animate-spin" /> : <Ellipsis />}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-auto min-w-52">
+            {snapshot && (
+              <>
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Round</DropdownMenuLabel>
+                  <DropdownMenuItem disabled={busy('restart-map')} onClick={restartRound}>
+                    <RotateCcw />
+                    Restart round…
+                  </DropdownMenuItem>
+                  {pauseItem}
+                  {changeMapItem}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Server</DropdownMenuLabel>
+              {serverItems}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {dialogs}
+      </div>
+    )
+
   return (
     <div className="flex shrink-0 items-center gap-1.5">
+      {snapshot && pauseApart && (
+        <Button variant="outline" disabled={busy('pause')} onClick={() => void actions.togglePause()}>
+          {busy('pause') ? <Loader2 data-icon="inline-start" className="animate-spin" /> : paused ? <Play data-icon="inline-start" /> : <Pause data-icon="inline-start" />}
+          {paused ? 'Resume' : 'Pause'}
+        </Button>
+      )}
       {snapshot && (
         <div className="flex" role="group" aria-label="Round actions">
           <Button variant="outline" className="rounded-r-none" disabled={busy('restart-map')} onClick={restartRound}>
@@ -216,19 +311,20 @@ function ServerActions({ server, snapshot }: { server: Server; snapshot: ServerS
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger
-              render={<Button variant="outline" size="icon" className="-ml-px rounded-l-none" aria-label={paused ? 'More round actions: resume, change map' : 'More round actions: pause, change map'} />}
+              render={
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="-ml-px rounded-l-none"
+                  aria-label={pauseApart ? 'More round actions: change map' : paused ? 'More round actions: resume, change map' : 'More round actions: pause, change map'}
+                />
+              }
             >
-              {busy('pause', 'next-map', 'map:') ? <Loader2 className="animate-spin" /> : <ChevronDown />}
+              {busy(...(pauseApart ? [] : ['pause']), 'next-map', 'map:') ? <Loader2 className="animate-spin" /> : <ChevronDown />}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-auto min-w-44">
-              <DropdownMenuItem disabled={busy('pause')} onClick={() => void actions.togglePause()}>
-                {paused ? <Play /> : <Pause />}
-                {paused ? 'Resume' : 'Pause'}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMapsOpen(true)}>
-                <MapIcon />
-                Change map…
-              </DropdownMenuItem>
+              {!pauseApart && pauseItem}
+              {changeMapItem}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -242,32 +338,10 @@ function ServerActions({ server, snapshot }: { server: Server; snapshot: ServerS
           <TooltipContent side="bottom">Server actions</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end" className="w-auto min-w-52">
-          <DropdownMenuItem render={<Link to="/server/$serverId/edit" params={params} />}>
-            <Settings />
-            Settings
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void copyAddress()}>
-            <Copy />
-            Copy {address}
-          </DropdownMenuItem>
-          <DropdownMenuItem render={<Link to="/servergroup/$serverGroup" params={{ serverGroup: server.serverGroup }} />}>
-            <Settings2 />
-            Group {server.serverGroup} page
-          </DropdownMenuItem>
-          {snapshot && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" disabled={busy('restart-server')} onClick={restartServer}>
-                <Power />
-                Restart server…
-              </DropdownMenuItem>
-            </>
-          )}
+          {serverItems}
         </DropdownMenuContent>
       </DropdownMenu>
-
-      {snapshot && <ChangeMapDialog open={mapsOpen} onOpenChange={setMapsOpen} serverId={serverId} snapshot={snapshot} actions={actions} />}
-      {dialog}
+      {dialogs}
     </div>
   )
 }

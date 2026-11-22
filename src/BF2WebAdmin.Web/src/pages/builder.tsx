@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleHelp, Crosshair, Ellipsis, Loader2, MessageSquare, Move3d, PanelBottomOpen, RotateCw, Save, Trash2, Undo2, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, ApiError, errorMessage, fetchClient } from '@/api/client'
 import { useHubEvent } from '@/api/hub'
@@ -19,6 +19,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Segmented } from '@/components/toggles'
+import { useIsWide } from '@/hooks/use-mobile'
 import { useServerActions } from '@/hooks/use-server-actions'
 import { normalizeDegrees, type Vec } from '@/builder/coords'
 import { BUILDER_CAMERA_KEYS, FLY_WHILE_LOOKING } from '@/builder/keys'
@@ -77,7 +78,7 @@ export function BuilderPage() {
   const [recent, setRecent] = useState(readRecent)
   const [introDismissed, setIntroDismissed] = useState(() => readFlag(introKey))
   // Below lg the panels are a bottom sheet over a full-height view; the sheet closes when something is placed or picked
-  const wide = useWide()
+  const wide = useIsWide()
   const [panelsOpen, setPanelsOpen] = useState(false)
   const { confirm, dialog: confirmDialog } = useConfirm()
   const chatRef = useRef<HTMLDivElement>(null)
@@ -547,19 +548,30 @@ export function BuilderPage() {
     <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1">
       <title>{`BF2 Web Admin - ${serverName} - Map builder`}</title>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {builder && !builder.connected && <Badge variant="destructive">Not connected</Badge>}
-        {builder?.layoutName && <Badge variant="outline">Layout: {builder.layoutName}</Badge>}
-        <Badge variant="secondary">{items.length} built</Badge>
-        {builder && !builder.canResync && (
-          <Badge variant="outline" title="The server's module has no ResyncClient: objects and helipads cannot be moved or removed without a round restart (Clear restarts the round)">
-            Add only
-          </Badge>
-        )}
-        <ResyncStatus state={builder} />
-        <Button className="ml-auto" variant="outline" size="sm" title="Save what is built as a layout of this map, to load again" onClick={openSaveLayout}>
+      {/* One row at every width: on a phone the layout's name truncates, and the buttons and the reload status are
+          icons with their words for screen readers and in their titles */}
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:flex-wrap">
+          {builder && !builder.connected && <Badge variant="destructive">Not connected</Badge>}
+          {builder?.layoutName && (
+            <Badge variant="outline" className="min-w-0 shrink justify-start" title={`Layout: ${builder.layoutName}`}>
+              <span className="truncate">
+                <span className="max-sm:sr-only">Layout: </span>
+                {builder.layoutName}
+              </span>
+            </Badge>
+          )}
+          <Badge variant="secondary">{items.length} built</Badge>
+          {builder && !builder.canResync && (
+            <Badge variant="outline" title="The server's module has no ResyncClient: objects and helipads cannot be moved or removed without a round restart (Clear restarts the round)">
+              Add only
+            </Badge>
+          )}
+          <ResyncStatus state={builder} />
+        </div>
+        <Button variant="outline" size="sm" className="max-sm:w-7 max-sm:px-0" title="Save what is built as a layout of this map, to load again" onClick={openSaveLayout}>
           <Save />
-          Save layout
+          <span className="max-sm:sr-only">Save layout</span>
         </Button>
         <Button
           variant={introDismissed ? 'ghost' : 'secondary'}
@@ -574,12 +586,13 @@ export function BuilderPage() {
         <Button
           variant={chatOpen ? 'default' : 'outline'}
           size="sm"
+          className="max-sm:px-1.5"
           aria-expanded={chatOpen}
           title="Show the server's chat beside the 3D view (under it on a narrow screen), to read and write while building"
           onClick={toggleChat}
         >
           <MessageSquare />
-          Chat
+          <span className="max-sm:sr-only">Chat</span>
           {unread > 0 && <Badge variant="secondary">{unread}</Badge>}
         </Button>
       </div>
@@ -736,18 +749,6 @@ function writeFlag(key: string, value: boolean) {
   }
 }
 
-const wideQuery = '(min-width: 64rem)'
-const subscribeWide = (onChange: () => void) => {
-  const query = window.matchMedia(wideQuery)
-  query.addEventListener('change', onChange)
-  return () => query.removeEventListener('change', onChange)
-}
-
-/** Whether the page has the desktop layout (lg): the panels beside the view, not in a sheet */
-function useWide() {
-  return useSyncExternalStore(subscribeWide, () => window.matchMedia(wideQuery).matches)
-}
-
 /**
  * The first visit's three steps: what a draft is, what Apply does and what a layout is for. A small card in the 3D
  * view's bottom corner, a line a step, so it covers little of the map and the view keeps its height. Closing it hides it
@@ -801,7 +802,12 @@ function ResyncStatus({ state }: { state: BuilderState | undefined }) {
         }
       >
         <Loader2 className="animate-spin" />
-        Reloading objects for {count} player{count === 1 ? '' : 's'}
+        <span className="max-sm:sr-only">
+          Reloading objects for {count} player{count === 1 ? '' : 's'}
+        </span>
+        <span aria-hidden className="sm:hidden">
+          {count}
+        </span>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="start" className="block max-w-sm space-y-1.5">
         <p>

@@ -1,5 +1,5 @@
-import { MoreVertical, ShieldCheck, Skull } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ChevronDown, MoreVertical, ShieldCheck, Skull } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import type { Player, PlayerConnection, Team } from '@/api/client'
 import type { ModerationKind } from '@/components/server/moderation-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -40,6 +40,7 @@ export function TeamTable({
   actions,
   onModerate,
   onDetails,
+  fill,
   className,
 }: {
   team: Team
@@ -52,7 +53,11 @@ export function TeamTable({
   actions: ServerActions
   onModerate: (kind: ModerationKind, player: Player) => void
   onDetails: (player: Player) => void
-  /** Such as a height limit, within which the card scrolls */
+  /**
+   * From lg up the card is given a height (Live's grid) instead of taking its own: the rows are compact there, and a
+   * team longer than the height scrolls in the card, with a fade and a count of the players below it.
+   */
+  fill?: boolean
   className?: string
 }) {
   // Pings arrive with the positions, which do not re-render: read them once a second
@@ -61,83 +66,132 @@ export function TeamTable({
     const timer = setInterval(() => setTick((t) => t + 1), 1000)
     return () => clearInterval(timer)
   }, [])
+  const { ref: scroller, below, toEnd } = useRowsBelow(players.length)
 
-  return (
-    <Card className={cn('py-0', className)}>
-      <Table>
-        <TableHeader>
+  const table = (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {/* The team heads its players' names; the slot number is in the player sheet */}
+          <TableHead className={cn('pl-3 font-semibold', teamTextColor(team.id))}>
+            {team.name}
+            <span className="ml-1.5 font-normal text-muted-foreground tabular-nums">{players.length}</span>
+          </TableHead>
+          <ColumnHead label="Score" short="S" />
+          <ColumnHead label="Kills" short="K" className="hidden sm:table-cell" />
+          <ColumnHead label="Deaths" short="D" className="hidden sm:table-cell" />
+          <ColumnHead label="Ping" short="P" />
+          <TableHead className="w-px">
+            <span className="sr-only">Actions</span>
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {players.length === 0 && (
           <TableRow>
-            {/* The team heads its players' names; the slot number is in the player sheet */}
-            <TableHead className={cn('pl-3 font-semibold', teamTextColor(team.id))}>
-              {team.name}
-              <span className="ml-1.5 font-normal text-muted-foreground tabular-nums">{players.length}</span>
-            </TableHead>
-            <ColumnHead label="Score" short="S" />
-            <ColumnHead label="Kills" short="K" className="hidden sm:table-cell" />
-            <ColumnHead label="Deaths" short="D" className="hidden sm:table-cell" />
-            <ColumnHead label="Ping" short="P" />
-            <TableHead className="w-px">
-              <span className="sr-only">Actions</span>
-            </TableHead>
+            <TableCell colSpan={6} className="text-center text-muted-foreground">
+              No players on this team.
+            </TableCell>
           </TableRow>
-        </TableHeader>
-        <TableBody>
-          {players.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
-                No players on this team.
-              </TableCell>
-            </TableRow>
-          )}
-          {[...players]
-            .sort((a, b) => b.score.total - a.score.total)
-            .map((player) => {
-              const level = player.hash ? levels.get(player.hash) : undefined
-              return (
-                <TableRow key={player.index} className="group/row">
-                  <TableCell className="w-full max-w-0 pl-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="flex min-w-0 items-center gap-2 text-left hover:underline"
-                        onClick={() => onDetails(player)}
-                        title="Player details"
-                      >
-                        {player.country && <span className={`fi fi-${player.country.toLowerCase()} shrink-0`} title={player.country} />}
-                        <span className="truncate">{player.name}</span>
-                        {/* Dead is a moment of the round, not a reason to grey out the name the admin is looking for */}
-                        {!player.isAlive && (
-                          <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground" title="Dead, waiting to respawn">
-                            <Skull className="size-3.5" />
-                            dead
-                          </span>
-                        )}
-                        {level !== undefined && level > defaultAuthLevel && (
-                          <Badge variant="outline" className="shrink-0" title={`Auth level ${level}`}>
-                            <ShieldCheck data-icon="inline-start" />
-                            {authLevelName(level)}
-                          </Badge>
-                        )}
-                      </button>
-                      <QuickActions player={player} onModerate={onModerate} />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{player.score.total}</TableCell>
-                  <TableCell className="hidden text-right tabular-nums sm:table-cell">{player.score.kills}</TableCell>
-                  <TableCell className="hidden text-right tabular-nums sm:table-cell">{player.score.deaths}</TableCell>
-                  <TableCell className="text-right">
-                    <Ping ping={positions.current.get(player.index)?.ping ?? player.score.ping} connection={connections.get(player.index)} />
-                  </TableCell>
-                  <TableCell>
-                    <PlayerMenu player={player} level={level} serverGroup={serverGroup} actions={actions} onModerate={onModerate} onDetails={onDetails} />
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-        </TableBody>
-      </Table>
+        )}
+        {[...players]
+          .sort((a, b) => b.score.total - a.score.total)
+          .map((player) => {
+            const level = player.hash ? levels.get(player.hash) : undefined
+            return (
+              <TableRow key={player.index} className="group/row">
+                <TableCell className="w-full max-w-0 pl-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="flex min-w-0 items-center gap-2 text-left hover:underline"
+                      onClick={() => onDetails(player)}
+                      title="Player details"
+                    >
+                      {player.country && <span className={`fi fi-${player.country.toLowerCase()} shrink-0`} title={player.country} />}
+                      <span className="truncate">{player.name}</span>
+                      {/* Dead is a moment of the round, not a reason to grey out the name the admin is looking for */}
+                      {!player.isAlive && (
+                        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground" title="Dead, waiting to respawn">
+                          <Skull className="size-3.5" />
+                          dead
+                        </span>
+                      )}
+                      {level !== undefined && level > defaultAuthLevel && (
+                        <Badge variant="outline" className="shrink-0" title={`Auth level ${level}`}>
+                          <ShieldCheck data-icon="inline-start" />
+                          {authLevelName(level)}
+                        </Badge>
+                      )}
+                    </button>
+                    <QuickActions player={player} onModerate={onModerate} />
+                  </div>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{player.score.total}</TableCell>
+                <TableCell className="hidden text-right tabular-nums sm:table-cell">{player.score.kills}</TableCell>
+                <TableCell className="hidden text-right tabular-nums sm:table-cell">{player.score.deaths}</TableCell>
+                <TableCell className="text-right">
+                  <Ping ping={positions.current.get(player.index)?.ping ?? player.score.ping} connection={connections.get(player.index)} />
+                </TableCell>
+                <TableCell>
+                  <PlayerMenu player={player} level={level} serverGroup={serverGroup} actions={actions} onModerate={onModerate} onDetails={onDetails} />
+                </TableCell>
+              </TableRow>
+            )
+          })}
+      </TableBody>
+    </Table>
+  )
+
+  if (!fill) return <Card className={cn('py-0', className)}>{table}</Card>
+  return (
+    <Card className={cn('relative gap-0 py-0 lg:min-h-0 lg:[&_td]:py-1 lg:[&_th]:h-9', className)}>
+      <div ref={scroller} className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+        {table}
+      </div>
+      {below > 0 && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-14 items-end justify-center bg-linear-to-t from-card from-40% to-transparent pb-2">
+          <button
+            type="button"
+            onClick={toEnd}
+            className="pointer-events-auto inline-flex items-center gap-1 rounded-full border bg-card px-2.5 py-0.5 text-xs font-medium shadow-sm hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            +{below} more
+            <ChevronDown aria-hidden className="size-3.5" />
+          </button>
+        </div>
+      )}
     </Card>
   )
+}
+
+/**
+ * How many rows of a scrolling table are below its visible part, whole or in part, kept current as it scrolls, resizes
+ * or gets rows; and a way to scroll to its end.
+ */
+function useRowsBelow(rows: number) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [below, setBelow] = useState(0)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const count = () => {
+      const bottom = el.getBoundingClientRect().bottom
+      setBelow([...el.querySelectorAll('tbody tr')].filter((row) => row.getBoundingClientRect().bottom > bottom + 1).length)
+    }
+    count()
+    const observer = new ResizeObserver(count)
+    observer.observe(el)
+    el.addEventListener('scroll', count, { passive: true })
+    return () => {
+      observer.disconnect()
+      el.removeEventListener('scroll', count)
+    }
+  }, [rows])
+
+  const toEnd = () => ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: 'smooth' })
+  return { ref, below, toEnd }
 }
 
 /** A column's name in full, or its first letter on a phone where four words do not fit; the title and screen readers have it whole. */

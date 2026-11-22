@@ -12,6 +12,7 @@ import { useServerPage } from '@/components/server/server-context'
 import { ModulesForm } from '@/components/group/modules-form'
 import { PlayerAuthList } from '@/components/group/player-auth-list'
 import { SetupChecklist, SetupStepsSection } from '@/components/setup-checklist'
+import { StepBar } from '@/components/step-bar'
 import { Chip, Segmented } from '@/components/toggles'
 import {
   AlertDialog,
@@ -24,7 +25,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -69,15 +70,21 @@ type AddStep = (typeof addSteps)[number]
  * Adding a server, in the steps the setup checklist names: its details, connecting the game server, its group's modules
  * and a first admin, then where to go. The steps after the first are states of this page, not pages of their own: the
  * connect step needs the key the form just generated, which it has here without fetching it again. Connecting can be
- * skipped (the modules and admins do not need it), and so can the modules and admins. The Discord bot stays in the
- * server's settings: it is optional. When the owner leaves, the server's Live tab shows the connect card until the
- * server connects.
+ * skipped (the modules and admins do not need it), and so can the modules and admins; a group that has both lets the
+ * flow finish once connected. The Discord bot stays in the server's settings: it is optional. When the owner leaves,
+ * the server's Live tab shows the connect card until the server connects.
+ *
+ * Back goes to the step the owner came from, so it undoes a Finish too; never to the first step, as the server is
+ * saved by then (its settings are the place to change it).
  */
 export function ServerAddPage() {
   // The key is generated when the page opens, so the owner has nothing to make up
   const [initial] = useState<ServerSettings>(() => ({ ...newServer, adminKey: generateKey() }))
   const [added, setAdded] = useState<ServerSettings | null>(null)
-  const [step, setStep] = useState<AddStep>('Server')
+  const [trail, setTrail] = useState<AddStep[]>(['Server'])
+  const step = trail[trail.length - 1]
+  const go = (next: AddStep) => setTrail((t) => [...t, next])
+  const back = trail.length > 2 ? () => setTrail((t) => t.slice(0, -1)) : undefined
 
   const intro: Record<AddStep, string> = {
     Server: 'A game server that runs OpenBF2 with the server extension. After you add it here, the next step gives the lines for its configuration.',
@@ -100,17 +107,23 @@ export function ServerAddPage() {
           initial={initial}
           onCreated={(settings) => {
             setAdded(settings)
-            setStep('Connect')
+            go('Connect')
           }}
         />
       ) : step === 'Connect' ? (
-        <NewServerConnect serverId={added.serverId} address={`${added.ipAddress}:${added.gamePort}`} adminKey={added.adminKey} onContinue={() => setStep('Modules')} />
+        <NewServerConnect
+          serverId={added.serverId}
+          address={`${added.ipAddress}:${added.gamePort}`}
+          adminKey={added.adminKey}
+          onContinue={() => go('Modules')}
+          onFinish={() => go('Done')}
+        />
       ) : step === 'Modules' ? (
-        <AddModulesStep added={added} onContinue={() => setStep('Admins')} />
+        <AddModulesStep added={added} onBack={back} onContinue={() => go('Admins')} />
       ) : step === 'Admins' ? (
-        <AddAdminsStep serverGroup={added.serverGroup} onContinue={() => setStep('Done')} />
+        <AddAdminsStep serverGroup={added.serverGroup} onBack={back} onContinue={() => go('Done')} />
       ) : (
-        <AddDoneStep added={added} />
+        <AddDoneStep added={added} onBack={back} />
       )}
     </div>
   )
@@ -155,7 +168,7 @@ const kindOptions = [
  * (guessed from the group's name or the server's map): all but the Discord bot, which needs a token from the server's
  * settings first.
  */
-function AddModulesStep({ added, onContinue }: { added: ServerSettings; onContinue: () => void }) {
+function AddModulesStep({ added, onBack, onContinue }: { added: ServerSettings; onBack?: () => void; onContinue: () => void }) {
   const serverGroup = added.serverGroup
   const servers = useServers()
   const groupModules = api.useQuery('get', '/api/server-groups/{serverGroup}/modules', { params: { path: { serverGroup } } })
@@ -167,18 +180,20 @@ function AddModulesStep({ added, onContinue }: { added: ServerSettings; onContin
 
   if (serverGroup === defaultGroup)
     return (
-      <Card className="max-w-3xl">
-        <CardHeader>
-          <CardTitle className="text-lg">The default group</CardTitle>
-          <CardDescription>The default group runs the base modules only, and they cannot be changed. Give the server a group of its own in its settings to choose them.</CardDescription>
-        </CardHeader>
-        <CardFooter>
+      <div className="max-w-3xl space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">The default group</CardTitle>
+            <CardDescription>The default group runs the base modules only, and they cannot be changed. Give the server a group of its own in its settings to choose them.</CardDescription>
+          </CardHeader>
+        </Card>
+        <StepBar label="Modules step" onBack={onBack}>
           <Button onClick={onContinue}>
             Continue
             <ArrowRight data-icon="inline-end" />
           </Button>
-        </CardFooter>
-      </Card>
+        </StepBar>
+      </div>
     )
   if (!groupModules.data || !defaultModules.data || !allModules.data) return <Skeleton className="h-96 max-w-3xl" />
   const recommended = kind === 'other' ? [] : allModules.data.filter((m) => m !== 'DiscordModule' && isRecommended(m, kind))
@@ -208,6 +223,7 @@ function AddModulesStep({ added, onContinue }: { added: ServerSettings; onContin
         all={allModules.data}
         servers={servers.data ?? []}
         initialSelected={isNewGroup ? [...new Set([...groupModules.data, ...recommended])] : undefined}
+        onBack={onBack}
         onContinue={onContinue}
       />
     </div>
@@ -215,57 +231,60 @@ function AddModulesStep({ added, onContinue }: { added: ServerSettings; onContin
 }
 
 /** Step 4: the group's admin levels, with what each level may do, to add the first admin by hash. */
-function AddAdminsStep({ serverGroup, onContinue }: { serverGroup: string; onContinue: () => void }) {
+function AddAdminsStep({ serverGroup, onBack, onContinue }: { serverGroup: string; onBack?: () => void; onContinue: () => void }) {
   const auth = useQuery(playerAuthQuery(serverGroup))
-  const any = (auth.data?.length ?? 0) > 0
+  const count = auth.data?.length ?? 0
   return (
     <div className="max-w-3xl space-y-4">
       <h2 className="text-xl font-semibold">Admins of group {serverGroup}</h2>
       <PlayerAuthList serverGroup={serverGroup} />
-      <div className="flex flex-wrap items-center gap-3 border-t pt-4">
-        <Button variant={any ? 'default' : 'outline'} onClick={onContinue}>
-          {any ? 'Continue' : 'Skip for now'}
-          {any && <ArrowRight data-icon="inline-end" />}
+      <StepBar
+        label="Admins step"
+        onBack={onBack}
+        status={
+          count > 0
+            ? `${count} ${count === 1 ? 'player has' : 'players have'} a level in group ${serverGroup}.`
+            : 'A player can also be given a level later, from their menu on the server page.'
+        }
+      >
+        <Button variant={count > 0 ? 'default' : 'outline'} onClick={onContinue}>
+          {count > 0 ? 'Continue' : 'Skip for now'}
+          {count > 0 && <ArrowRight data-icon="inline-end" />}
         </Button>
-        <span className="text-sm text-muted-foreground">{any ? `${auth.data?.length} ${auth.data?.length === 1 ? 'player has' : 'players have'} a level in group ${serverGroup}.` : 'A player can also be given a level later, from their menu on the server page.'}</span>
-      </div>
+      </StepBar>
     </div>
   )
 }
 
-/** The end of the flow: where the setup stands, the optional Discord bot, and the way to the server. */
-function AddDoneStep({ added }: { added: ServerSettings }) {
+/** The end of the flow: where the setup stands (the optional Discord bot among its steps, with a link to the settings), and the way to the server. */
+function AddDoneStep({ added, onBack }: { added: ServerSettings; onBack?: () => void }) {
   const server = useServers().data?.find((s) => s.id === added.serverId)
   const params = { serverId: encodeServerId(added.serverId) }
   return (
-    <Card className="max-w-3xl">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <CircleCheck className="size-5 shrink-0 text-emerald-500" />
-          {server?.name ?? added.serverId} is added
-        </CardTitle>
-        <CardDescription>
-          {server?.socketState === 'Connected' ? 'It is connected and runs the modules of its group.' : 'It connects by itself once the game server has the lines from step 2; its Live tab shows them until then.'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4 text-sm">
-        {server && <SetupStepsSection server={server} />}
-        <p className="text-muted-foreground">
-          <span className="font-medium text-foreground">Discord bot (optional):</span> a bot token and channels, for the game in Discord and admin commands from
-          there, are in the{' '}
-          <Link to="/server/$serverId/edit" params={params} className="font-medium text-foreground underline-offset-4 hover:underline">
-            server's settings
-          </Link>
-          .
-        </p>
-      </CardContent>
-      <CardFooter className="gap-2">
+    <div className="max-w-3xl space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <CircleCheck className="size-5 shrink-0 text-emerald-500" />
+            {server?.name ?? added.serverId} is added
+          </CardTitle>
+          <CardDescription>
+            {server?.socketState === 'Connected' ? 'It is connected and runs the modules of its group.' : 'It connects by itself once the game server has the lines from step 2; its Live tab shows them until then.'}
+          </CardDescription>
+        </CardHeader>
+        {server && (
+          <CardContent className="text-sm">
+            <SetupStepsSection server={server} />
+          </CardContent>
+        )}
+      </Card>
+      <StepBar label="Done" onBack={onBack}>
         <Button nativeButton={false} render={<Link to="/server/$serverId" params={params} />}>
           Go to the server
           <ArrowRight data-icon="inline-end" />
         </Button>
-      </CardFooter>
-    </Card>
+      </StepBar>
+    </div>
   )
 }
 

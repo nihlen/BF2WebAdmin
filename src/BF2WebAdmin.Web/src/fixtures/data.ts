@@ -11,13 +11,17 @@ type S = components['schemas']
 
 export const fixtureNow = Date.parse('2026-11-21T20:30:00Z')
 
-/** The scenarios, chosen with the ui-fixture cookie: default, empty (a new install without servers), loggedout */
-export type FixtureScenario = 'default' | 'empty' | 'loggedout'
+/**
+ * The scenarios, chosen with the ui-fixture cookie: default, empty (a new install without servers), loggedout, and lost
+ * (as default, but the offline Public Conquest server was connected until 25 minutes ago, so WebAdmin still has its
+ * map, its events and its last health window)
+ */
+export type FixtureScenario = 'default' | 'empty' | 'loggedout' | 'lost'
 
 export const scenarioFromCookie = (cookie: string | undefined | null): FixtureScenario => {
   const match = /(?:^|;\s*)ui-fixture=([a-z]+)/.exec(cookie ?? '')
   const value = match?.[1]
-  return value === 'empty' || value === 'loggedout' ? value : 'default'
+  return value === 'empty' || value === 'loggedout' || value === 'lost' ? value : 'default'
 }
 
 const iso = (msAgo: number) => new Date(fixtureNow - msAgo).toISOString()
@@ -306,8 +310,22 @@ function snapshot(serverId: string): S['ServerSnapshotDto'] | null {
   }
 }
 
+// The lost scenario's Public Conquest server: what WebAdmin keeps of a server after its connection drops
+const lostAgo = 25 * min
+const lostServer = (serverId: string, scenario: FixtureScenario) => scenario === 'lost' && serverId === ids.public
+
+function lostSnapshot(snap: S['ServerSnapshotDto']): S['ServerSnapshotDto'] {
+  return {
+    ...snap,
+    server: { ...snap.server, map: 'strike_at_karkand' },
+    eventLog: [event(60, 3 * hour, 'Map strike_at_karkand loaded'), event(61, lostAgo + 2 * min, 'Round 4 started')],
+  }
+}
+
 export function fixtureSnapshot(serverId: string, scenario: FixtureScenario) {
-  return scenario === 'empty' ? null : snapshot(serverId)
+  if (scenario === 'empty') return null
+  const snap = snapshot(serverId)
+  return snap && lostServer(serverId, scenario) ? lostSnapshot(snap) : snap
 }
 
 // ---- Health ----
@@ -647,7 +665,7 @@ export function fixtureResponse(request: FixtureRequest): FixtureResponse {
   const server = list.find((s) => s.id === serverId)
   if (!server) return notFound
   const connected = server.socketState === 'Connected'
-  const snap = snapshot(serverId)!
+  const snap = fixtureSnapshot(serverId, scenario)!
 
   if (rest === '') return method === 'DELETE' ? noContent : ok(snap)
   if (rest === '/settings') return method === 'GET' ? ok(settings(server)) : noContent
@@ -659,6 +677,11 @@ export function fixtureResponse(request: FixtureRequest): FixtureResponse {
   if (rest.startsWith('/bans/')) return action('Unbanned')
   if (/^\/players\/\d+\/(warn|kick|ban)$/.test(rest)) return action('Done')
   if (rest === '/map' || rest === '/map/restart' || rest === '/map/next' || rest === '/pause') return connected ? action('Sent') : { status: 400, body: 'The server is not connected' }
+  // The last window of the lost server, which WebAdmin keeps after the connection drops: the time it was last seen
+  if (rest === '/health' && lostServer(serverId, scenario)) {
+    const latest = { ...healthWindow(serverId, 0, 1), time: iso(lostAgo) }
+    return ok({ latest, history: minutes * min > lostAgo ? [latest] : [], connections: null } satisfies S['ServerHealthDto'])
+  }
   if (rest === '/health') return ok(healthFor(serverId, minutes))
   if (rest === '/health/connections') return ok(connectionsHistory(serverId, minutes))
   if (rest === '/health/rounds') return ok(roundsFor(serverId, minutes))

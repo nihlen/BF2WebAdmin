@@ -171,19 +171,20 @@ const shots = [
   // ... which turns into the connected state when the hub reports the new server (the fake hub sends it)
   { name: 'server-add-connected', path: '/server/add', viewports: ['desktop', 'phone'], steps: [addServer, addedServerConnects] },
   // Since r06 the add flow goes on after connecting: the group's modules, a first admin, then done. In the 2v2 group,
-  // which has its modules and admins already
-  { name: 'server-add-modules', path: '/server/add', viewports: ['desktop', 'phone'], steps: [addServer, addedServerConnects, addFlowStep(/^Continue: modules/, 'continue to modules')] },
+  // which has its modules and admins already, so since r07 the connected step offers Finish, and Review modules for the
+  // modules and admins steps
+  { name: 'server-add-modules', path: '/server/add', viewports: ['desktop', 'phone'], steps: [addServer, addedServerConnects, addFlowStep(/^Review modules$/, 'review modules')] },
   {
     name: 'server-add-admins',
     path: '/server/add',
     viewports: ['desktop', 'phone'],
-    steps: [addServer, addedServerConnects, addFlowStep(/^Continue: modules/, 'continue to modules'), addFlowStep(/^Continue$/, 'continue to admins')],
+    steps: [addServer, addedServerConnects, addFlowStep(/^Review modules$/, 'review modules'), addFlowStep(/^Continue$/, 'continue to admins')],
   },
   {
     name: 'server-add-done',
     path: '/server/add',
     viewports: ['desktop'],
-    steps: [addServer, addedServerConnects, addFlowStep(/^Continue: modules/, 'continue to modules'), addFlowStep(/^Continue$/, 'continue to admins'), addFlowStep(/^Continue$/, 'continue to done')],
+    steps: [addServer, addedServerConnects, addFlowStep(/^Finish$/, 'finish')],
   },
   // The first server, in a new group, with connecting skipped: the modules step asks for the kind of server and ticks
   // the modules it usually runs
@@ -323,8 +324,9 @@ const shots = [
   // Since r05: away from Live the round actions are one labelled Round menu
   // Since r06 every tab has the same round actions: Restart round… with Pause and Change map… in its split menu
   { name: 'server-round-tab-menu', path: `${heli1}/health`, viewports: ['desktop'], overlay: true, steps: [clickButton(/^More round actions/, 'round menu')] },
-  // Since r06 a phone has the same header actions as desktop; this opens the round menu
-  { name: 'server-actions', path: heli1, viewports: ['phone'], overlay: true, steps: [clickButton(/^More round actions/, 'round menu')] },
+  // Since r06 a phone has the same header actions as desktop; since r07 they are one "⋯" menu beside the name (the
+  // round actions, then the server's), which this opens
+  { name: 'server-actions', path: heli1, viewports: ['phone'], overlay: true, steps: [clickButton(/^Round and server actions/, 'actions menu')] },
   // Since r06: the group's modules and admin levels as a tab of the server
   { name: 'server-tab-group', path: `${heli1}/group`, viewports: ['desktop', 'phone'] },
   // Bans, activity and health are pages of their own under the server's tab bar since r01
@@ -420,6 +422,8 @@ const shots = [
   { name: 'account-menu', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Account/, 'account menu')] },
   { name: 'server-busy', path: mayhem, viewports: ['desktop'] },
   { name: 'server-offline', path: offline, viewports: ['desktop', 'phone'] },
+  // Since r07 an offline server that was connected before reads as lost: when it was last seen, what to check
+  { name: 'server-offline-lost', path: offline, scenario: 'lost', viewports: ['desktop', 'phone'] },
   { name: 'viewer', path: `${heli1}/viewer`, viewports: ['desktop', 'phone'], wait: 2500 },
   { name: 'builder', path: `${heli1}/builder`, viewports: ['desktop', 'phone'], wait: 2500 },
   // Since r02: the chat opens under the 3D view on a phone. The map in software WebGL keeps the page too busy for a

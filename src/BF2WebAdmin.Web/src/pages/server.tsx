@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils'
 
 /**
  * The Live tab: the teams, the chat and the minimap. On a large screen they share the window's height (ServerLayout
- * gives the page the rest of it): the teams on top, a long scoreboard scrolling in its card, and under them the chat,
+ * gives the page the rest of it): the teams on top as tall as they need, and under them the chat,
  * its box pinned at the bottom, beside the map. On a phone the page fills the screen too, with one view at a time and
  * the chat box always at the bottom. The round actions are in the header, the commands in a palette (Ctrl+K, or
  * Commands by the chat box). An offline server has none of them.
@@ -59,9 +59,9 @@ export function ServerLivePage() {
   if (!snapshot.data) return <Skeleton className="h-[600px]" />
 
   const { server, teams, players, chatLog } = snapshot.data
-  if (server.socketState !== 'Connected') return <ServerConnectCard server={server} />
+  if (server.socketState !== 'Connected') return <ServerConnectCard server={server} snapshot={snapshot.data} />
 
-  const teamTables = (className?: string) =>
+  const teamTables = (fill?: boolean) =>
     teams.map((team) => (
       <TeamTable
         key={team.id}
@@ -74,7 +74,7 @@ export function ServerLivePage() {
         actions={actions}
         onModerate={sheet.moderate}
         onDetails={sheet.open}
-        className={className}
+        fill={fill}
       />
     ))
   const chatLogFor = (className: string) => <ChatLog chatLog={chatLog} players={players} teams={teams} onPlayer={sheet.open} className={className} />
@@ -87,10 +87,11 @@ export function ServerLivePage() {
       {mobile ? (
         <PhoneLive snapshot={snapshot.data} players={teamTables()} chatLog={chatLogFor('min-h-0 flex-1')} chatInput={chatInput('border-t-0')} map={(className) => <ServerMap map={server.map} players={players} positions={positions} className={className} />} />
       ) : (
-        // Below lg the parts stack and the page scrolls; from lg the rows share the height: the teams' row as tall as
-        // its cards up to 45 %, the chat and the map the rest
-        <div className="flex flex-col gap-6 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:grid-rows-[fit-content(45%)_minmax(0,1fr)] lg:gap-4">
-          {teamTables('lg:min-h-0 lg:overflow-y-auto')}
+        // Below lg the parts stack and the page scrolls. From lg the rows share the height: the teams' row as tall as
+        // the longer team (eight players a team fit at 1440x900), the chat and the map the rest, but never less than
+        // 14rem, so the chat box stays in view and a longer team scrolls in its card
+        <div className="flex flex-col gap-6 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:grid-rows-[auto_minmax(14rem,1fr)] lg:gap-4">
+          {teamTables(true)}
           <Card className="gap-0 py-0 lg:min-h-0">
             <h2 className="flex items-center gap-2 border-b px-4 py-2.5 text-sm font-medium">
               <MessageSquare className="size-4 text-muted-foreground" />

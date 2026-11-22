@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, HeartPulse } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { HealthRound, Player, PlayerConnection, ServerConnections, ServerHealthStatus, ServerHealthWindow } from '@/api/client'
 import { PlayerLink } from '@/components/server/player-link'
@@ -98,16 +98,18 @@ const sameServer =
 /**
  * The server's health now as a small chip for the server header, the worse of the latest window and its players'
  * connections, with the reasons in its title: nothing while the server is offline or has sent no window. Reads the
- * query that useServerLive keeps current.
+ * query that useServerLive keeps current. Compact, on a phone it is the health icon and the dot, with the word for
+ * screen readers, so the header fits on one line.
  */
-export function HealthChip({ serverId, connected }: { serverId: string; connected: boolean }) {
+export function HealthChip({ serverId, connected, compact }: { serverId: string; connected: boolean; compact?: boolean }) {
   const health = overallHealth(useQuery({ ...healthQuery(serverId), staleTime: Infinity }).data)
   if (!connected || !health) return null
 
   return (
     <span className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border px-2 text-xs font-medium whitespace-nowrap" title={health.title}>
+      {compact && <HeartPulse aria-hidden className="size-3.5 text-muted-foreground sm:hidden" />}
       <span className={cn('size-2 shrink-0 rounded-full', statusColors[health.status])} aria-hidden />
-      {health.label}
+      <span className={cn(compact && 'max-sm:sr-only')}>{health.label}</span>
       <span className="sr-only">. {health.reason}</span>
     </span>
   )

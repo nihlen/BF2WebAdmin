@@ -4,6 +4,7 @@ import { ArrowRight, RefreshCw, Search, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, type Server } from '@/api/client'
+import { StepBar } from '@/components/step-bar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -36,8 +37,8 @@ function commandSources(servers: Server[], serverGroup: string) {
  * its name, description or a command. Saving keeps the change for the next reload; Save and reload restarts the modules
  * on the group's servers.
  *
- * In the add server flow (onContinue) it starts from the given selection, and its bar is always there with the step's
- * own buttons: Save and continue (or Continue without changes) and Skip for now.
+ * In the add server flow (onContinue) it starts from the given selection, and the flow's step bar is always there with
+ * the step's own buttons: Back, Skip for now and Save and continue (or Continue without changes).
  */
 export function ModulesForm({
   serverGroup,
@@ -46,6 +47,7 @@ export function ModulesForm({
   all,
   servers,
   initialSelected,
+  onBack,
   onContinue,
 }: {
   serverGroup: string
@@ -56,6 +58,8 @@ export function ModulesForm({
   servers: Server[]
   /** The ticked modules to start from, when not the saved ones (the recommended ones for a new group) */
   initialSelected?: string[]
+  /** The add server flow's previous step */
+  onBack?: () => void
   /** The next step of the add server flow, after saving or skipping */
   onContinue?: () => void
 }) {
@@ -242,23 +246,19 @@ export function ModulesForm({
       </Card>
 
       {onContinue && (
-        <div
-          role="region"
-          aria-label="Modules step"
-          className="sticky bottom-4 z-10 flex flex-wrap items-center gap-2 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur supports-backdrop-filter:bg-background/80"
+        <StepBar
+          label="Modules step"
+          onBack={onBack}
+          status={dirty ? `${selected.size} ${selected.size === 1 ? 'module' : 'modules'} ticked, not saved yet` : 'No changes'}
         >
-          <span className="w-full text-sm font-medium sm:mr-auto sm:w-auto">
-            {dirty ? `${selected.size} ${selected.size === 1 ? 'module' : 'modules'} ticked, not saved yet` : 'No changes'}
-          </span>
-          <div className="ml-auto flex gap-2">
-            <Button variant="ghost" size="sm" disabled={busy} onClick={onContinue}>
-              Skip for now
-            </Button>
-            <Button size="sm" disabled={busy} onClick={() => void saveAndContinue()}>
-              {dirty ? 'Save and continue' : 'Continue'}
-            </Button>
-          </div>
-        </div>
+          <Button variant="outline" disabled={busy} onClick={onContinue}>
+            Skip for now
+          </Button>
+          <Button disabled={busy} onClick={() => void saveAndContinue()}>
+            {dirty ? 'Save and continue' : 'Continue'}
+            <ArrowRight data-icon="inline-end" />
+          </Button>
+        </StepBar>
       )}
 
       {/* While there are changes, the bar stays at the bottom of the window, so Save is in reach from anywhere in the list */}

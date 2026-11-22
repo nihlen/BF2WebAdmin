@@ -17,3 +17,15 @@ export function useIsMobile() {
 
   return !!isMobile
 }
+
+const wideQuery = "(min-width: 64rem)"
+const subscribeWide = (onChange: () => void) => {
+  const query = window.matchMedia(wideQuery)
+  query.addEventListener("change", onChange)
+  return () => query.removeEventListener("change", onChange)
+}
+
+/** Whether the window has the desktop layout (Tailwind's lg, 64rem and up) */
+export function useIsWide() {
+  return React.useSyncExternalStore(subscribeWide, () => window.matchMedia(wideQuery).matches)
+}

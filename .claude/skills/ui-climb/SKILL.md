@@ -112,3 +112,14 @@ are worth a look.
 - No new runtime dependencies. shadcn/ui components may be added to `src/components/ui`.
 - The UI must still work against the real server: the fixtures are a test bed, not the contract. The API calls, hub
   events and their handling (`src/api`, `src/hooks/use-server-live.ts`, `use-servers.ts`) keep their behaviour.
+
+## Lessons from the first run (2026-11-22)
+
+- Seven rounds took the UI from about 6.0 to 7.2 with every judge; structure rounds (r01-r03) won votes at confidence
+  3, polish rounds at 1-2. Plan structure first.
+- The Sonnet operator sampled shots instead of opening all of them, even when told not to. Use Opus for it, or count
+  the files a voter read before counting its vote.
+- Fable as the newcomer was the most thorough voter and found most regressions; keep a model of another family.
+- A round costs about 1M subagent tokens (builder 250-340k, three votes 450-700k). Stop early enough to write the
+  summary if the usage quota is low.
+

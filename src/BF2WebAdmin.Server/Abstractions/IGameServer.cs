@@ -37,6 +37,9 @@ public interface IGameServer
     DateTimeOffset? ConnectedAt { get; }
     DateTimeOffset? DisconnectedAt { get; }
 
+    /// <summary>The health now, from the server health store; null without a window.</summary>
+    ServerHealthNowDto? Health { get; }
+
     Map? Map { get; }
     IEnumerable<Map> Maps { get; }
     IEnumerable<Team> Teams { get; }

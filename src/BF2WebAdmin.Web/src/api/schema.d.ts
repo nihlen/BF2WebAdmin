@@ -3124,10 +3124,16 @@ export interface components {
             connectedAt: null | string;
             /** Format: date-time */
             disconnectedAt: null | string;
+            health: null | components["schemas"]["ServerHealthNowDto"];
         };
         ServerHealthDto: {
             latest: null | components["schemas"]["ServerHealthWindowDto"];
             history: components["schemas"]["ServerHealthWindowDto"][];
+            connections: null | components["schemas"]["ServerConnectionsDto"];
+        };
+        ServerHealthNowDto: {
+            status: components["schemas"]["ServerHealthStatus"];
+            latest: components["schemas"]["ServerHealthWindowDto"];
             connections: null | components["schemas"]["ServerConnectionsDto"];
         };
         /** @enum {unknown} */

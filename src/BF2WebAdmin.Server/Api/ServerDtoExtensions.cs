@@ -55,6 +55,7 @@ public static class ServerDtoExtensions
         GameMode = server.Map?.GameMode,
         ConnectedAt = server.ConnectedAt,
         DisconnectedAt = server.DisconnectedAt,
+        Health = server.Health,
         TimeStamp = timeStamp ?? DateTimeOffset.UtcNow
     };
 

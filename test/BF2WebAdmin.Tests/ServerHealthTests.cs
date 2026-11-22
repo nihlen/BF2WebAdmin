@@ -226,6 +226,34 @@ public class ServerHealthTests
         Assert.Single(store.GetConnections(other));
     }
 
+    [Fact]
+    public async Task TheStatusNowIsTheWorseOfTheWindowAndTheConnectionsAndAChangeIsAnnounced()
+    {
+        var store = new ServerHealthStore();
+        var changes = new List<string>();
+        store.StatusChanged = id => { changes.Add(id); return Task.CompletedTask; };
+        Assert.Null(store.GetNow(ServerId));
+
+        await store.AddAsync(ServerId, Window(), Noon);
+        Assert.Equal(ServerHealthStatus.Good, store.GetNow(ServerId)!.Status);
+        await store.AddAsync(ServerId, Window(tick: 600), Noon.AddSeconds(10));
+        Assert.Single(changes);
+
+        var lossy = Connection(lostTo: 30, lostToPeak: 40);
+        var (connectionStatus, _) = PlayerConnectionRules.Rate(lossy);
+        Assert.NotEqual(PlayerConnectionStatus.Good, connectionStatus);
+        await store.AddConnectionsAsync(ServerId, new EvPlayerConnections(2, 600, [lossy]), _ => "pilot", Noon.AddSeconds(10));
+        var now = store.GetNow(ServerId)!;
+        Assert.Equal(connectionStatus.ToString(), now.Status.ToString());
+        Assert.Equal(ServerHealthStatus.Good, now.Latest.Status);
+        Assert.Equal(2, changes.Count);
+
+        // Connections older than 15 s before the window no longer count
+        await store.AddAsync(ServerId, Window(tick: 1200), Noon.AddSeconds(30));
+        Assert.Equal(ServerHealthStatus.Good, store.GetNow(ServerId)!.Status);
+        Assert.Equal(3, changes.Count);
+    }
+
     // ---------------------------------------------------------------- the players' connections
 
     /// <summary>A connection that runs well: 20 packets a second to the player and 30 from it, nothing lost, a steady ping.</summary>

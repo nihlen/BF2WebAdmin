@@ -96,6 +96,13 @@ public record ServerConnectionsDto(DateTimeOffset Time, uint Tick, IReadOnlyList
 public record ServerHealthDto(ServerHealthWindowDto? Latest, IReadOnlyList<ServerHealthWindowDto> History, ServerConnectionsDto? Connections);
 
 /// <summary>
+/// A server's health now, for the server list: Status is the worse of the latest window's and its players' connections'
+/// (those of the last 15 s before the window; a Loading or Stepped window keeps its status unless a connection is worse),
+/// with the window and the connections it comes from.
+/// </summary>
+public record ServerHealthNowDto(ServerHealthStatus Status, ServerHealthWindowDto Latest, ServerConnectionsDto? Connections);
+
+/// <summary>
 /// A started 2v2 round of the server (Heli2v2), for the health panel to mark: its match, its number in the match from 1,
 /// and when it started and ended (UTC); no end while it is played.
 /// </summary>

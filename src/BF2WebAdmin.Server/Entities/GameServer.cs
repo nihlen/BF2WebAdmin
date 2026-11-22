@@ -52,6 +52,8 @@ public class GameServer : IGameServer
     /// <summary>When the admin channel last closed; null while it has not since WebAdmin started.</summary>
     public DateTimeOffset? DisconnectedAt { get; private set; }
 
+    public ServerHealthNowDto? Health => _globalServices.GetService<ServerHealthStore>()?.GetNow(Id);
+
     public Map? Map { get; private set; }
 
     public IEnumerable<Map> Maps { get { lock (_maps) return _maps.ToArray(); } }

@@ -4608,6 +4608,16 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "health": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ServerHealthNowDto"
+              }
+            ]
           }
         }
       },
@@ -4634,6 +4644,32 @@
             "items": {
               "$ref": "#/components/schemas/ServerHealthWindowDto"
             }
+          },
+          "connections": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ServerConnectionsDto"
+              }
+            ]
+          }
+        }
+      },
+      "ServerHealthNowDto": {
+        "required": [
+          "status",
+          "latest",
+          "connections"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ServerHealthStatus"
+          },
+          "latest": {
+            "$ref": "#/components/schemas/ServerHealthWindowDto"
           },
           "connections": {
             "oneOf": [

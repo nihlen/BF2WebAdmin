@@ -174,7 +174,17 @@ public sealed class ServerHealthStore
         public readonly Queue<ServerHealthWindowDto> Windows = new();
         public readonly Queue<ServerConnectionsDto> Connections = new();
         public string? Name;
+        public ServerHealthStatus? Status;
     }
+
+    // The connections come right after their window; older ones are of a module that stopped sending them (as the web UI)
+    private static readonly TimeSpan ConnectionsMaxAge = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// Called with a server's id when its overall status (<see cref="ServerHealthNowDto.Status"/>) changes, so that every
+    /// client's server list hears of it; the health events reach only the clients of that server.
+    /// </summary>
+    public Func<string, Task>? StatusChanged { get; set; }
 
     /// <summary>A server's latest window and connections, with its name as it was then; for the metrics.</summary>
     public sealed record LatestHealth(string ServerId, string? Name, ServerHealthWindowDto? Window, ServerConnectionsDto? Connections);
@@ -201,14 +211,18 @@ public sealed class ServerHealthStore
         var window = ServerHealthRules.ToWindow(e, time);
         var history = _servers.GetOrAdd(serverId, _ => new History());
         string? name;
+        bool changed;
         lock (history)
         {
             Keep(history.Windows, window);
             name = history.Name = serverName ?? history.Name;
+            changed = UpdateStatus(history);
         }
 
         _metrics?.OnWindow(serverId, name, window);
         await SendAsync(serverId, clients => clients.ServerHealthEvent(new ServerHealthEvent { ServerId = serverId, Window = window }));
+        if (changed)
+            await OnStatusChangedAsync(serverId);
         return window;
     }
 
@@ -223,15 +237,89 @@ public sealed class ServerHealthStore
         var connections = new ServerConnectionsDto(time, e.Tick, e.Players.Select(p => PlayerConnectionRules.ToDto(p, nameOf(p.Player))).ToArray());
         var history = _servers.GetOrAdd(serverId, _ => new History());
         string? name;
+        bool changed;
         lock (history)
         {
             Keep(history.Connections, connections);
             name = history.Name;
+            changed = UpdateStatus(history);
         }
 
         _metrics?.OnConnections(serverId, name, connections);
         await SendAsync(serverId, clients => clients.ServerConnectionsEvent(new ServerConnectionsEvent { ServerId = serverId, Connections = connections }));
+        if (changed)
+            await OnStatusChangedAsync(serverId);
         return connections;
+    }
+
+    /// <summary>The server's health now (its overall status, latest window and connections), or null without a window.</summary>
+    public ServerHealthNowDto? GetNow(string serverId)
+    {
+        if (!_servers.TryGetValue(serverId, out var history))
+            return null;
+
+        lock (history)
+            return Now(history);
+    }
+
+    private static ServerHealthNowDto? Now(History history)
+    {
+        if (history.Windows.Count == 0)
+            return null;
+
+        var latest = history.Windows.Last();
+        var connections = history.Connections.LastOrDefault();
+        var status = latest.Status;
+        if (connections != null && latest.Time - connections.Time < ConnectionsMaxAge)
+        {
+            foreach (var player in connections.Players)
+            {
+                var playerStatus = player.Status switch
+                {
+                    PlayerConnectionStatus.Bad => ServerHealthStatus.Bad,
+                    PlayerConnectionStatus.Warn => ServerHealthStatus.Warn,
+                    _ => ServerHealthStatus.Good,
+                };
+                if (Severity(playerStatus) > Severity(status))
+                    status = playerStatus;
+            }
+        }
+
+        return new ServerHealthNowDto(status, latest, connections);
+    }
+
+    private static int Severity(ServerHealthStatus status) => status switch
+    {
+        ServerHealthStatus.Bad => 3,
+        ServerHealthStatus.Warn => 2,
+        ServerHealthStatus.Good => 1,
+        _ => 0,
+    };
+
+    /// <summary>Whether the overall status changed with the window or connections just kept (the caller holds the lock).</summary>
+    private static bool UpdateStatus(History history)
+    {
+        var status = Now(history)?.Status;
+        if (status == history.Status)
+            return false;
+
+        history.Status = status;
+        return true;
+    }
+
+    private async ValueTask OnStatusChangedAsync(string serverId)
+    {
+        if (StatusChanged == null)
+            return;
+
+        try
+        {
+            await StatusChanged(serverId);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Server health {ServerId}: status change send failed", serverId);
+        }
     }
 
     private static void Keep<T>(Queue<T> queue, T item)

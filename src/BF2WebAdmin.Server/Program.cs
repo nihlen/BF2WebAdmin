@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 try
@@ -161,6 +162,14 @@ try
 
     // Fails here, before anything listens, when the admin channel certificate setting is unusable
     app.Services.GetRequiredService<AdminListener>().LoadCertificate();
+
+    // A server whose health status changes is sent to every client's server list (the dashboard, the sidebar)
+    {
+        var registry = app.Services.GetRequiredService<IGameServerRegistry>();
+        var hub = app.Services.GetRequiredService<IHubContext<ServerHub, IServerHubClient>>();
+        app.Services.GetRequiredService<ServerHealthStore>().StatusChanged = serverId =>
+            registry.GetGameServer(serverId) is { } server ? hub.Clients.All.ServerUpdateEvent(server.ToServerUpdate()) : Task.CompletedTask;
+    }
 
     // EF migrations (SQLite, Postgres) or the idempotent SQL Server schema updates
     await database.MigrateAsync(app.Services, app.Logger);

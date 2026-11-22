@@ -1,4 +1,3 @@
-import { useQueries } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Box, Plus, Radio, Settings, Settings2 } from 'lucide-react'
 import { errorMessage, type Server } from '@/api/client'
@@ -8,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { healthQuery } from '@/hooks/use-server-live'
 import { groupServers, useServers } from '@/hooks/use-servers'
 import { type Step, useSetupOverview } from '@/hooks/use-setup-steps'
 import { overallHealth, statusColors } from '@/lib/health'
@@ -20,16 +18,11 @@ import { cn } from '@/lib/utils'
 type Health = ReturnType<typeof overallHealth>
 
 /**
- * The health now of every connected server, by id. One request per server and half minute, of the last minute only:
- * the hub's health events reach only the page of their server. The same queries as the sidebar's dots, so they are
- * shared.
+ * The health now of every connected server, by id, from the server list: the server sends a ServerUpdateEvent to every
+ * client when a server's health status changes, so the list stays current without asking each server.
  */
-function useServersHealth(servers: Server[]) {
-  const results = useQueries({
-    queries: servers.map((s) => ({ ...healthQuery(s.id, 1), enabled: s.socketState === 'Connected', refetchInterval: 30_000 })),
-  })
-  return new Map(servers.map((s, i) => [s.id, s.socketState === 'Connected' ? overallHealth(results[i].data) : null]))
-}
+const serversHealth = (servers: Server[]) =>
+  new Map(servers.map((s) => [s.id, s.socketState === 'Connected' ? overallHealth(s.health ?? undefined) : null]))
 
 // What needs a look comes first in a group: offline servers, then degraded, then warning; the rest keep their order
 const attention = (server: Server, health: Health) =>
@@ -46,7 +39,7 @@ export function DashboardPage() {
   const online = list.filter((s) => s.socketState === 'Connected')
   const players = online.reduce((sum, s) => sum + s.players, 0)
   const setup = useSetupOverview(list)
-  const health = useServersHealth(list)
+  const health = serversHealth(list)
 
   return (
     <div className="space-y-8">

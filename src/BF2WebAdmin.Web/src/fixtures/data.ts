@@ -86,6 +86,7 @@ const servers: S['ServerDto'][] = [
     gameMode: 'gpm_cq',
     connectedAt: iso(webAdminUp - 40 * sec),
     disconnectedAt: null,
+    health: null,
   },
   {
     id: ids.heli2,
@@ -102,6 +103,7 @@ const servers: S['ServerDto'][] = [
     gameMode: 'gpm_cq',
     connectedAt: iso(webAdminUp - 52 * sec),
     disconnectedAt: null,
+    health: null,
   },
   {
     id: ids.test,
@@ -119,6 +121,7 @@ const servers: S['ServerDto'][] = [
     // Restarted this evening: its connection closed and came back
     connectedAt: iso(2 * hour + 14 * min),
     disconnectedAt: iso(2 * hour + 15 * min),
+    health: null,
   },
   {
     id: ids.mayhem,
@@ -135,6 +138,7 @@ const servers: S['ServerDto'][] = [
     gameMode: 'gpm_cq',
     connectedAt: iso(41 * min),
     disconnectedAt: iso(43 * min),
+    health: null,
   },
   {
     id: ids.public,
@@ -152,6 +156,7 @@ const servers: S['ServerDto'][] = [
     gameMode: null,
     connectedAt: null,
     disconnectedAt: null,
+    health: null,
   },
 ]
 
@@ -452,6 +457,19 @@ function healthFor(serverId: string, minutes: number): S['ServerHealthDto'] {
   return { latest: history[history.length - 1], history, connections: connectionsAt(snap.players, count - 1, count) }
 }
 
+const severity: Record<S['ServerHealthStatus'], number> = { Bad: 3, Warn: 2, Good: 1, Loading: 0, Stepped: 0 }
+
+/** The server as GET /api/servers has it: with its health now (the worse of the latest window and its connections), as the server rates it */
+function withHealth(server: S['ServerDto']): S['ServerDto'] {
+  const { latest, connections } = healthFor(server.id, 1)
+  if (!latest) return { ...server, health: null }
+  const status = (connections?.players ?? []).reduce<S['ServerHealthStatus']>(
+    (worst, p) => (severity[p.status] > severity[worst] ? p.status : worst),
+    latest.status,
+  )
+  return { ...server, health: { status, latest, connections } }
+}
+
 function connectionsHistory(serverId: string, minutes: number): S['ServerConnectionsDto'][] {
   const snap = snapshot(serverId)
   if (!snap || snap.server.socketState !== 'Connected' || snap.players.length === 0) return []
@@ -609,6 +627,7 @@ const addedServer: S['ServerDto'] = {
   gameMode: 'gpm_cq',
   connectedAt: iso(5 * sec),
   disconnectedAt: null,
+  health: null,
 }
 
 const settings = (server: S['ServerDto']): S['ServerDataDto'] => ({
@@ -712,7 +731,7 @@ const action = (message: string) => ok({ message })
 export function fixtureResponse(request: FixtureRequest): FixtureResponse {
   const { method, query, scenario } = request
   const path = decodeURIComponent(request.path)
-  const list = scenario === 'empty' ? [] : scenario === 'lost' ? servers.map((s) => (s.id === ids.public ? lostServerDto(s) : s)) : servers
+  const list = (scenario === 'empty' ? [] : scenario === 'lost' ? servers.map((s) => (s.id === ids.public ? lostServerDto(s) : s)) : servers).map(withHealth)
   const minutes = Number(query.get('minutes') ?? 60)
 
   if (path === '/api/auth/me' && method === 'GET') return scenario === 'loggedout' ? { status: 401 } : ok({ name: 'admin' })

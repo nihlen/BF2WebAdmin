@@ -22,4 +22,10 @@ public class ServerDto
 
     /// <summary>When the admin channel last closed; null while connected since WebAdmin started, or never connected.</summary>
     public DateTimeOffset? DisconnectedAt { get; set; }
+
+    /// <summary>
+    /// The health now (the latest ServerHealth window, its players' connections and the worse of their statuses); null
+    /// for a server whose module has sent none. A ServerUpdateEvent goes to every client when its status changes.
+    /// </summary>
+    public ServerHealthNowDto? Health { get; set; }
 }

@@ -43,7 +43,8 @@ export type ViewerFrame = {
 }
 
 export type HubEvents = {
-  // Sent to all clients. ServerUpdateEvent is a ServerDto (gameMode, connectedAt and disconnectedAt too) with its time
+  // Sent to all clients. ServerUpdateEvent is a ServerDto (gameMode, connectedAt, disconnectedAt and health too) with its
+  // time; the server sends one when a server's health status changes
   ServerUpdateEvent: Server & Timed
   ServerRemoveEvent: { serverId: string }
 

@@ -137,7 +137,7 @@ export function CommandPalette({
               <div tabIndex={0} className="max-h-[min(28rem,60svh)] overflow-y-auto p-2 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
                 {commands.isPending && <Skeleton className="m-2 h-32" />}
                 {commands.isError && <p className="p-3 text-sm text-destructive">{errorMessage(commands.error)}</p>}
-                {commands.data && flat.length === 0 && <p className="p-3 text-sm text-muted-foreground">No command matches</p>}
+                {commands.data && flat.length === 0 && <p className="p-3 text-sm text-muted-foreground">No command matches “{query.trim()}”.</p>}
                 <div role="listbox" id={listId} aria-label="Commands">
                   {groups.map(([module, list]) => (
                     <div key={module} role="group" aria-label={module} className="pb-1">

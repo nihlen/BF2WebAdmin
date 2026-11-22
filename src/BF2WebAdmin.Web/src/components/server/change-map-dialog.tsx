@@ -82,7 +82,7 @@ export function ChangeMapDialog({
           </Button>
         </div>
         <ul className="max-h-[min(24rem,50svh)] overflow-y-auto p-2" aria-label="Map rotation">
-          {shown.length === 0 && <li className="p-3 text-sm text-muted-foreground">{maps.length === 0 ? 'The server sent no maps' : 'No map matches'}</li>}
+          {shown.length === 0 && <li className="p-3 text-sm text-muted-foreground">{maps.length === 0 ? 'The server sent no maps.' : `No map matches “${filter.trim()}”.`}</li>}
           {shown.map((map) => {
             const isCurrent = map.name.toLowerCase() === server.map?.toLowerCase()
             const isPending = pending.has(`map:${map.name}`)

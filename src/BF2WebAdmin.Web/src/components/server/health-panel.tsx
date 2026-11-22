@@ -515,7 +515,7 @@ function Connections({ players, online, onPlayer }: { players: PlayerConnection[
         <CardTitle>Connections</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {players.length === 0 && <p className="text-muted-foreground">No players connected</p>}
+        {players.length === 0 && <p className="text-muted-foreground">No players are connected.</p>}
 
         {players.length > 0 && (
           <ul className="space-y-2 md:hidden">

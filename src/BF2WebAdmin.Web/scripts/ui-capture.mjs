@@ -271,9 +271,12 @@ const shots = [
   },
   // Since r03 the phone's tab bar is at the bottom: Live, Health, 3D, Builder and More with the rest
   { name: 'server-tabs-more', path: heli1, viewports: ['phone'], overlay: true, steps: [clickButton(/More pages/, 'open More')] },
-  // The header's actions menu. Since r04 the round actions are buttons of their own on desktop and the menu is Server,
-  // with Restart server; on a phone all of them are one menu button beside the name
+  // The header's actions menu. Since r04 the round actions are buttons of their own on Live, and since r05 the server
+  // actions are a "⋯" menu (Settings, Copy address, the group's settings, Restart server); on a phone all of them are
+  // one menu button beside the name
   { name: 'server-round-menu', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton('Server actions', 'server menu')] },
+  // Since r05: away from Live the round actions are one labelled Round menu
+  { name: 'server-round-tab-menu', path: `${heli1}/health`, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Round/, 'round menu')] },
   { name: 'server-actions', path: heli1, viewports: ['phone'], overlay: true, steps: [clickButton('Round and server actions', 'actions menu')] },
   // Bans, activity and health are pages of their own under the server's tab bar since r01
   { name: 'server-tab-bans', path: `${heli1}/bans`, viewports: ['desktop', 'phone'] },

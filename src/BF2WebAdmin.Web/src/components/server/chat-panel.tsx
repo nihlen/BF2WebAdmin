@@ -32,7 +32,7 @@ export function ChatPanel({
 }) {
   return (
     <>
-      <LogList className={listClassName} items={chatLog} itemKey={(entry) => entry.message.id} empty="No chat yet">
+      <LogList className={listClassName} items={chatLog} itemKey={(entry) => entry.message.id} empty="No chat yet.">
         {(entry) => <ChatLine key={entry.message.id} entry={entry} players={players} teams={teams} onPlayer={onPlayer} />}
       </LogList>
       <ChatInput players={players} commands={commands} onSend={onSend} onCommands={onCommands} />

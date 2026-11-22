@@ -157,7 +157,7 @@ function PlayerDetails({
         <section className="space-y-2">
           <h3 className="font-medium">Bans on this server</h3>
           {bans.isPending && <p className="text-muted-foreground">Loading…</p>}
-          {bans.data && playerBans.length === 0 && <p className="text-muted-foreground">None for this name, hash or address</p>}
+          {bans.data && playerBans.length === 0 && <p className="text-muted-foreground">None for this name, hash or address.</p>}
           <ul className="space-y-2">
             {playerBans.map((ban) => (
               <li key={ban.identifier} className={cn('rounded-md border p-2', 'text-sm')}>

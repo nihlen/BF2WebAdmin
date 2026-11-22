@@ -235,7 +235,7 @@ export function ViewerPage() {
           {/* Touch has no hover for the tooltips: the hint says what the greyed modes need */}
           {subject < 0 && !selected && <p className="text-xs text-muted-foreground">Pick a player for Orbit and Player view, or a TV missile for Missile TV.</p>}
           <div className="max-h-48 space-y-0.5 overflow-y-auto">
-            {players.length === 0 && <p className="text-xs text-muted-foreground">No players</p>}
+            {players.length === 0 && <p className="text-xs text-muted-foreground">No players on the server.</p>}
             {players.map((p) => (
               <button
                 key={p.index}
@@ -292,7 +292,8 @@ export function ViewerPage() {
         </Card>
       </aside>
 
-      <div className="min-w-0 [grid-area:timeline]">
+      {/* On a phone the disabled bar would only push the panels down while the view waits: it comes with the frames */}
+      <div className={cn('min-w-0 [grid-area:timeline]', waiting && 'max-md:hidden')}>
         <Timeline scene={scene} playback={playback} frameRate={frameRate} onLive={() => selectMissile(null)} />
       </div>
     </div>
@@ -678,8 +679,8 @@ const idlePlayback: PlaybackState = { tick: 0, start: 0, end: 0, playing: false,
 
 /**
  * Play, step, Live, the speed and the track. Without frames or a missile there is nothing to play or scrub: the controls
- * stay where they are, disabled, and the readout says what they wait for, so the page does not change shape when frames
- * come.
+ * stay where they are, disabled, at zero, so the page does not change shape when frames come. What they wait for is said
+ * once, over the view.
  */
 function Timeline({ scene, playback, frameRate, onLive }: { scene: ViewerScene | null; playback: PlaybackState | null; frameRate: number; onLive: () => void }) {
   const playable = playback && (playback.end > playback.start || playback.missile) ? playback : null
@@ -717,8 +718,9 @@ function Timeline({ scene, playback, frameRate, onLive }: { scene: ViewerScene |
         <Radio data-icon="inline-start" />
         Live
       </Button>
-      {/* Beside Live, outside the 3D view: whether frames arrive is part of what Live means */}
-      <FrameRate rate={frameRate} />
+      {/* Beside Live, outside the 3D view: whether frames arrive is part of what Live means. While the view waits, the card
+          over it says so already */}
+      {!idle && <FrameRate rate={frameRate} />}
       <Select items={speedItems} value={speed} disabled={idle} onValueChange={(value) => value !== null && scene?.setSpeed(value)}>
         <SelectTrigger className="w-20" aria-label="Playback speed" title="Playback speed">
           <SelectValue />
@@ -735,24 +737,17 @@ function Timeline({ scene, playback, frameRate, onLive }: { scene: ViewerScene |
       <div className="order-last flex basis-full sm:order-none sm:basis-0 sm:flex-1">
         <TimelineTrack scene={scene} playback={playable ?? idlePlayback} />
       </div>
-      {idle ? (
-        <p className="ml-auto shrink-0 text-right text-xs text-muted-foreground sm:ml-0 sm:w-44">
-          <span className="block font-medium text-foreground">Waiting for live frames</span>
-          or pick a TV missile to replay
-        </p>
-      ) : (
-        <div className="ml-auto shrink-0 text-right font-mono text-xs text-muted-foreground sm:ml-0 sm:w-44">
-          {missile
-            ? `${formatTicks(tick - missile.first)} · tick ${Math.round(tick - missile.first)}/${missile.last - missile.first}`
-            : `${formatTicks(tick - start)} / ${formatTicks(end - start)}`}
-          <div>
-            tick {Math.floor(tick)}
-            {missile && missile.impact >= 0 && (
-              <span style={{ color: missile.impactKind === 'vehicle' ? HIT_COLOR : undefined }}> · hit +{missile.impact - missile.first}</span>
-            )}
-          </div>
+      <div className="ml-auto shrink-0 text-right font-mono text-xs text-muted-foreground sm:ml-0 sm:w-44">
+        {missile
+          ? `${formatTicks(tick - missile.first)} · tick ${Math.round(tick - missile.first)}/${missile.last - missile.first}`
+          : `${formatTicks(tick - start)} / ${formatTicks(end - start)}`}
+        <div>
+          tick {Math.floor(tick)}
+          {missile && missile.impact >= 0 && (
+            <span style={{ color: missile.impactKind === 'vehicle' ? HIT_COLOR : undefined }}> · hit +{missile.impact - missile.first}</span>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

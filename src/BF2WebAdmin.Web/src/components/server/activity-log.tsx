@@ -6,6 +6,7 @@ import { PlayerText } from '@/components/server/player-link'
 import { RelativeTime } from '@/components/relative-time'
 import { Button } from '@/components/ui/button'
 import { commandLogQuery } from '@/hooks/use-server-live'
+import { formatTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 type Category = 'web' | 'chat' | 'kills' | 'joins' | 'rounds' | 'other'
@@ -176,7 +177,8 @@ function Chip({
 
 /**
  * One entry: an icon for its kind, who did what (the user and the action in bold), the server's answer under it, and
- * when, relative with the time on hover. A failure has a red bar and says so.
+ * when: the clock time and how long ago ("20:16 · 14 minutes ago"; on a phone one under the other), the full date on
+ * hover. A failure has a red bar and says so.
  */
 function Row({ item, players, onPlayer }: { item: Item; players: Player[]; onPlayer: (player: Player) => void }) {
   const { icon: Icon, className } = item.failed ? { icon: CircleAlert, className: 'text-destructive' } : icons[item.category]
@@ -209,7 +211,13 @@ function Row({ item, players, onPlayer }: { item: Item; players: Player[]; onPla
           </p>
         )}
       </div>
-      <RelativeTime value={item.time} className="shrink-0 pt-px text-xs whitespace-nowrap text-muted-foreground" />
+      <span className="flex shrink-0 flex-col items-end self-start pt-px text-xs whitespace-nowrap text-muted-foreground sm:flex-row sm:items-baseline sm:gap-1">
+        <span className="font-medium text-foreground/80 tabular-nums">{formatTime(item.time)}</span>
+        <span aria-hidden className="max-sm:hidden">
+          ·
+        </span>
+        <RelativeTime value={item.time} />
+      </span>
     </li>
   )
 }

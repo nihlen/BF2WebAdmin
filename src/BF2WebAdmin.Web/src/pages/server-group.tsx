@@ -160,14 +160,14 @@ function PlayerAuthList({ serverGroup }: { serverGroup: string }) {
               {auth.data.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No player has a level in this group
+                    No player has a level in this group.
                   </TableCell>
                 </TableRow>
               )}
               {auth.data.length > 0 && shown.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No player matches "{filter.trim()}"
+                    No player matches “{filter.trim()}”.
                   </TableCell>
                 </TableRow>
               )}

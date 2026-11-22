@@ -104,10 +104,23 @@ const recommended: Record<string, ServerKind[]> = {
   LayoutVoteModule: ['public'],
 }
 
-/** "Recommended", "Recommended for 2v2" or "Recommended for public servers"; undefined when it is not marked. */
-export function recommendation(className: string) {
-  const kinds = recommended[className]
-  if (!kinds) return undefined
-  if (kinds.length > 1) return 'Recommended'
-  return kinds[0] === '2v2' ? 'Recommended for 2v2' : 'Recommended for public servers'
+// Modules that make a server a game mode of its own, which neither list above was written for
+const gameModes = ['Heli2v2Module', 'ChopperMayhemModule']
+
+/**
+ * What kind of server a group's are, as far as the UI can tell: 2v2 when the group runs the Heli2v2 module or a server
+ * of it is on a 2v2 map (dalian_2_v_2); public when its servers are all large (32 players or more) and none runs a game
+ * mode. Anything else (a Chopper Mayhem group, a group without servers) is undefined, and then no module is marked:
+ * a mark the page cannot back up would be a guess.
+ */
+export function groupKind(servers: { map: string | null; maxPlayers: number }[], modules: string[]): ServerKind | undefined {
+  if (modules.includes('Heli2v2Module') || servers.some((s) => s.map && /2_?v_?2/i.test(s.map))) return '2v2'
+  if (servers.length > 0 && servers.every((s) => s.maxPlayers >= 32) && !modules.some((m) => gameModes.includes(m))) return 'public'
+  return undefined
 }
+
+/** Whether a module is one a server of this kind usually runs. */
+export const isRecommended = (className: string, kind: ServerKind | undefined) => !!kind && !!recommended[className]?.includes(kind)
+
+/** The kind in words, for the mark's tooltip: "a 2v2 server", "a public server". */
+export const kindText = (kind: ServerKind) => (kind === '2v2' ? 'a 2v2 server' : 'a public server')

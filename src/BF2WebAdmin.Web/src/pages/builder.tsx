@@ -738,31 +738,31 @@ function useWide() {
 }
 
 /**
- * The first visit's three steps: what a draft is, what Apply does and what a layout is for. A card in the 3D view's
- * bottom corner, over the map rather than above it, so the view keeps its height. Closing it hides it for good in this
- * browser; the "?" in the toolbar shows it again. Kept above the screenshot tool's WebGL cover (data-ui-capture-keep).
+ * The first visit's three steps: what a draft is, what Apply does and what a layout is for. A small card in the 3D
+ * view's bottom corner, a line a step, so it covers little of the map and the view keeps its height. Closing it hides it
+ * for good in this browser; the "?" in the toolbar shows it again. Kept above the screenshot tool's WebGL cover
+ * (data-ui-capture-keep).
  */
 function BuilderIntro({ onDismiss }: { onDismiss: () => void }) {
   return (
     <section
       data-ui-capture-keep
       aria-label="How building works"
-      className="absolute inset-x-2 bottom-2 rounded-lg border bg-background/95 p-3 pr-10 text-sm shadow-lg backdrop-blur sm:right-auto sm:max-w-sm"
+      className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] rounded-lg border bg-background/95 py-2 pr-9 pl-3 text-xs shadow-lg backdrop-blur sm:max-w-72"
     >
-      <p className="mb-1.5 font-medium">How building works</p>
-      <ol className="space-y-1 text-muted-foreground">
+      <p className="mb-1 font-medium">How building works</p>
+      <ol className="space-y-0.5 text-muted-foreground">
         <li>
-          <span className="font-medium text-foreground">1. Place.</span> Drag an object onto the map, or click it to put it mid-view. It is a draft
-          that only you see.
+          <span className="font-medium text-foreground">1. Place</span> an object: a draft only you see.
         </li>
         <li>
-          <span className="font-medium text-foreground">2. Apply.</span> Apply builds your drafts in the game, for every player on the server.
+          <span className="font-medium text-foreground">2. Apply</span> builds the drafts for every player.
         </li>
         <li>
-          <span className="font-medium text-foreground">3. Save.</span> Save what is built as a layout under Layouts, to load it again on this map.
+          <span className="font-medium text-foreground">3. Save</span> it as a layout to load again.
         </li>
       </ol>
-      <Button variant="ghost" size="icon-sm" className="absolute top-2 right-2" aria-label="Hide how building works" title="Got it, hide this (? shows it again)" onClick={onDismiss}>
+      <Button variant="ghost" size="icon-xs" className="absolute top-1.5 right-1.5" aria-label="Hide how building works" title="Got it, hide this (? shows it again)" onClick={onDismiss}>
         <X />
       </Button>
     </section>
@@ -933,7 +933,7 @@ function Palette({
           </>
         )}
         {shown.map(row)}
-        {shown.length === 0 && hidden === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">No object matches</p>}
+        {shown.length === 0 && hidden === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">{filter.trim() ? `No object matches “${filter.trim()}”.` : 'No object in this category.'}</p>}
         {hidden > 0 && (
           <p className="px-1 py-2 text-xs text-muted-foreground">
             {hidden} {hidden === 1 ? 'road or water object matches' : 'road and water objects match'} as well.{' '}

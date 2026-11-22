@@ -1,7 +1,7 @@
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, RefreshCw, Search, TriangleAlert, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, type Server } from '@/api/client'
 import { Badge } from '@/components/ui/badge'
@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { commandsByModule, groupModules, moduleDescription, moduleName, recommendation } from '@/lib/modules'
+import { commandsByModule, groupKind, groupModules, isRecommended, kindText, moduleDescription, moduleName } from '@/lib/modules'
 import { encodeServerId } from '@/lib/server-id'
 import { cn } from '@/lib/utils'
 
@@ -31,9 +31,10 @@ function commandSources(servers: Server[], serverGroup: string) {
 
 /**
  * The group's modules as checkboxes by kind, each with what it does, the commands it adds (from the servers' command
- * lists) or, when it is off, the commands that are unavailable, and a mark on the ones a 2v2 or public server usually
- * runs. A filter finds a module by its name, description or a command. Saving keeps the change for the next reload;
- * Save and reload restarts the modules on the group's servers.
+ * lists) or, when it is off, the commands that are unavailable, and a quiet mark on the ones a server of the group's
+ * kind usually runs (2v2 or public, when the page can tell from its servers and modules). A filter finds a module by
+ * its name, description or a command. Saving keeps the change for the next reload; Save and reload restarts the modules
+ * on the group's servers.
  */
 export function ModulesForm({
   serverGroup,
@@ -60,6 +61,17 @@ export function ModulesForm({
   const changes = all.filter((m) => selected.has(m) !== active.includes(m)).length
   const dirty = changes > 0
   const isOn = (name: string) => selected.has(name) || defaults.includes(name)
+  // From the saved modules, so a mark does not come and go while the boxes are ticked
+  const serverKind = groupKind(groupServers, active)
+
+  // The row just ticked scrolls clear of the unsaved-changes bar that the tick may have brought up (the rows' scroll
+  // margin is the bar's height), so the change stays in view
+  const toggled = useRef<string | null>(null)
+  useEffect(() => {
+    if (!toggled.current) return
+    document.getElementById(`module-row-${toggled.current}`)?.scrollIntoView({ block: 'nearest' })
+    toggled.current = null
+  }, [selected])
 
   const sources = commandSources(servers, serverGroup)
   const commandLists = useQueries({
@@ -98,20 +110,22 @@ export function ModulesForm({
     }
   }
 
-  const toggle = (name: string, checked: boolean) =>
+  const toggle = (name: string, checked: boolean) => {
+    toggled.current = name
     setSelected((s) => {
       const next = new Set(s)
       if (checked) next.add(name)
       else next.delete(name)
       return next
     })
+  }
 
   // A command is found with or without its dot
   const query = filter.trim().toLowerCase().replace(/^\./, '')
   const matchesCommand = (alias: string) => !!query && alias.toLowerCase().includes(query)
   const matches = (name: string) =>
     !query ||
-    [moduleName(name), name, moduleDescription(name) ?? '', recommendation(name) ?? ''].some((text) => text.toLowerCase().includes(query)) ||
+    [moduleName(name), name, moduleDescription(name) ?? '', isRecommended(name, serverKind) ? 'recommended' : ''].some((text) => text.toLowerCase().includes(query)) ||
     (commands.get(name) ?? []).some(matchesCommand)
   const kinds = groupModules(all)
     .map((kind) => ({ ...kind, modules: kind.modules.filter(matches) }))
@@ -130,7 +144,7 @@ export function ModulesForm({
             Reload modules
           </Button>
           <p className="min-w-0 flex-[1_1_16rem] text-sm text-muted-foreground">
-            A reload restarts the modules on the {serversText} in this group. Their state, such as a running match, is lost.
+            A reload restarts the modules on {serverCount === 1 ? 'the server' : `the ${serversText}`} in this group. Their state, such as a running match, is lost.
           </p>
         </div>
       )}
@@ -171,19 +185,19 @@ export function ModulesForm({
               {kind.modules.map((name) => {
                 const always = defaults.includes(name)
                 const description = moduleDescription(name)
-                const recommended = recommendation(name)
+                const recommended = !always && isRecommended(name, serverKind)
                 const changed = selected.has(name) !== active.includes(name) && !always
                 return (
-                  <Field key={name} orientation="horizontal">
+                  <Field key={name} id={`module-row-${name}`} orientation="horizontal" className="scroll-mb-36 sm:scroll-mb-24">
                     <Checkbox id={`module-${name}`} checked={isOn(name)} disabled={readOnly || always} onCheckedChange={(checked) => toggle(name, checked)} />
                     <FieldContent className="min-w-0 gap-1.5">
                       <FieldLabel htmlFor={`module-${name}`} title={name} className="flex-wrap gap-y-1">
                         {moduleName(name)}
                         {always && <span className="font-normal text-muted-foreground">(always on)</span>}
-                        {recommended && !always && (
-                          <Badge variant="secondary" className="font-normal">
-                            {recommended}
-                          </Badge>
+                        {recommended && serverKind && (
+                          <span className="text-xs font-normal text-muted-foreground" title={`Usually on for ${kindText(serverKind)}`}>
+                            Recommended
+                          </span>
                         )}
                         {changed && (
                           <Badge variant="outline" className="font-normal">

@@ -82,7 +82,7 @@ export function TeamTable({
           {players.length === 0 && (
             <TableRow>
               <TableCell colSpan={6} className="text-center text-muted-foreground">
-                No players
+                No players on this team.
               </TableCell>
             </TableRow>
           )}

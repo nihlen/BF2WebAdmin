@@ -116,7 +116,9 @@ function AccountMenu() {
         <span className="hidden max-w-32 truncate sm:inline">{name}</span>
         <ChevronDown data-icon="inline-end" className="text-muted-foreground" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto min-w-48">
+      {/* Opens to the trigger's left, along the app bar: below it, it would fall across the server header's action
+          buttons, half covering them */}
+      <DropdownMenuContent side="left" align="start" className="w-auto min-w-48 shadow-lg">
         <DropdownMenuGroup>
           <DropdownMenuLabel>
             Signed in as <span className="text-foreground">{name}</span>

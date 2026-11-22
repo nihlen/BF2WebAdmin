@@ -3,6 +3,7 @@ import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
+import { fixtures } from './fixtures-plugin.ts'
 
 // The BF2WebAdmin.Server URL. Aspire (BF2WebAdmin.AppHost) passes it in; without Aspire, the server's launch profile
 // listens on http://localhost:5001.
@@ -15,6 +16,9 @@ const staticAssets = 'https://static.nihlen.net/bf2/viewer/v1'
 const localAssets = '/viewer'
 const assetFolders = ['maps', 'models', 'templates']
 const hasLocalAssets = assetFolders.some((f) => fs.existsSync(path.resolve(import.meta.dirname, 'public/viewer', f)))
+
+// UI_FIXTURES=1: the dev server answers the API from fixed data and fakes the hub, with no server (fixtures-plugin.ts)
+const useFixtures = process.env.UI_FIXTURES === '1'
 
 /** Leaves the local copies out of a build that loads the models from elsewhere: Vite copies all of public into dist */
 function dropLocalAssets(base: string): Plugin {
@@ -33,7 +37,7 @@ export default defineConfig(({ command }) => {
   const viewerAssets = process.env.VIEWER_ASSETS ?? (command === 'serve' && hasLocalAssets ? localAssets : staticAssets)
   return {
     define: { __VIEWER_ASSETS__: JSON.stringify(viewerAssets) },
-    plugins: [react(), tailwindcss(), dropLocalAssets(viewerAssets)],
+    plugins: [...(useFixtures ? [fixtures()] : []), react(), tailwindcss(), dropLocalAssets(viewerAssets)],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, './src'),
@@ -43,7 +47,7 @@ export default defineConfig(({ command }) => {
       port: process.env.PORT ? Number(process.env.PORT) : 5173,
       // The API and the hub are on the server; the proxy keeps them on the page's origin, so the auth cookie works as in
       // production, where the server serves this app from wwwroot.
-      proxy: {
+      proxy: useFixtures ? undefined : {
         '/api': { target: serverUrl, changeOrigin: true, secure: false },
         '/hubs': { target: serverUrl, changeOrigin: true, secure: false, ws: true },
       },

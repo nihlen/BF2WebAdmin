@@ -40,3 +40,20 @@ look like a file to the server's fallback route.
 
 `npm run build` type-checks and builds into `dist`. `dotnet publish` of the server does this and publishes `dist` as
 `wwwroot`; Aspire's publish copies it into the server image (`PublishWithContainerFiles`).
+
+## Fixture mode and the UI review loop
+
+With `UI_FIXTURES=1` the dev server needs no BF2WebAdmin.Server: `fixtures-plugin.ts` answers every web API request
+from the fixed data in `src/fixtures/data.ts` (five servers in three groups, a 2v2 match in progress, an hour of health
+history, bans, layouts, ...) and `src/fixtures/signalr.ts` stands in for the hub. The cookie `ui-fixture` picks a
+scenario: `default`, `empty` (a new install without servers) or `loggedout`. Nothing of it is in a build.
+
+```powershell
+$env:UI_FIXTURES = '1'; npx vite --port 5199 --strictPort
+node scripts/ui-capture.mjs --out <dir>      # screenshots of every page and state, desktop and phone, plus checks.json
+node scripts/ui-gallery.mjs <run dir>        # the gallery of a review run
+```
+
+`scripts/ui-capture.mjs` fixes the browser's clock to the fixtures' time and covers the WebGL views, so two builds give
+comparable screenshots; it uses the installed Chrome. The review loop that uses them is the `ui-climb` skill in
+`.claude/skills/ui-climb`.

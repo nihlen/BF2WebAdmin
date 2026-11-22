@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { CircleHelp } from 'lucide-react'
+import { useId, useState } from 'react'
 import type { ChatLogEntry, CommandInfo, Player, Team } from '@/api/client'
 import { Input } from '@/components/ui/input'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { teamTextColor } from '@/lib/teams'
 import { cn } from '@/lib/utils'
 import { LogList, Time } from './log-list'
@@ -11,6 +13,7 @@ export function ChatPanel({
   teams,
   commands,
   onSend,
+  onPlayer,
   listClassName = 'h-[500px]',
 }: {
   chatLog: ChatLogEntry[]
@@ -18,23 +21,27 @@ export function ChatPanel({
   teams: Team[]
   commands: CommandInfo[]
   onSend: (message: string) => void
+  /** Opens a player's details from their name in the chat */
+  onPlayer?: (player: Player) => void
   /** The list's size: a fixed height on the server page, the rest of a column in the map builder */
   listClassName?: string
 }) {
   return (
     <>
       <LogList className={listClassName} items={chatLog} empty="No chat yet">
-        {(entry) => <ChatLine key={entry.message.id} entry={entry} players={players} teams={teams} />}
+        {(entry) => <ChatLine key={entry.message.id} entry={entry} players={players} teams={teams} onPlayer={onPlayer} />}
       </LogList>
       <ChatInput players={players} commands={commands} onSend={onSend} />
     </>
   )
 }
 
-function ChatLine({ entry, players, teams }: { entry: ChatLogEntry; players: Player[]; teams: Team[] }) {
+function ChatLine({ entry, players, teams, onPlayer }: { entry: ChatLogEntry; players: Player[]; teams: Team[]; onPlayer?: (player: Player) => void }) {
   const { message } = entry
+  // The sender while still on the server: same index and name, as an index is reused after a player leaves
+  const sender = players.find((p) => p.index === message.playerId && p.name === message.playerName)
   // By team id: the sender's current team, or the team with the name the message carries
-  const teamId = players.find((p) => p.index === message.playerId)?.team ?? teams.find((t) => t.name === message.teamName)?.id
+  const teamId = sender?.team ?? teams.find((t) => t.name === message.teamName)?.id
   const color =
     message.channel === 'Team'
       ? teamTextColor(teamId)
@@ -47,7 +54,25 @@ function ChatLine({ entry, players, teams }: { entry: ChatLogEntry; players: Pla
   return (
     <li className={color}>
       <Time value={entry.timestamp} />
-      {message.type !== 'Server' && ` ${message.playerName}:`} {message.text}
+      {message.type !== 'Server' && (
+        <>
+          {' '}
+          {sender && onPlayer ? (
+            <button
+              type="button"
+              className="font-medium underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
+              title={`${sender.name}: details and actions`}
+              onClick={() => onPlayer(sender)}
+            >
+              {message.playerName}
+            </button>
+          ) : (
+            message.playerName
+          )}
+          :
+        </>
+      )}{' '}
+      {message.text}
     </li>
   )
 }
@@ -90,8 +115,12 @@ function suggest(text: string, players: Player[], commands: CommandInfo[]): Sugg
     .map((p) => ({ insert: `${prefix}${p.name} `, label: p.name, detail: `player ${p.index}` }))
 }
 
+// What the chat box takes besides chat; the placeholder is short, so this is in the box's help
+const chatHelp = 'A message is said in game. ".command" runs a chat command, "!command" an admin command, and "!" with a console line runs it on the server. ↑ and ↓ go through what you sent, Tab completes commands and player names.'
+
 /** One line: chat, ".command" or "!command" (an admin command or a console line). Up and down go through what was sent; Tab takes the selected suggestion. */
 function ChatInput({ players, commands, onSend }: { players: Player[]; commands: CommandInfo[]; onSend: (message: string) => void }) {
+  const helpId = useId()
   const [text, setText] = useState('')
   const [history, setHistory] = useState<string[]>([])
   // Position in history while browsing it with the arrow keys; null when editing new text
@@ -144,9 +173,14 @@ function ChatInput({ players, commands, onSend }: { players: Player[]; commands:
           ))}
         </ul>
       )}
+      <p id={helpId} className="sr-only">
+        {chatHelp}
+      </p>
       <Input
         aria-label="Chat message or command"
-        placeholder='Message, ".command", "!command" or "!console line"  (↑ history, Tab completes)'
+        placeholder="Message or .command"
+        aria-describedby={helpId}
+        className="pr-8"
         value={text}
         onChange={(e) => update(e.target.value)}
         onBlur={() => setDismissed(true)}
@@ -189,6 +223,18 @@ function ChatInput({ players, commands, onSend }: { players: Player[]; commands:
           }
         }}
       />
+      <Tooltip>
+        <TooltipTrigger
+          render={<button type="button" />}
+          aria-label="What the chat box takes"
+          className="absolute top-1/2 right-4 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        >
+          <CircleHelp className="size-4" />
+        </TooltipTrigger>
+        <TooltipContent side="top" align="end" className="max-w-sm">
+          {chatHelp}
+        </TooltipContent>
+      </Tooltip>
     </form>
   )
 }

@@ -1,7 +1,7 @@
 import { Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, type Player, type Team } from '@/api/client'
-import type { InputRequest } from '@/components/input-dialog'
+import type { ModerationKind } from '@/components/server/moderation-dialog'
 import { LevelSelect } from '@/components/auth-level-select'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -11,7 +11,7 @@ import { banLength } from '@/lib/bans'
 import { teamTextColor } from '@/lib/teams'
 import { cn } from '@/lib/utils'
 import { formatTime } from '@/lib/format'
-import { playerInputs } from './player-inputs'
+import { pingClass } from '@/lib/health'
 import type { PlayerAuthLevels } from './team-table'
 
 /**
@@ -27,7 +27,7 @@ export function PlayerSheet({
   authLevels: levels,
   serverGroup,
   actions,
-  onInput,
+  onModerate,
   onClose,
 }: {
   serverId: string
@@ -40,7 +40,7 @@ export function PlayerSheet({
   authLevels: PlayerAuthLevels
   serverGroup: string
   actions: ServerActions
-  onInput: (request: InputRequest) => void
+  onModerate: (kind: ModerationKind, player: Player) => void
   onClose: () => void
 }) {
   return (
@@ -56,7 +56,7 @@ export function PlayerSheet({
             level={player.hash ? levels.get(player.hash) : undefined}
             serverGroup={serverGroup}
             actions={actions}
-            onInput={onInput}
+            onModerate={onModerate}
           />
         )}
       </SheetContent>
@@ -73,7 +73,7 @@ function PlayerDetails({
   level,
   serverGroup,
   actions,
-  onInput,
+  onModerate,
 }: {
   serverId: string
   player: Player
@@ -83,13 +83,12 @@ function PlayerDetails({
   level: number | undefined
   serverGroup: string
   actions: ServerActions
-  onInput: (request: InputRequest) => void
+  onModerate: (kind: ModerationKind, player: Player) => void
 }) {
   const bans = api.useQuery('get', '/api/servers/{serverId}/bans', { params: { path: { serverId } } })
   const playerBans = (bans.data ?? []).filter(
     (b) => (!!player.hash && b.identifier === player.hash) || (!!player.ipAddress && b.identifier === player.ipAddress) || b.name === player.name,
   )
-  const inputs = playerInputs(actions, onInput)
   const team = teams.find((t) => t.id === player.team)
 
   return (
@@ -103,7 +102,7 @@ function PlayerDetails({
       </SheetHeader>
 
       <div className="space-y-6 px-4 pb-6">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
           <dt className="text-muted-foreground">Team</dt>
           <dd className={teamTextColor(player.team)}>{team?.name ?? player.team}</dd>
           <dt className="text-muted-foreground">Score</dt>
@@ -111,7 +110,7 @@ function PlayerDetails({
             {player.score.total} ({player.score.kills} kills, {player.score.deaths} deaths)
           </dd>
           <dt className="text-muted-foreground">Ping</dt>
-          <dd>{ping ?? player.score.ping} ms</dd>
+          <dd className={pingClass(ping ?? player.score.ping)}>{ping ?? player.score.ping} ms</dd>
           <dt className="text-muted-foreground">Country</dt>
           <dd>{player.country || '-'}</dd>
           <dt className="text-muted-foreground">IP address</dt>
@@ -142,13 +141,13 @@ function PlayerDetails({
               <Button variant="outline" size="sm" onClick={() => void actions.killPlayer(player)}>
                 Kill
               </Button>
-              <Button variant="outline" size="sm" onClick={() => inputs.warn(player)}>
+              <Button variant="outline" size="sm" onClick={() => onModerate('warn', player)}>
                 Warn
               </Button>
-              <Button variant="outline" size="sm" onClick={() => inputs.kick(player)}>
+              <Button variant="outline" size="sm" onClick={() => onModerate('kick', player)}>
                 Kick
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => inputs.ban(player)}>
+              <Button variant="destructive" size="sm" onClick={() => onModerate('ban', player)}>
                 Ban
               </Button>
             </div>
@@ -180,8 +179,10 @@ function PlayerDetails({
 
 function Copyable({ value }: { value: string }) {
   return (
-    <span className="flex items-center gap-1">
-      <span className="truncate font-mono text-xs">{value}</span>
+    <span className="flex min-w-0 items-center gap-1">
+      <span className="truncate font-mono text-xs" title={value}>
+        {value}
+      </span>
       <Button
         variant="ghost"
         size="icon-xs"

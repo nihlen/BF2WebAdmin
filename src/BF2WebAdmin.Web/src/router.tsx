@@ -77,7 +77,7 @@ const dashboardRoute = createRoute({
   component: DashboardPage,
 })
 
-const serverAddRoute = createRoute({
+export const serverAddRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/server/add',
   component: ServerAddPage,

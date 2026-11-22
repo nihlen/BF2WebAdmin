@@ -72,6 +72,13 @@ const fillAddForm = async (page, log) =>
     await fill('#queryPort, input[name="queryPort"]', '29900')
   })
 
+/** Clicks a button (by its accessible name) and waits for what it opens */
+const clickButton = (name, label = name) => async (page, log) =>
+  tryStep(log, label, async () => {
+    await page.getByRole('button', { name }).first().click({ timeout: 4000 })
+    await page.waitForTimeout(600)
+  })
+
 const testConnection = async (page, log) => {
   await fillAddForm(page, log)
   await tryStep(log, 'test connection', async () => {
@@ -104,11 +111,56 @@ const shots = [
   { name: 'nav-open', path: '/', viewports: ['phone'], overlay: true, steps: [openNav] },
   { name: 'server-add', path: '/server/add', viewports: ['desktop', 'phone'] },
   { name: 'server-add-tested', path: '/server/add', viewports: ['desktop'], steps: [testConnection] },
+  // Since r02: "New group" beside the group list opens the name field; with no servers the field has suggestions
+  { name: 'server-add-new-group', path: '/server/add', viewports: ['desktop'], steps: [clickButton(/^New group$/, 'new group')] },
+  { name: 'server-add-first', path: '/server/add', scenario: 'empty', viewports: ['desktop', 'phone'] },
   { name: 'server-edit', path: `${heli1}/edit`, viewports: ['desktop'] },
   { name: 'server-group', path: '/servergroup/2v2', viewports: ['desktop', 'phone'] },
+  // The unsaved-changes bar sticks to the window's bottom, so the shot is of the screen
+  {
+    name: 'server-group-unsaved',
+    path: '/servergroup/2v2',
+    viewports: ['desktop', 'phone'],
+    overlay: true,
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'turn on Chopper Mayhem', async () => {
+          await page.getByRole('checkbox', { name: /Chopper Mayhem/ }).click({ timeout: 4000 })
+          await page.waitForTimeout(400)
+        }),
+    ],
+  },
   { name: 'server', path: heli1, viewports: ['desktop', 'phone'] },
   { name: 'server-tab-maps', path: heli1, viewports: ['desktop'], steps: [clickTab('maps')] },
   { name: 'server-tab-commands', path: heli1, viewports: ['desktop'], steps: [clickTab('commands')] },
+  // Since r02: chat that comes while Maps is open is counted on the Chat tab (the fake hub sends two lines)
+  {
+    name: 'server-chat-unread',
+    path: heli1,
+    viewports: ['desktop'],
+    steps: [
+      clickTab('maps'),
+      async (page, log) =>
+        tryStep(log, 'two new chat lines', async () => {
+          await page.evaluate(() => {
+            const lines = [
+              { playerId: 2, playerName: 'Vortex|Ace', teamName: 'USA', text: 'gg, rematch?' },
+              { playerId: 0, playerName: 'Kestrel', teamName: 'China', text: 'sure, same teams' },
+            ]
+            lines.forEach((line, i) =>
+              // eslint-disable-next-line no-undef
+              window.__fixtureHub.emit('ChatEvent', {
+                message: { id: `00000000-0000-4000-a000-00000000000${i}`, type: 'Player', channel: 'Global', flags: '', ...line },
+                timeStamp: new Date().toISOString(),
+              }),
+            )
+          })
+          await page.waitForTimeout(400)
+        }),
+    ],
+  },
+  // Since r02: on a phone the tab bar shows three tabs and a More menu with the rest
+  { name: 'server-tabs-more', path: heli1, viewports: ['phone'], overlay: true, steps: [clickButton(/More pages/, 'open More')] },
   // Bans, activity and health are pages of their own under the server's tab bar since r01
   { name: 'server-tab-bans', path: `${heli1}/bans`, viewports: ['desktop', 'phone'] },
   { name: 'server-tab-activity', path: `${heli1}/activity`, viewports: ['desktop'] },
@@ -139,10 +191,45 @@ const shots = [
         }),
     ],
   },
+  // Since r02: warn, kick and ban in one dialog with preset reasons and, for a ban, its length as chips
+  {
+    name: 'server-moderate',
+    path: heli1,
+    viewports: ['desktop', 'phone'],
+    overlay: true,
+    steps: [
+      clickButton('Actions for mr.Hellcat', 'player menu'),
+      async (page, log) =>
+        tryStep(log, 'ban with a reason and a length', async () => {
+          await page.getByRole('menuitem', { name: /ban player/i }).click({ timeout: 4000 })
+          await page.waitForTimeout(500)
+          await page.getByRole('button', { name: 'Team killing' }).click({ timeout: 3000 })
+          await page.getByRole('button', { name: '1 day' }).click({ timeout: 3000 })
+          await page.waitForTimeout(300)
+        }),
+    ],
+  },
+  { name: 'account-menu', path: heli1, viewports: ['desktop'], overlay: true, steps: [clickButton(/^Account/, 'account menu')] },
   { name: 'server-busy', path: mayhem, viewports: ['desktop'] },
   { name: 'server-offline', path: offline, viewports: ['desktop', 'phone'] },
   { name: 'viewer', path: `${heli1}/viewer`, viewports: ['desktop', 'phone'], wait: 2500 },
   { name: 'builder', path: `${heli1}/builder`, viewports: ['desktop', 'phone'], wait: 2500 },
+  // Since r02: the chat opens under the 3D view on a phone. The map in software WebGL keeps the page too busy for a
+  // pointer click to pass Playwright's checks in time, so the step sends the click event itself
+  {
+    name: 'builder-chat',
+    path: `${heli1}/builder`,
+    viewports: ['phone'],
+    wait: 2500,
+    overlay: true,
+    steps: [
+      async (page, log) =>
+        tryStep(log, 'open chat', async () => {
+          await page.getByRole('button', { name: /^Chat/ }).first().dispatchEvent('click', {}, { timeout: 4000 })
+          await page.waitForTimeout(800)
+        }),
+    ],
+  },
 ]
 
 // Animations, transitions and the caret off, so two runs give the same pixels

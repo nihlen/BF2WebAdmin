@@ -10,12 +10,15 @@ import { useServerPage } from '@/components/server/server-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useServerActions } from '@/hooks/use-server-actions'
 import { normalizeDegrees, type Vec } from '@/builder/coords'
 import { BUILDER_CAMERA_KEYS, FLY_WHILE_LOOKING } from '@/builder/keys'
+import { addRecent, categoryKey, categoryLabel, isGroundOrWater, readRecent } from '@/builder/palette'
 import { BuilderScene, type GizmoTool, type PlaceSpec, type SceneItem, teamColor } from '@/builder/scene'
 import { type CatalogEntry, loadCatalog, templateThumbnail } from '@/builder/templates'
 import { cn } from '@/lib/utils'
@@ -67,6 +70,8 @@ export function BuilderPage() {
   const [applying, setApplying] = useState(false)
   const [tab, setTab] = useState('objects')
   const [chatOpen, setChatOpen] = useState(() => readChatOpen())
+  const [recent, setRecent] = useState(readRecent)
+  const chatRef = useRef<HTMLDivElement>(null)
   const nextDraft = useRef(1)
   const actions = useServerActions(serverId, snapshot.data)
   const commands = api.useQuery('get', '/api/servers/{serverId}/commands', { params: { path: { serverId } } })
@@ -89,6 +94,8 @@ export function BuilderPage() {
     } catch {
       // Not remembered, that is all
     }
+    // Below lg the chat opens under the 3D view, which may be off screen
+    if (open) requestAnimationFrame(() => chatRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
   }
 
   const builder = state.data
@@ -262,6 +269,7 @@ export function BuilderPage() {
     const draft: Draft = { key, builtId: null, kind: spec.kind, template: spec.template, team: spec.team, position, rotation, remove: false }
     setDrafts((current) => new Map(current).set(key, draft))
     setSelected(key)
+    if (spec.kind === 'Object') setRecent((r) => addRecent(r, spec.template))
     return key
   }, [])
 
@@ -485,10 +493,11 @@ export function BuilderPage() {
         )}
         <ResyncStatus state={builder} />
         <Button
-          className="ml-auto hidden lg:inline-flex"
+          className="ml-auto"
           variant={chatOpen ? 'default' : 'outline'}
           size="sm"
-          title="Show the server's chat beside the 3D view, to read and write while building"
+          aria-expanded={chatOpen}
+          title="Show the server's chat beside the 3D view (under it on a narrow screen), to read and write while building"
           onClick={toggleChat}
         >
           <MessageSquare />
@@ -497,14 +506,14 @@ export function BuilderPage() {
         </Button>
       </div>
 
-      {/* Desktop: the 3D view, the chat and the panels side by side. Below lg one column: the view, then the panels */}
+      {/* Desktop: the 3D view, the chat and the panels side by side. Below lg one column: the view, the chat, the panels */}
       <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1 lg:flex-row">
         <div className="relative h-[min(55svh,30rem)] min-h-[280px] min-w-0 overflow-hidden rounded-lg border bg-black lg:h-auto lg:min-h-0 lg:flex-1">
           <div ref={containerRef} className="absolute inset-0" />
           {!scene && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading the 3D view…</div>}
           <div className="pointer-events-none absolute top-2 left-2 hidden max-w-[calc(100%-14rem)] rounded bg-black/60 px-2 py-1 text-xs text-white/80 lg:block">
             Hold right: look, WASD fly, Q/E down/up · Space/Ctrl up/down · arrows fly · Shift faster · Drag from the list onto the map, or click it to put
-            it ahead · Click: select · W move, E rotate (Ctrl snaps) · End to ground · F focus · Del remove
+            it mid-view · Click: select · W move, E rotate (Ctrl snaps) · End to ground · F focus · Del remove
           </div>
           {selectedItem && (
             <div className="absolute top-2 right-2 flex gap-1">
@@ -525,7 +534,7 @@ export function BuilderPage() {
         </div>
 
         {chatOpen && (
-          <Card className="hidden w-80 shrink-0 flex-col gap-2 overflow-hidden p-3 lg:flex">
+          <Card ref={chatRef} className="h-96 shrink-0 scroll-mt-4 gap-2 overflow-hidden p-3 lg:h-auto lg:w-80">
             <div className="text-sm font-medium">Chat</div>
             <ChatPanel
               chatLog={chatLog}
@@ -551,6 +560,7 @@ export function BuilderPage() {
                 <Palette
                   catalog={catalog}
                   levelCatalog={levelCatalog}
+                  recent={recent}
                   checking={onLevel.isFetching}
                   error={onLevel.isError ? errorMessage(onLevel.error) : !connected && !onLevel.data ? 'The game server is not connected: which objects this map has is not known.' : null}
                   onRetry={() => void onLevel.refetch()}
@@ -650,21 +660,49 @@ function readChatOpen() {
 
 // -------------------------------------------------------------------------------------------------------------------
 
+/** What a player's reload waits for (PendingResyncDto.blocker); an unknown reason as the server wrote it */
+const resyncWait = (blocker: string | null) =>
+  blocker === null ? 'next in line' : blocker === 'dead' ? 'waits until respawned' : blocker === 'missile' ? 'waits for a TV missile to land' : blocker
+
+/**
+ * Moving or removing a built object makes every player's game drop and load the built objects again. The chip says
+ * that it is going on, and its tooltip why and for whom.
+ */
 function ResyncStatus({ state }: { state: BuilderState | undefined }) {
   if (!state || state.pendingResync.length === 0) return null
-  const why = (b: string | null) => (b === 'dead' ? 'waits until alive' : b === 'missile' ? 'waits for a missile' : 'next')
+  const count = state.pendingResync.length
   return (
-    <Badge variant="outline" title={state.pendingResync.map((p) => `${p.name}: ${why(p.blocker)}`).join('\n')}>
-      <Loader2 className="animate-spin" />
-      Reloading objects for {state.pendingResync.length} player{state.pendingResync.length === 1 ? '' : 's'}
-    </Badge>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge variant="outline" tabIndex={0} className="cursor-help focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none" />
+        }
+      >
+        <Loader2 className="animate-spin" />
+        Reloading objects for {count} player{count === 1 ? '' : 's'}
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="start" className="block max-w-sm space-y-1.5">
+        <p>
+          Built objects were moved or removed, so each player's game reloads them: a short hitch. It is held back while a player is dead or has a TV
+          missile in the air.
+        </p>
+        <ul className="list-disc pl-4">
+          {state.pendingResync.map((p) => (
+            <li key={p.index}>
+              {p.name || `Player ${p.index}`}: {resyncWait(p.blocker)}
+            </li>
+          ))}
+        </ul>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
-/** The object templates this map's level uses, to drag onto the map or click to put ahead */
+/** The object templates this map's level uses, to drag onto the map or click to put in the middle of the view */
 function Palette({
   catalog,
   levelCatalog,
+  recent,
   checking,
   error,
   onRetry,
@@ -674,6 +712,8 @@ function Palette({
   catalog: CatalogEntry[] | null
   /** The catalog's templates the level uses, null until the server has said */
   levelCatalog: CatalogEntry[] | null
+  /** The templates placed last in this browser, newest first */
+  recent: string[]
   checking: boolean
   error: string | null
   onRetry: () => void
@@ -683,15 +723,27 @@ function Palette({
   const [filter, setFilter] = useState('')
   const [bySize, setBySize] = useState(true)
   const [category, setCategory] = useState('')
-  const categories = useMemo(() => [...new Set((levelCatalog ?? []).map((c) => c.category.split('/').slice(0, 2).join('/')))].sort(), [levelCatalog])
-  const shown = useMemo(() => {
+  const [showGround, setShowGround] = useState(false)
+  // The chips, the biggest first
+  const categories = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const c of levelCatalog ?? []) counts.set(categoryKey(c.category), (counts.get(categoryKey(c.category)) ?? 0) + 1)
+    return [...counts.entries()].sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+  }, [levelCatalog])
+  const { shown, hidden } = useMemo(() => {
     const words = filter.toLowerCase().split(/\s+/).filter(Boolean)
-    return (levelCatalog ?? [])
-      .filter((c) => (!category || c.category.startsWith(category)) && words.every((w) => c.name.includes(w) || c.category.toLowerCase().includes(w)))
-      .sort((a, b) => (bySize ? b.size - a.size : a.name.localeCompare(b.name)))
-  }, [levelCatalog, filter, bySize, category])
-
-  const categoryItems = [{ value: '', label: `All (${levelCatalog?.length ?? 0})` }, ...categories.map((c) => ({ value: c, label: c }))]
+    const matching = (levelCatalog ?? []).filter(
+      (c) => (!category || categoryKey(c.category) === category) && words.every((w) => c.name.includes(w) || c.category.toLowerCase().includes(w)),
+    )
+    // A chosen chip shows its objects, roads and water too
+    const visible = showGround || category ? matching : matching.filter((c) => !isGroundOrWater(c))
+    return { shown: visible.sort((a, b) => (bySize ? b.size - a.size : a.name.localeCompare(b.name))), hidden: matching.length - visible.length }
+  }, [levelCatalog, filter, bySize, category, showGround])
+  const groundCount = useMemo(() => (levelCatalog ?? []).filter(isGroundOrWater).length, [levelCatalog])
+  const recentEntries = useMemo(
+    () => recent.map((name) => levelCatalog?.find((c) => c.name === name)).filter((c): c is CatalogEntry => !!c),
+    [recent, levelCatalog],
+  )
 
   if (catalog === null) return <p className="text-xs text-muted-foreground">Loading the objects…</p>
   if (catalog.length === 0)
@@ -711,38 +763,84 @@ function Palette({
       </p>
     )
 
+  const row = (c: CatalogEntry) => <PaletteRow key={c.name} entry={c} onPress={(e) => onPress(c.name, e)} onPlaceAhead={() => onPlaceAhead(c.name)} />
+  const browsing = !filter.trim() && !category
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <Input placeholder="Search objects" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      <Input placeholder="Search objects" aria-label="Search objects" value={filter} onChange={(e) => setFilter(e.target.value)} />
       <p className="text-xs text-muted-foreground" title="Templates the level does not use can crash the game">
-        The {levelCatalog.length} objects this map's level uses. Drag one onto the map, or click it to put it ahead of you.
+        The {levelCatalog.length} objects this map's level uses. Drag one onto the map, or click it to put it mid-view.
       </p>
-      <div className="flex items-center gap-2 text-xs">
-        <Select items={categoryItems} value={category} onValueChange={(value) => setCategory(value ?? '')}>
-          <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Category">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {categoryItems.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button size="xs" variant={bySize ? 'default' : 'outline'} onClick={() => setBySize(true)}>
-          Size
-        </Button>
-        <Button size="xs" variant={!bySize ? 'default' : 'outline'} onClick={() => setBySize(false)}>
-          Name
-        </Button>
-      </div>
-      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
-        {shown.map((c) => (
-          <PaletteRow key={c.name} entry={c} onPress={(e) => onPress(c.name, e)} onPlaceAhead={() => onPlaceAhead(c.name)} />
+      <div role="group" aria-label="Category" className="flex flex-wrap gap-1">
+        <Chip pressed={!category} onClick={() => setCategory('')}>
+          All
+        </Chip>
+        {categories.map(([key, count]) => (
+          <Chip key={key} pressed={category === key} onClick={() => setCategory(category === key ? '' : key)} title={key}>
+            {categoryLabel(key)} <span className="text-muted-foreground tabular-nums">{count}</span>
+          </Chip>
         ))}
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+        <div role="group" aria-labelledby="palette-sort" className="flex items-center gap-1">
+          <span id="palette-sort" className="mr-0.5 text-muted-foreground">
+            Sort:
+          </span>
+          <Button size="xs" variant={bySize ? 'default' : 'outline'} aria-pressed={bySize} onClick={() => setBySize(true)}>
+            Size
+          </Button>
+          <Button size="xs" variant={!bySize ? 'default' : 'outline'} aria-pressed={!bySize} onClick={() => setBySize(false)}>
+            Name
+          </Button>
+        </div>
+        {groundCount > 0 && (
+          <div className="flex items-center gap-2" title="Roads, airstrips and water planes: flat pieces that lie on the terrain">
+            <Checkbox id="palette-ground" checked={showGround} onCheckedChange={setShowGround} />
+            <Label htmlFor="palette-ground" className="text-xs font-normal text-muted-foreground">
+              Show roads and water ({groundCount})
+            </Label>
+          </div>
+        )}
+      </div>
+      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+        {browsing && recentEntries.length > 0 && (
+          <>
+            <h3 className="px-1 pt-1 text-xs font-medium text-muted-foreground">Recently used</h3>
+            {recentEntries.map(row)}
+            <h3 className="px-1 pt-2 text-xs font-medium text-muted-foreground">All objects</h3>
+          </>
+        )}
+        {shown.map(row)}
+        {shown.length === 0 && hidden === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">No object matches</p>}
+        {hidden > 0 && (
+          <p className="px-1 py-2 text-xs text-muted-foreground">
+            {hidden} {hidden === 1 ? 'road or water object matches' : 'road and water objects match'} as well.{' '}
+            <button type="button" className="text-foreground underline-offset-4 hover:underline" onClick={() => setShowGround(true)}>
+              Show them
+            </button>
+          </p>
+        )}
+      </div>
     </div>
+  )
+}
+
+/** A small toggle in a row of filters */
+function Chip({ pressed, onClick, title, children }: { pressed: boolean; onClick: () => void; title?: string; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      title={title}
+      onClick={onClick}
+      className={cn(
+        'inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs whitespace-nowrap transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+        pressed && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 [&_span]:text-primary-foreground/70',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -766,7 +864,7 @@ function PaletteRow({ entry, onPress, onPlaceAhead }: { entry: CatalogEntry; onP
     <button
       ref={ref}
       type="button"
-      title={`${entry.name}\n${entry.category}\n${dims.join(' × ')} m\nDrag onto the map, or click to put it ahead`}
+      title={`${entry.name}\n${entry.category}\n${dims.join(' × ')} m\nDrag onto the map, or click to put it in the middle of the 3D view`}
       className="flex w-full cursor-grab touch-none items-center gap-2 rounded px-1 py-0.5 text-left text-sm select-none hover:bg-muted"
       onPointerDown={onPress}
       // Enter or Space on the focused row (a mouse click is handled by the press)
@@ -808,7 +906,7 @@ function SpawnsTab({
         Players can pick a new spawn point or helipad at once. With an older server module they can only from the next round restart (a new spawn group gets its
         team when a round starts; <code>!admin.restartMap</code> in the chat does it); those are marked "next round".
       </p>
-      <p className="text-xs text-muted-foreground">Drag a button onto the map, or click it to put one ahead of you.</p>
+      <p className="text-xs text-muted-foreground">Drag a button onto the map, or click it to put one in the middle of the 3D view.</p>
       {[1, 2].map((team) => {
         const points = sceneItems.filter((i) => i.kind === 'SpawnPoint' && i.team === team && !i.removed)
         const pads = sceneItems.filter((i) => i.kind === 'Helipad' && i.team === team && !i.removed)

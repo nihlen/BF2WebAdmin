@@ -25,7 +25,9 @@ export function LogList<T>({
   return (
     <ul
       ref={ref}
-      className={cn('overflow-y-auto p-4 text-sm', className)}
+      // Focusable, so the keyboard can scroll it when its lines have nothing to focus
+      tabIndex={0}
+      className={cn('overflow-y-auto p-4 text-sm focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-inset', className)}
       onScroll={(e) => {
         const el = e.currentTarget
         atBottom.current = el.scrollHeight - (el.scrollTop + el.clientHeight) < 30

@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, Eye, EyeOff, KeyRound, Settings2, Sparkles } from 'lucide-react'
+import { ChevronDown, Eye, EyeOff, KeyRound, Plus, Settings2, Sparkles } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { api, errorMessage, type ServerSettings } from '@/api/client'
@@ -365,8 +365,12 @@ function PortField({
   )
 }
 
+// Names to start from when there is no group yet: one click fills the field
+const suggestedGroups = ['main', '2v2', 'public']
+
 /**
- * The server group: one of the groups the servers have, or a new one by name. With no servers yet, only the name.
+ * The server group: one of the groups the servers have, or a new one by name ("New group" beside the list, and in it).
+ * With no servers yet, only the name, with suggestions.
  */
 function GroupPicker({ value, onChange, onBlur, invalid }: { value: string; onChange: (group: string) => void; onBlur: () => void; invalid: boolean }) {
   const servers = useServers()
@@ -374,60 +378,80 @@ function GroupPicker({ value, onChange, onBlur, invalid }: { value: string; onCh
   // Until the user picks, the list decides (it may still be loading): a name that is not one of the groups is typed
   const [picked, setTyping] = useState<boolean | null>(null)
   const typing = picked ?? (groups.length === 0 || (value !== '' && !groups.includes(value)))
+  const newGroup = () => {
+    setTyping(true)
+    onChange('')
+  }
 
   if (typing)
     return (
-      <div className="flex gap-2">
-        <Input
-          id="serverGroup"
-          value={value}
-          placeholder="A name, such as 2v2"
-          autoFocus={typing && groups.length > 0}
-          aria-invalid={invalid}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-        />
-        {groups.length > 0 && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setTyping(false)
-              onChange('')
-            }}
-          >
-            Pick a group
-          </Button>
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <Input
+            id="serverGroup"
+            value={value}
+            placeholder={groups.length === 0 ? 'Name the first group, such as main' : 'The new group\'s name'}
+            autoFocus={picked === true}
+            aria-invalid={invalid}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
+          />
+          {groups.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setTyping(false)
+                onChange('')
+              }}
+            >
+              Pick a group
+            </Button>
+          )}
+        </div>
+        {groups.length === 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+            Suggested:
+            {suggestedGroups.map((name) => (
+              <Button key={name} type="button" variant={value === name ? 'secondary' : 'outline'} size="xs" aria-pressed={value === name} onClick={() => onChange(name)}>
+                {name}
+              </Button>
+            ))}
+          </div>
         )}
       </div>
     )
 
   const items = [...groups.map((g) => ({ value: g, label: g })), { value: newGroupValue, label: 'New group…' }]
   return (
-    <Select
-      items={items}
-      value={value || null}
-      onValueChange={(next) => {
-        if (next === newGroupValue) {
-          setTyping(true)
-          onChange('')
-        } else onChange(next ?? '')
-      }}
-      onOpenChange={(open) => !open && onBlur()}
-    >
-      <SelectTrigger id="serverGroup" className="w-full" aria-invalid={invalid}>
-        <SelectValue placeholder="Choose a group" />
-      </SelectTrigger>
-      <SelectContent>
-        {groups.map((g) => (
-          <SelectItem key={g} value={g}>
-            {g}
-          </SelectItem>
-        ))}
-        <SelectSeparator />
-        <SelectItem value={newGroupValue}>New group…</SelectItem>
-      </SelectContent>
-    </Select>
+    <div className="flex gap-2">
+      <Select
+        items={items}
+        value={value || null}
+        onValueChange={(next) => {
+          if (next === newGroupValue) newGroup()
+          else onChange(next ?? '')
+        }}
+        onOpenChange={(open) => !open && onBlur()}
+      >
+        <SelectTrigger id="serverGroup" className="min-w-0 flex-1" aria-invalid={invalid}>
+          <SelectValue placeholder="Choose a group" />
+        </SelectTrigger>
+        <SelectContent>
+          {groups.map((g) => (
+            <SelectItem key={g} value={g}>
+              {g}
+            </SelectItem>
+          ))}
+          <SelectSeparator />
+          <SelectItem value={newGroupValue}>New group…</SelectItem>
+        </SelectContent>
+      </Select>
+      <Button type="button" variant="outline" onClick={newGroup}>
+        <Plus data-icon="inline-start" />
+        New group
+      </Button>
+    </div>
   )
 }
 

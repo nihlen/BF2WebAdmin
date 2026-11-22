@@ -1,6 +1,7 @@
 // The fixture mode's stand-in for @microsoft/signalr (fixtures-plugin.ts points the import here). It connects at once,
 // and when a page subscribes to a server it sends that server's player positions, so the minimap has players on it.
-// No other live events: every page shows its snapshot, the same on every run.
+// No other live events by itself: every page shows its snapshot, the same on every run. The screenshot script sends
+// events for a shot of their effect (new chat while another tab is open) through window.__fixtureHub.
 
 import { fixtureSnapshot, scenarioFromCookie } from './data'
 
@@ -20,6 +21,10 @@ type Handler = (...args: unknown[]) => void
 class FixtureHubConnection {
   state: HubConnectionState = HubConnectionState.Disconnected
   private handlers = new Map<string, Set<Handler>>()
+
+  constructor() {
+    ;(window as unknown as { __fixtureHub: unknown }).__fixtureHub = { emit: (name: string, event: unknown) => this.emit(name, event) }
+  }
 
   start() {
     this.state = HubConnectionState.Connected

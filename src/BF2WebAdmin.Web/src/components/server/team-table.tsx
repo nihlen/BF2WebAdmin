@@ -1,7 +1,7 @@
 import { MoreVertical, ShieldCheck, Skull } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { Player, Team } from '@/api/client'
-import type { InputRequest } from '@/components/input-dialog'
+import type { Player, PlayerConnection, Team } from '@/api/client'
+import type { ModerationKind } from '@/components/server/moderation-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -23,9 +23,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import type { PlayerPosition } from '@/hooks/use-server-live'
 import type { ServerActions } from '@/hooks/use-server-actions'
 import { authLevelName, authLevels, defaultAuthLevel } from '@/lib/auth-levels'
+import { connectionReasonsText, pingClass, statusColors } from '@/lib/health'
 import { teamTextColor } from '@/lib/teams'
 import { cn } from '@/lib/utils'
-import { playerInputs } from './player-inputs'
 
 export type PlayerAuthLevels = ReadonlyMap<string, number>
 
@@ -35,8 +35,9 @@ export function TeamTable({
   positions,
   authLevels: levels,
   serverGroup,
+  connections,
   actions,
-  onInput,
+  onModerate,
   onDetails,
 }: {
   team: Team
@@ -44,8 +45,10 @@ export function TeamTable({
   positions: React.RefObject<Map<number, PlayerPosition>>
   authLevels: PlayerAuthLevels
   serverGroup: string
+  /** The players' connections in the latest health window, by player index, when the server sends them */
+  connections: ReadonlyMap<number, PlayerConnection>
   actions: ServerActions
-  onInput: (request: InputRequest) => void
+  onModerate: (kind: ModerationKind, player: Player) => void
   onDetails: (player: Player) => void
 }) {
   // Pings arrive with the positions, which do not re-render: read them once a second
@@ -74,7 +77,9 @@ export function TeamTable({
             <TableHead className="text-center" title="Ping">
               P
             </TableHead>
-            <TableHead className="w-px" />
+            <TableHead className="w-px">
+              <span className="sr-only">Actions</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -119,9 +124,11 @@ export function TeamTable({
                   <TableCell className="text-center">{player.score.total}</TableCell>
                   <TableCell className="hidden text-center sm:table-cell">{player.score.kills}</TableCell>
                   <TableCell className="hidden text-center sm:table-cell">{player.score.deaths}</TableCell>
-                  <TableCell className="text-center">{positions.current.get(player.index)?.ping ?? player.score.ping}</TableCell>
+                  <TableCell className="text-center">
+                    <Ping ping={positions.current.get(player.index)?.ping ?? player.score.ping} connection={connections.get(player.index)} />
+                  </TableCell>
                   <TableCell>
-                    <PlayerMenu player={player} level={level} serverGroup={serverGroup} actions={actions} onInput={onInput} onDetails={onDetails} />
+                    <PlayerMenu player={player} level={level} serverGroup={serverGroup} actions={actions} onModerate={onModerate} onDetails={onDetails} />
                   </TableCell>
                 </TableRow>
               )
@@ -132,22 +139,37 @@ export function TeamTable({
   )
 }
 
+/**
+ * The ping, coloured when high, and a dot when the latest health window rated the connection Warn or Bad (loss, an
+ * unsteady ping), with the reasons in its title.
+ */
+function Ping({ ping, connection }: { ping: number; connection: PlayerConnection | undefined }) {
+  const troubled = connection && connection.status !== 'Good'
+  const title = [`Ping ${ping} ms`, troubled && `Connection ${connection.status}: ${connectionReasonsText(connection)}`].filter(Boolean).join('. ')
+  return (
+    <span className={cn('inline-flex items-center gap-1 tabular-nums', pingClass(ping))} title={title}>
+      {troubled && <span className={cn('size-1.5 shrink-0 rounded-full', statusColors[connection.status])} aria-hidden />}
+      {ping}
+      {troubled && <span className="sr-only">, connection {connection.status}</span>}
+    </span>
+  )
+}
+
 function PlayerMenu({
   player,
   level,
   serverGroup,
   actions,
-  onInput,
+  onModerate,
   onDetails,
 }: {
   player: Player
   level: number | undefined
   serverGroup: string
   actions: ServerActions
-  onInput: (request: InputRequest) => void
+  onModerate: (kind: ModerationKind, player: Player) => void
   onDetails: (player: Player) => void
 }) {
-  const inputs = playerInputs(actions, onInput)
 
   return (
     <DropdownMenu>
@@ -159,9 +181,9 @@ function PlayerMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => void actions.switchTeam(player)}>Switch team</DropdownMenuItem>
         <DropdownMenuItem onClick={() => void actions.killPlayer(player)}>Kill player</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => inputs.warn(player)}>Warn player</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => inputs.kick(player)}>Kick player</DropdownMenuItem>
-        <DropdownMenuItem variant="destructive" onClick={() => inputs.ban(player)}>
+        <DropdownMenuItem onClick={() => onModerate('warn', player)}>Warn player</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onModerate('kick', player)}>Kick player</DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onClick={() => onModerate('ban', player)}>
           Ban player
         </DropdownMenuItem>
         <DropdownMenuSeparator />

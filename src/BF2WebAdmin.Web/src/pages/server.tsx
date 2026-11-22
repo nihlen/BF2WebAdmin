@@ -4,7 +4,6 @@ import { Map as MapIcon, MessageSquare, PlugZap, Settings, SquareTerminal } from
 import { useMemo, useState } from 'react'
 import { api, errorMessage, type Player, type ServerSnapshot } from '@/api/client'
 import { useConfirm } from '@/components/confirm-dialog'
-import { InputDialog, type InputRequest } from '@/components/input-dialog'
 import { ServerMap } from '@/components/server-map'
 import { ActivityLog } from '@/components/server/activity-log'
 import { BanList } from '@/components/server/ban-list'
@@ -14,14 +13,18 @@ import { ConnectionTestResults } from '@/components/server/connection-test'
 import { HealthPanel } from '@/components/server/health-panel'
 import { LogList, Time } from '@/components/server/log-list'
 import { MapList } from '@/components/server/map-list'
+import { ModerationDialog, type ModerationKind, type ModerationRequest } from '@/components/server/moderation-dialog'
 import { PlayerSheet } from '@/components/server/player-sheet'
 import { useServerPage } from '@/components/server/server-context'
 import { TeamTable } from '@/components/server/team-table'
+import { SetupChecklist } from '@/components/setup-checklist'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { playerAuthQuery, useServerActions, type ServerActions } from '@/hooks/use-server-actions'
+import { healthQuery } from '@/hooks/use-server-live'
 import { encodeServerId } from '@/lib/server-id'
 
 /** The Live tab: the teams, the chat, maps and commands, and the minimap. An offline server has none of them. */
@@ -29,20 +32,31 @@ export function ServerLivePage() {
   const { serverId, snapshot, positions } = useServerPage()
   const actions = useServerActions(serverId, snapshot.data)
   const { confirm, dialog: confirmDialog } = useConfirm()
-  const [inputRequest, setInputRequest] = useState<InputRequest | null>(null)
+  const [moderation, setModeration] = useState<ModerationRequest | null>(null)
   const [detailsPlayer, setDetailsPlayer] = useState<Player | null>(null)
+  const moderate = (kind: ModerationKind, player: Player) => setModeration({ kind, player })
 
   const serverGroup = snapshot.data?.server.serverGroup ?? ''
   const auth = useQuery({ ...playerAuthQuery(serverGroup), enabled: !!serverGroup })
   const authLevels = useMemo(() => new Map((auth.data ?? []).map((a) => [a.playerHash, a.authLevel])), [auth.data])
+  // The latest health window's connections, which useServerLive keeps current
+  const health = useQuery({ ...healthQuery(serverId), staleTime: Infinity })
+  const connections = useMemo(() => new Map((health.data?.connections?.players ?? []).map((c) => [c.playerId, c])), [health.data])
 
   if (!snapshot.data) return <Skeleton className="h-[600px]" />
 
   const { server, teams, players } = snapshot.data
-  if (server.socketState !== 'Connected') return <OfflineCard serverId={serverId} />
+  if (server.socketState !== 'Connected')
+    return (
+      <div className="space-y-6">
+        <SetupChecklist server={server} className="max-w-3xl" />
+        <OfflineCard serverId={serverId} />
+      </div>
+    )
 
   return (
     <div className="space-y-6">
+      <SetupChecklist server={server} className="max-w-3xl" />
       <div className="grid gap-6 lg:grid-cols-2">
         {teams.map((team) => (
           <TeamTable
@@ -52,15 +66,16 @@ export function ServerLivePage() {
             positions={positions}
             authLevels={authLevels}
             serverGroup={serverGroup}
+            connections={connections}
             actions={actions}
-            onInput={setInputRequest}
+            onModerate={moderate}
             onDetails={setDetailsPlayer}
           />
         ))}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <LiveTabs serverId={serverId} snapshot={snapshot.data} actions={actions} confirm={confirm} />
+        <LiveTabs serverId={serverId} snapshot={snapshot.data} actions={actions} confirm={confirm} onPlayer={setDetailsPlayer} />
         <ServerMap map={server.map} players={players} positions={positions} />
       </div>
 
@@ -73,10 +88,10 @@ export function ServerLivePage() {
         authLevels={authLevels}
         serverGroup={serverGroup}
         actions={actions}
-        onInput={setInputRequest}
+        onModerate={moderate}
         onClose={() => setDetailsPlayer(null)}
       />
-      <InputDialog request={inputRequest} onClose={() => setInputRequest(null)} />
+      <ModerationDialog request={moderation} actions={actions} onClose={() => setModeration(null)} />
       {confirmDialog}
     </div>
   )
@@ -127,14 +142,23 @@ function LiveTabs({
   snapshot,
   actions,
   confirm,
+  onPlayer,
 }: {
   serverId: string
   snapshot: ServerSnapshot
   actions: ServerActions
   confirm: ReturnType<typeof useConfirm>['confirm']
+  onPlayer: (player: Player) => void
 }) {
   const [tab, setTab] = useState('chat')
   const commands = api.useQuery('get', '/api/servers/{serverId}/commands', { params: { path: { serverId } } })
+
+  // Chat that came while Maps or Commands was open, counted on the Chat tab (the log is capped, so from the last one seen)
+  const { chatLog } = snapshot
+  const lastId = chatLog.at(-1)?.message.id ?? ''
+  const [seenId, setSeenId] = useState(lastId)
+  if (tab === 'chat' && seenId !== lastId) setSeenId(lastId)
+  const unread = tab === 'chat' ? 0 : chatLog.length - 1 - chatLog.findIndex((e) => e.message.id === seenId)
 
   return (
     <Card className="gap-0 py-0">
@@ -143,6 +167,11 @@ function LiveTabs({
           <TabsTrigger value="chat">
             <MessageSquare />
             Chat
+            {unread > 0 && (
+              <Badge className="h-4.5 min-w-4.5 px-1 tabular-nums" aria-label={`${unread} new`}>
+                {unread > 99 ? '99+' : unread}
+              </Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="maps">
             <MapIcon />
@@ -161,6 +190,7 @@ function LiveTabs({
             teams={snapshot.teams}
             commands={commands.data ?? []}
             onSend={actions.sendChat}
+            onPlayer={onPlayer}
           />
         </TabsContent>
 

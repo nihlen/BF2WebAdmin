@@ -555,7 +555,7 @@ const builderState = (serverId: string): S['BuilderStateDto'] => {
     layoutId: serverId === ids.heli1 ? uuid(4001) : null,
     layoutName: serverId === ids.heli1 ? 'Tower duel' : null,
     items: serverId === ids.heli1 || serverId === ids.test ? builderItems : [],
-    pendingResync: serverId === ids.heli1 ? [{ index: 3, name: 'GhostRotor', blocker: 'Dead: resyncs on spawn' }] : [],
+    pendingResync: serverId === ids.heli1 ? [{ index: 3, name: 'GhostRotor', blocker: 'dead' }] : [],
   }
 }
 
@@ -597,7 +597,12 @@ export function fixtureResponse(request: FixtureRequest): FixtureResponse {
     const reachable = !!body?.ipAddress && !body.ipAddress.startsWith('10.')
     return ok([
       { type: 'Query port', success: reachable, message: reachable ? `Answered: 2v2 Heli, dalian_2_v_2, 4/16 players` : 'No answer on the query port within 3 s' },
-      { type: 'Admin channel', success: false, message: 'Not connected yet. Start the game server with ENV_ADMIN_CONNECT pointing at this WebAdmin and the admin key below' },
+      // The real server's words (TestServerAsync in ApiEndpoints.cs)
+      {
+        type: 'Admin channel',
+        success: false,
+        message: `${body?.ipAddress ?? ''}:${body?.gamePort ?? ''} is not connected. The server connects by itself once it is saved here with the admin key of its serverext.cfg`,
+      },
       { type: 'Discord', success: !!body?.discordBotToken, message: body?.discordBotToken ? 'Logged in as BF2 Bot#1234' : 'No bot token: Discord is off for this server' },
     ] satisfies S['TestServerResult'][])
   }

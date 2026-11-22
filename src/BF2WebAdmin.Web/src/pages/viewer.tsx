@@ -190,9 +190,6 @@ export function ViewerPage() {
         {cameraMode === 'player' && viewInfo && <ViewOverlay info={viewInfo} />}
         {selected && <MissileOverlay missile={selected} outcome={outcomeOf(selected)} playback={playback} onJump={() => scene?.seekImpact()} />}
         {selected && <Legend />}
-        <div className="pointer-events-none absolute right-2 bottom-2">
-          <FrameRate buffer={buffer} />
-        </div>
         {!scene && <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading the 3D view…</div>}
       </div>
 
@@ -285,7 +282,7 @@ export function ViewerPage() {
       </aside>
 
       <div className="min-w-0 [grid-area:timeline]">
-        <Timeline scene={scene} playback={playback} onLive={() => selectMissile(null)} />
+        <Timeline scene={scene} playback={playback} buffer={buffer} onLive={() => selectMissile(null)} />
       </div>
     </div>
   )
@@ -609,8 +606,13 @@ function TimelineTrack({ scene, playback }: { scene: ViewerScene | null; playbac
   )
 }
 
-function Timeline({ scene, playback, onLive }: { scene: ViewerScene | null; playback: PlaybackState | null; onLive: () => void }) {
-  if (!playback) return <div className="h-10" />
+function Timeline({ scene, playback, buffer, onLive }: { scene: ViewerScene | null; playback: PlaybackState | null; buffer: LiveBuffer; onLive: () => void }) {
+  if (!playback)
+    return (
+      <div className="flex h-10 items-center">
+        <FrameRate buffer={buffer} />
+      </div>
+    )
   const speedItems = speeds.map((s) => ({ value: s, label: `${s}x` }))
   const { tick, start, end, playing, live, speed, missile } = playback
 
@@ -643,6 +645,8 @@ function Timeline({ scene, playback, onLive }: { scene: ViewerScene | null; play
         <Radio data-icon="inline-start" />
         Live
       </Button>
+      {/* Beside Live, outside the 3D view: whether frames arrive is part of what Live means */}
+      <FrameRate buffer={buffer} />
       <Select items={speedItems} value={speed} onValueChange={(value) => value !== null && scene?.setSpeed(value)}>
         <SelectTrigger className="w-20" aria-label="Playback speed" title="Playback speed">
           <SelectValue />

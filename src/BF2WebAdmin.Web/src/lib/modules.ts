@@ -29,3 +29,24 @@ export function moduleName(className: string) {
 }
 
 export const moduleDescription = (className: string): string | undefined => descriptions[className]
+
+// The module list in kinds, so an owner finds the game mode or the integration without reading every line. Each kind
+// has a line on what its modules have in common.
+const groups = [
+  { name: 'Core', description: 'The base of a server and its link to WebAdmin.', modules: ['BF2Module', 'AdminModule', 'ServerControlModule', 'LogModule', 'WebModule'] },
+  { name: 'Match modes', description: 'Game modes, layouts and the map builder.', modules: ['Heli2v2Module', 'ChopperMayhemModule', 'LayoutVoteModule', 'MapModule'] },
+  { name: 'Fun', description: 'Commands for players and admins to play with.', modules: ['FunModule', 'JailModule', 'DictionaryModule'] },
+  { name: 'Integrations', description: 'Services outside the game.', modules: ['DiscordModule'] },
+  { name: 'Testing', description: 'Not for a public server.', modules: ['TestModule'] },
+]
+
+/** The modules by kind, in the order above; a module the list does not know goes to Other, at the end. */
+export function groupModules(classNames: string[]) {
+  const known = new Set(groups.flatMap((g) => g.modules))
+  const result = groups
+    .map((g) => ({ name: g.name, description: g.description, modules: classNames.filter((m) => g.modules.includes(m)) }))
+    .filter((g) => g.modules.length > 0)
+  const other = classNames.filter((m) => !known.has(m))
+  if (other.length > 0) result.push({ name: 'Other', description: 'Modules this page has no description for.', modules: other })
+  return result
+}

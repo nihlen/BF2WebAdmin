@@ -1,6 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import { Plus, Settings, Settings2 } from 'lucide-react'
 import { errorMessage } from '@/api/client'
+import { HealthBadge } from '@/components/server/health-dot'
+import { FirstServerSetup, SetupChecklist } from '@/components/setup-checklist'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -34,21 +36,15 @@ export function DashboardPage() {
 
       {servers.isPending && <Skeleton className="h-40" />}
       {servers.isError && <p className="text-destructive">{errorMessage(servers.error)}</p>}
-      {servers.data?.length === 0 && (
-        <Card className="max-w-xl">
-          <CardHeader>
-            <CardTitle>No servers yet</CardTitle>
-            <CardDescription>
-              Add a game server with its address, ports and admin channel key. Its OpenBF2 server extension then connects to this WebAdmin.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button nativeButton={false} render={<Link to="/server/add" />}>
-              <Plus data-icon="inline-start" />
-              Add server
-            </Button>
-          </CardContent>
-        </Card>
+      {servers.data?.length === 0 && <FirstServerSetup />}
+
+      {/* New servers' setup steps, until done or hidden; each card hides itself then */}
+      {list.length > 0 && (
+        <div className="grid items-start gap-4 empty:hidden lg:grid-cols-2">
+          {list.map((server) => (
+            <SetupChecklist key={server.id} server={server} />
+          ))}
+        </div>
       )}
 
       {groupServers(servers.data ?? []).map(([group, groupServers]) => (
@@ -105,6 +101,8 @@ export function DashboardPage() {
                       <span className={cn('size-2 rounded-full', toneDot[status.tone])} />
                       {status.label}
                     </span>
+                    {/* Above the card's link, so its title shows on hover */}
+                    <HealthBadge server={server} className="relative" />
                     {connected && server.map && (
                       <>
                         <span aria-hidden className="text-muted-foreground/50">

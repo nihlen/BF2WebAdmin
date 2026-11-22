@@ -9,6 +9,7 @@ import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/componen
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { healthConnectionsQuery, healthMinutes, healthQuery, healthRoundsQuery } from '@/hooks/use-server-live'
+import { chipLabels, clock, connectionReasonsText, healthTitle, ms, reasonsText, sentence, statusColors, statusHelp } from '@/lib/health'
 import { nearestIndex } from '@/lib/nearest-index'
 import { cn } from '@/lib/utils'
 
@@ -21,55 +22,7 @@ const ranges = [
   { minutes: 360, label: 'Last 6 hours' },
 ]
 
-const statusColors: Record<ServerHealthStatus, string> = {
-  Good: 'bg-emerald-500',
-  Warn: 'bg-amber-500',
-  Bad: 'bg-red-500',
-  Loading: 'bg-sky-500',
-  Stepped: 'bg-muted-foreground/40',
-}
-
-const statusHelp: Partial<Record<ServerHealthStatus, string>> = {
-  Loading: 'A level was loading in this window, so its figures say nothing about how the server runs.',
-  Stepped: 'Stepped time is on, so the tick figures do not describe a real-time server.',
-}
-
-/** The latest window's status in the server header's chip. */
-const chipLabels: Record<ServerHealthStatus, string> = {
-  Good: 'Healthy',
-  Warn: 'Warning',
-  Bad: 'Problems',
-  Loading: 'Loading level',
-  Stepped: 'Stepped time',
-}
-
-const ms = (microseconds: number, digits: number) => (microseconds / 1000).toFixed(digits)
-const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
-const clock = (value: string) => new Date(value).toLocaleTimeString()
-const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 const and = new Intl.ListFormat('en', { type: 'conjunction' })
-
-/** A reason of a Warn or Bad window (ServerHealthRules on the server) in words, with the figure that caused it. */
-function reasonText(reason: string, w: ServerHealthWindow) {
-  switch (reason) {
-    case 'lateTicks':
-      return count(w.lateTicks, 'late tick')
-    case 'shortTicks':
-      return count(w.shortTicks, 'short tick')
-    case 'lostTicks':
-      return count(w.lostTicks, 'lost tick')
-    case 'cpu':
-      return `CPU per tick p99 ${ms(w.cpuP99Us, 2)} ms`
-    case 'pageFaults':
-      return count(w.majorFaults, 'major page fault')
-    case 'steal':
-      return `host steal ${w.hostStealPercent.toFixed(2)} %`
-    default:
-      return reason
-  }
-}
-
-const reasonsText = (w: ServerHealthWindow) => w.reasons.map((r) => reasonText(r, w)).join(', ')
 
 /** What a reason of a window means for the server, for the verdict; reasonText has the figure. */
 const reasonPhrases: Record<string, string> = {
@@ -79,14 +32,6 @@ const reasonPhrases: Record<string, string> = {
   cpu: 'ticks take too much CPU',
   pageFaults: 'the server waits for memory from disk',
   steal: 'the host is short of CPU',
-}
-
-/** A reason of a Warn or Bad connection (PlayerConnectionRules on the server) in words; the row has the figures. */
-const connectionReasons: Record<string, string> = {
-  lossToPlayer: 'loss to the player',
-  lossFromPlayer: 'loss from the player',
-  pingSpread: 'unsteady ping',
-  lowSendRate: 'sends at the low rate',
 }
 
 /** The same reasons as what the player has, for the verdict; loss either way reads the same there. */
@@ -161,10 +106,7 @@ export function HealthChip({ serverId, connected }: { serverId: string; connecte
   const latest = health.data?.latest
   if (!connected || !latest) return null
 
-  const title =
-    latest.reasons.length > 0
-      ? `${sentence(reasonsText(latest))} in the window received at ${clock(latest.time)}`
-      : (statusHelp[latest.status] ?? `Running smoothly in the window received at ${clock(latest.time)}`)
+  const title = healthTitle(latest)
   return (
     <span className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border px-2 text-xs font-medium whitespace-nowrap" title={title}>
       <span className={cn('size-2 shrink-0 rounded-full', statusColors[latest.status])} aria-hidden />
@@ -497,7 +439,7 @@ function Connections({ players }: { players: PlayerConnection[] }) {
                   {c.partial && <PartialBadge />}
                   <ConnectionStatus connection={c} />
                 </div>
-                {c.reasons.length > 0 && <p className="text-xs text-muted-foreground">{c.reasons.map((r) => connectionReasons[r] ?? r).join(', ')}</p>}
+                {c.reasons.length > 0 && <p className="text-xs text-muted-foreground">{connectionReasonsText(c)}</p>}
                 <dl className="grid grid-cols-2 gap-2">
                   <div>
                     <dt className="text-xs text-muted-foreground">Ping</dt>
@@ -555,7 +497,7 @@ function Connections({ players }: { players: PlayerConnection[] }) {
                         <ConnectionStatus connection={c} />
                         {c.reasons.length > 0 && (
                           <span className="text-xs whitespace-normal text-muted-foreground">
-                            {c.reasons.map((r) => connectionReasons[r] ?? r).join(', ')}
+                            {connectionReasonsText(c)}
                           </span>
                         )}
                       </div>

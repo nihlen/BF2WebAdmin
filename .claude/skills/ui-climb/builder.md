@@ -32,8 +32,9 @@ decided and why.
 ## The test bed
 
 The screenshots come from the fixture mode: `UI_FIXTURES=1 npx vite --port 5199 --strictPort` serves the API from
-`src/fixtures/data.ts` and fakes the hub (`src/fixtures/signalr.ts`). It is already running on port 5199 and reloads
-on file changes; do not start or stop it. `node scripts/ui-capture.mjs --out <dir>` (from `src/BF2WebAdmin.Web`)
+`src/fixtures/data.ts` and fakes the hub (`src/fixtures/signalr.ts`). Start your own on a free port (for example
+5210) in the background, pass `--base http://localhost:5210` to the capture, and stop it when you are done; port 5199
+is the orchestrator's. `node scripts/ui-capture.mjs --out <dir>` (from `src/BF2WebAdmin.Web`)
 takes the screenshots; use a scratch folder under `{run}/{round}/scratch` to look at your work (read the PNGs), never
 the round's `shots` folder.
 

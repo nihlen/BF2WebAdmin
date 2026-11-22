@@ -77,7 +77,8 @@ Round N (N >= 1) builds on the last accepted round, A (r00 at the start).
    are split, the setup flow) are allowed and welcome when the judges agree on them.
 2. **Build.** `git switch -c ui-climb-rNN ui-climb` (from the accepted tip). Start one builder subagent
    (`general-purpose`, model opus) with `builder.md`, the plan path and the run paths. It commits on that branch.
-3. **Capture.** `node scripts/ui-capture.mjs --out <run>/rNN/shots`. If the build or the capture fails, give the
+3. **Capture.** Start the fixture dev server on 5199 for the capture only (a background process is stopped after two
+   hours, so do not keep one running for the whole run), `node scripts/ui-capture.mjs --out <run>/rNN/shots`, stop it. If the build or the capture fails, give the
    builder one more turn (a new builder with the error); if it still fails, the round is rejected.
 4. **Vote.** Copy `rA/shots` and `rNN/shots` to `rNN/ab/X` and `rNN/ab/Y` in a random order (record the mapping only
    in `round.json`). Start the three judges with `compare.md`, in one message.

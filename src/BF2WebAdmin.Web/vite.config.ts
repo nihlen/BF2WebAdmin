@@ -17,6 +17,13 @@ const localAssets = '/viewer'
 const assetFolders = ['maps', 'models', 'templates']
 const hasLocalAssets = assetFolders.some((f) => fs.existsSync(path.resolve(import.meta.dirname, 'public/viewer', f)))
 
+// This folder as the file system spells it. Started from a working directory with another drive-letter case
+// (c:\Data\... for C:\Data\..., as some Windows shells and MSBuild pass it), the app's own modules would get c:\ ids and
+// the packages' C:\ ids (the resolver follows the real path), so node_modules\react was bundled twice and a hook ran on
+// the copy that was not rendering ("Cannot read properties of null (reading 'useMemo')"). The root and the alias from
+// the real path keep one id per file.
+const here = fs.realpathSync.native(import.meta.dirname)
+
 // UI_FIXTURES=1: the dev server answers the API from fixed data and fakes the hub, with no server (fixtures-plugin.ts)
 const useFixtures = process.env.UI_FIXTURES === '1'
 
@@ -36,11 +43,12 @@ function dropLocalAssets(base: string): Plugin {
 export default defineConfig(({ command }) => {
   const viewerAssets = process.env.VIEWER_ASSETS ?? (command === 'serve' && hasLocalAssets ? localAssets : staticAssets)
   return {
+    root: here,
     define: { __VIEWER_ASSETS__: JSON.stringify(viewerAssets) },
     plugins: [...(useFixtures ? [fixtures()] : []), react(), tailwindcss(), dropLocalAssets(viewerAssets)],
     resolve: {
       alias: {
-        '@': path.resolve(import.meta.dirname, './src'),
+        '@': path.resolve(here, './src'),
       },
     },
     server: {

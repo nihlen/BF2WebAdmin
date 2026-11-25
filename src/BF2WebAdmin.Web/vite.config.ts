@@ -12,6 +12,7 @@ const serverUrl = process.env.SERVER_HTTPS ?? process.env.SERVER_HTTP ?? 'http:/
 // The 3D viewer's and map builder's models (maps, helicopters, object templates) are built from the game's files and are
 // not in the repo: they are served from static.nihlen.net (tools/builder-assets/README.md). VIEWER_ASSETS sets another
 // base, such as /viewer for copies in public/viewer. In development those local copies are used when there are any.
+// This is the build's default; WebAdmin's StaticAssets:ViewerBaseUrl replaces it at runtime (src/lib/static-assets.ts).
 const staticAssets = 'https://static.nihlen.net/bf2/viewer/v1'
 const localAssets = '/viewer'
 const assetFolders = ['maps', 'models', 'templates']

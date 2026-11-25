@@ -758,6 +758,7 @@ export function fixtureResponse(request: FixtureRequest): FixtureResponse {
   }
   if (path === '/api/modules') return ok(request.modules)
   if (path === '/api/admin-channel') return ok(adminChannel(scenario))
+  if (path === '/api/config') return ok({ minimapBaseUrl: null, viewerBaseUrl: null } satisfies S['WebConfigDto'])
 
   let m = /^\/api\/server-groups\/([^/]+)\/players$/.exec(path)
   if (m) return ok(findPlayers(m[1], query.get('query') ?? '', scenario))

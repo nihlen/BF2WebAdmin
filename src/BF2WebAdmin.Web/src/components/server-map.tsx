@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
 import type { Player } from '@/api/client'
 import type { PlayerPosition } from '@/hooks/use-server-live'
+import { minimapUrl } from '@/lib/static-assets'
 import { teamCanvasColor } from '@/lib/teams'
 import { cn } from '@/lib/utils'
 
-const minimapUrl = (map: string) => `https://static.nihlen.net/bf2/minimaps/${map.toLowerCase()}.png`
 const zoomStep = 0.2
 // Positions arrive every 250 ms by default; interpolate over the measured interval
 const defaultUpdateIntervalMs = 250

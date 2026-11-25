@@ -21,16 +21,10 @@ import {
 } from 'three'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { viewerAssets } from '@/lib/static-assets'
 
-// The map's world as the 3D viewer and the map builder draw it: the terrain and static objects (map.glb under ASSETS, built by
+// The map's world as the 3D viewer and the map builder draw it: the terrain and static objects (map.glb under viewerAssets(), built by
 // BF2v2 tools/replay-map/build_map.py), the sky dome and the sea. A map without a 3D build gets a flat ground.
-
-/**
- * Where the maps, helicopter models and object templates are: built from the game's files, so not in this repo
- * (tools/builder-assets/README.md). VIEWER_ASSETS when building; in development the local copies in public/viewer when
- * there are any (vite.config.ts).
- */
-export const ASSETS = __VIEWER_ASSETS__
 
 /** The Draco decoder (Google's, Apache 2.0) is served by WebAdmin itself */
 export const DRACO = '/viewer/draco/'
@@ -67,7 +61,7 @@ export type LoadedWorld = {
 
 /** Loads the world of a map into the group (cleared by the caller) and sets the scene's horizon and sun from its sky */
 export async function loadMapWorld(map: string, world: Group, scene: Scene, sun: DirectionalLight, isDisposed: () => boolean): Promise<LoadedWorld> {
-  const base = `${ASSETS}/maps/${map.toLowerCase()}`
+  const base = `${viewerAssets()}/maps/${map.toLowerCase()}`
   let meta: MapMeta | null = null
   try {
     const response = await fetch(`${base}/map.json`)

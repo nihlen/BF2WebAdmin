@@ -77,6 +77,25 @@
         }
       }
     },
+    "/api/config": {
+      "get": {
+        "tags": [
+          "WebAdmin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebConfigDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health/servers/{serverId}": {
       "get": {
         "tags": [
@@ -4994,6 +5013,27 @@
           "z": {
             "type": "number",
             "format": "double"
+          }
+        }
+      },
+      "WebConfigDto": {
+        "required": [
+          "minimapBaseUrl",
+          "viewerBaseUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "minimapBaseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "viewerBaseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       }

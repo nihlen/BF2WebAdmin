@@ -19,7 +19,8 @@ import {
 } from 'three'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 import { type GLTF, GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { ASSETS, DRACO } from '@/viewer/world'
+import { viewerAssets } from '@/lib/static-assets'
+import { DRACO } from '@/viewer/world'
 
 // The static objects a builder can place: one GLB per object template (tools/builder-assets), listed in catalog.json
 // with its bounds in its own frame (BF2 metres, [x, height, z]).
@@ -33,13 +34,13 @@ export type CatalogEntry = {
   size: number
 }
 
-const TEMPLATES = `${ASSETS}/templates`
+const templates = () => `${viewerAssets()}/templates`
 
 let catalogPromise: Promise<CatalogEntry[]> | null = null
 
 /** The palette's templates; empty when the catalog is not built */
 export function loadCatalog(): Promise<CatalogEntry[]> {
-  catalogPromise ??= fetch(`${TEMPLATES}/catalog.json`)
+  catalogPromise ??= fetch(`${templates()}/catalog.json`)
     .then(async (r) => {
       if (!r.ok || !r.headers.get('content-type')?.includes('json')) return []
       const body = (await r.json()) as { templates?: CatalogEntry[] } | CatalogEntry[]
@@ -70,7 +71,7 @@ export function loadTemplateModel(template: string): Promise<Object3D | null> {
   let model = models.get(key)
   if (!model) {
     model = gltfLoader()
-      .loadAsync(`${TEMPLATES}/${encodeURIComponent(key)}.glb`)
+      .loadAsync(`${templates()}/${encodeURIComponent(key)}.glb`)
       .then((gltf: GLTF) => {
         // Mesh names (tools/builder-assets/README.md): objects opaque, see_through (fences, grates, panes)
         // translucent, leaves (leaf cards) opaque and double sided; all vertex coloured

@@ -51,7 +51,8 @@ import { HeliModel } from './helis'
 import { findPart, type HitboxSet, HitboxModel, loadHitboxes, facesNear, partMesh } from './hitboxes'
 import { Explosion, MissileModel } from './models'
 import { SpectatorControls } from './spectator'
-import { ASSETS, DEFAULT_HORIZON_COLOR, DRACO, DEFAULT_SEA_LEVEL, disposeTree, FOG_DENSITY, loadMapWorld } from './world'
+import { viewerAssets } from '@/lib/static-assets'
+import { DEFAULT_HORIZON_COLOR, DRACO, DEFAULT_SEA_LEVEL, disposeTree, FOG_DENSITY, loadMapWorld } from './world'
 
 // The 3D viewer's scene: the live stream (LiveBuffer) drawn at any tick, a player's own view, and a selected missile's
 // hit/miss replay with its targets where they were ("red") and where the server tested them ("blue"). Ported from
@@ -273,7 +274,7 @@ export class ViewerScene {
   // ---------------------------------------------------------------------------------------------------------------
   // Map
 
-  /** Loads the helicopter models and the map's 3D terrain (maps/<map>/map.glb under ASSETS), or a flat ground without one */
+  /** Loads the helicopter models and the map's 3D terrain (maps/<map>/map.glb under viewerAssets()), or a flat ground without one */
   async loadMap(map: string) {
     if (!map || map === this.loadedMap) return
     this.loadedMap = map
@@ -286,12 +287,12 @@ export class ViewerScene {
 
   /** The AH-1Z and Z-10 from the game meshes (BF2v2 tools/replay-map/build_helis.py) */
   private async loadHeliModels() {
-    const hitboxes = loadHitboxes(`${ASSETS}/models/heli-hitboxes.json`)
+    const hitboxes = loadHitboxes(`${viewerAssets()}/models/heli-hitboxes.json`)
       .then((set) => (this.hitboxes = set))
       .catch((e: unknown) => console.warn('[viewer] helicopter hitboxes not available, showing the visual hull instead', e))
     try {
       const draco = new DRACOLoader().setDecoderPath(DRACO)
-      const gltf = await new GLTFLoader().setDRACOLoader(draco).loadAsync(`${ASSETS}/models/helis.glb`)
+      const gltf = await new GLTFLoader().setDRACOLoader(draco).loadAsync(`${viewerAssets()}/models/helis.glb`)
       draco.dispose()
       for (const name of ['ahe_ah1z', 'ahe_z10']) {
         const node = gltf.scene.getObjectByName(name)

@@ -73,6 +73,7 @@ try
 
     builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Authentication"));
     builder.Services.Configure<ServerSettings>(builder.Configuration.GetSection("ServerSettings"));
+    builder.Services.Configure<BF2WebAdmin.Server.Api.StaticAssetsSettings>(builder.Configuration.GetSection("StaticAssets"));
 
     builder.Services.AddSingleton<ViewerRegistry>();
     builder.Services.AddSingleton(services => new MissileArchive(services.GetService<TimeProvider>() ?? TimeProvider.System));

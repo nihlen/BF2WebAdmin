@@ -78,6 +78,8 @@ public static class ApiEndpoints
         auth.MapGet("/me", (ClaimsPrincipal user) => new UserDto(user.Identity?.Name ?? "")).RequireAuthorization(AdminPolicy);
 
         api.MapGet("/admin-channel", GetAdminChannel).RequireAuthorization(AdminPolicy).WithTags("WebAdmin");
+        // Read by the web UI before it starts, also on the login page; holds no secrets
+        api.MapGet("/config", (IOptions<StaticAssetsSettings> settings) => WebConfigDto.From(settings.Value)).AllowAnonymous().WithTags("WebAdmin");
 
         // For monitoring (Gatus): 200 while the game server's admin channel is connected, 503 while it is not, 404 for an unknown server
         api.MapGet("/health/servers/{serverId}", GetServerHealthAsync).AllowAnonymous().WithTags("Health");

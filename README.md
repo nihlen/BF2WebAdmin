@@ -94,6 +94,28 @@ HMAC handshake with a key per server. [docs/admin-channel.md](docs/admin-channel
 10. **Discord bots.** A server's bot (its token in the server's settings) needs the **Message Content Intent**, turned
    on for the bot under Bot in the Discord developer portal: it reads the commands in its admin channel. Without it
    Discord refuses the bot's connection.
+11. **Minimaps and 3D models (optional).** The web UI loads the minimap images and the 3D viewer's and map builder's
+   models from `https://static.nihlen.net/bf2/`. To load them from elsewhere, set `StaticAssets:MinimapBaseUrl` (the
+   folder of `<map>.png`, map name in lower case) and `StaticAssets:ViewerBaseUrl` (the folder with `maps/`,
+   `models/` and `templates/`; a host other than WebAdmin's must send CORS headers for it). A path such as `/minimaps`
+   serves them from WebAdmin's own `wwwroot`. In `appsecrets.json`:
+
+   ```json
+   "StaticAssets": {
+     "MinimapBaseUrl": "https://cdn.example.org/bf2/minimaps",
+     "ViewerBaseUrl": "https://cdn.example.org/bf2/viewer/v1"
+   }
+   ```
+
+   Or as environment variables, in `docker-compose.yml`:
+
+   ```yaml
+   environment:
+     - StaticAssets__MinimapBaseUrl=/minimaps
+     - StaticAssets__ViewerBaseUrl=https://cdn.example.org/bf2/viewer/v1
+   volumes:
+     - ./minimaps:/app/wwwroot/minimaps:ro
+   ```
 
 ### Docker
 
